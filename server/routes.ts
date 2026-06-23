@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { getDatabaseStatus } from "./db/apply-migrations";
 import { isDatabaseConfigured } from "./db/index";
 import { registerLinkRoutes } from "./routes/links";
+import { registerItemShareRoutes } from "./routes/item-shares";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   if (process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
@@ -13,6 +14,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   registerLinkRoutes(app);
+  registerItemShareRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({

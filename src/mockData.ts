@@ -203,6 +203,8 @@ export const initialItems: CalendarItem[] = [
 export const initialEmails: EmailMessage[] = [
   {
     id: 'e1',
+    accountId: 'work-outlook',
+    folderId: 'work-clients',
     from: 'Acme Corp',
     fromEmail: 'projects@acme.com',
     subject: 'Re: Q2 deliverables review',
@@ -217,6 +219,8 @@ export const initialEmails: EmailMessage[] = [
   },
   {
     id: 'e2',
+    accountId: 'work-outlook',
+    folderId: 'work-finance',
     from: 'HMRC',
     fromEmail: 'noreply@hmrc.gov.uk',
     subject: 'VAT return reminder — due 23 June',
@@ -231,6 +235,8 @@ export const initialEmails: EmailMessage[] = [
   },
   {
     id: 'e3',
+    accountId: 'personal-gmail',
+    folderId: 'personal-inbox',
     from: 'Sarah Chen',
     fromEmail: 'sarah.chen@gmail.com',
     subject: 'Lunch Thursday?',
@@ -245,6 +251,8 @@ export const initialEmails: EmailMessage[] = [
   },
   {
     id: 'e4',
+    accountId: 'work-outlook',
+    folderId: 'work-inbox',
     from: 'Steel Supplies Ltd',
     fromEmail: 'orders@steelsupplies.co.uk',
     subject: 'Order confirmation #SS-44821',
@@ -259,6 +267,8 @@ export const initialEmails: EmailMessage[] = [
   },
   {
     id: 'e5',
+    accountId: 'family-icloud',
+    folderId: 'family-school',
     from: 'Oakwood Primary',
     fromEmail: 'office@oakwoodprimary.sch.uk',
     subject: 'Sports Day — Wednesday 25 June',
@@ -273,6 +283,8 @@ export const initialEmails: EmailMessage[] = [
   },
   {
     id: 'e6',
+    accountId: 'personal-gmail',
+    folderId: 'personal-social',
     from: 'LinkedIn',
     fromEmail: 'messages-noreply@linkedin.com',
     subject: 'You have 3 new connection requests',
@@ -287,6 +299,8 @@ export const initialEmails: EmailMessage[] = [
   },
   {
     id: 'e7',
+    accountId: 'work-outlook',
+    folderId: 'work-inbox',
     from: 'Design Studio',
     fromEmail: 'hello@designstudio.io',
     subject: 'Updated brand guidelines attached',
@@ -302,3 +316,45 @@ export const initialEmails: EmailMessage[] = [
 ]
 
 export const EMAIL_CATEGORIES = ['All', 'Work', 'Finance', 'Personal', 'Family', 'Social']
+
+export const MOCK_EMAIL_ACCOUNTS = [
+  {
+    id: 'work-outlook',
+    label: 'Work',
+    email: 'angi@asfabs.co.uk',
+    provider: 'Outlook',
+    colour: '#0078d4',
+  },
+  {
+    id: 'personal-gmail',
+    label: 'Personal',
+    email: 'angi@gmail.com',
+    provider: 'Gmail',
+    colour: '#ea4335',
+  },
+  {
+    id: 'family-icloud',
+    label: 'Family',
+    email: 'family@icloud.com',
+    provider: 'iCloud',
+    colour: '#555555',
+  },
+] as const
+
+export const MOCK_EMAIL_FOLDERS = [
+  { id: 'work-inbox', label: 'Inbox', accountId: 'work-outlook' },
+  { id: 'work-clients', label: 'Clients', accountId: 'work-outlook' },
+  { id: 'work-finance', label: 'Finance', accountId: 'work-outlook' },
+  { id: 'personal-inbox', label: 'Inbox', accountId: 'personal-gmail' },
+  { id: 'personal-social', label: 'Social', accountId: 'personal-gmail' },
+  { id: 'family-inbox', label: 'Inbox', accountId: 'family-icloud' },
+  { id: 'family-school', label: 'School', accountId: 'family-icloud' },
+] as const
+
+export function getEmailAccount(accountId: string) {
+  return MOCK_EMAIL_ACCOUNTS.find((account) => account.id === accountId)
+}
+
+export function getEmailFolder(folderId: string) {
+  return MOCK_EMAIL_FOLDERS.find((folder) => folder.id === folderId)
+}

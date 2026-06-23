@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
+import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage } from './types'
 import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
 import { initialEmails, initialItems } from './mockData'
 import { addWeeks, generateId, startOfWeek, toISODate } from './dateUtils'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
+import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/itemShares'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -44,6 +46,7 @@ export default function App() {
   const [editingItem, setEditingItem] = useState<CalendarItem | null>(null)
   const [listOptions, setListOptions] = useState<ListDisplayOptions>(DEFAULT_LIST_OPTIONS)
   const [links, setLinks] = useState<ItemLink[]>([])
+  const [itemShares, setItemShares] = useState<ItemShare[]>([])
   const [emailSelectedId, setEmailSelectedId] = useState<string | null>(null)
   const [linkPicker, setLinkPicker] = useState<{
     sourceType: EntityType
@@ -59,6 +62,10 @@ export default function App() {
 
   useEffect(() => {
     fetchAllLinks().then(setLinks).catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    fetchAllItemShares().then(setItemShares).catch(console.error)
   }, [])
 
   const upsertLink = useCallback((link: ItemLink) => {
@@ -77,6 +84,16 @@ export default function App() {
   const handleRemoveLink = useCallback(async (linkId: string) => {
     await removeLink(linkId)
     setLinks((prev) => prev.filter((link) => link.id !== linkId))
+  }, [])
+
+  const handleShareUpdate = useCallback(async (input: UpsertItemShareInput) => {
+    const share = await upsertItemShare(input)
+    setItemShares((prev) => [
+      ...prev.filter(
+        (entry) => !(entry.itemType === share.itemType && entry.itemId === share.itemId),
+      ),
+      share,
+    ])
   }, [])
 
   const handleNavigateLink = useCallback(
@@ -361,6 +378,8 @@ export default function App() {
             onLinkExisting={openLinkPickerForEmail}
             onNavigateLink={handleNavigateLink}
             onRemoveLink={handleRemoveLink}
+            itemShares={itemShares}
+            onShareUpdate={handleShareUpdate}
           />
         )}
 
@@ -408,6 +427,16 @@ export default function App() {
         links={links}
         emails={emails}
         items={items}
+        itemShare={
+          editingItem
+            ? getShareForEntity(
+                itemShares,
+                getItemLinkType(editingItem, categories),
+                editingItem.id,
+              )
+            : undefined
+        }
+        onShareUpdate={handleShareUpdate}
         onSave={handleSaveItem}
         onDelete={handleDeleteItem}
         onClose={() => setModalOpen(false)}

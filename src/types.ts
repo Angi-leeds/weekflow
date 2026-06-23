@@ -64,8 +64,26 @@ export interface CalendarItem {
   completed?: boolean
 }
 
+export interface EmailAccount {
+  id: string
+  label: string
+  email: string
+  provider: string
+  colour: string
+}
+
+export interface EmailFolder {
+  id: string
+  label: string
+  accountId: string
+}
+
+export type EmailInboxMode = 'merged' | 'account' | 'folder'
+
 export interface EmailMessage {
   id: string
+  accountId: string
+  folderId: string
   from: string
   fromEmail: string
   subject: string

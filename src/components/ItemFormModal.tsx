@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
+import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { CalendarItem, Category, EmailMessage } from '../types'
 import { resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
 import { isTaskOrReminder } from './itemHelpers'
 import { LinkChips } from './LinkChips'
+import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
 
 interface ItemFormModalProps {
   open: boolean
@@ -16,6 +18,8 @@ interface ItemFormModalProps {
   links: ItemLink[]
   emails: EmailMessage[]
   items: CalendarItem[]
+  itemShare?: ItemShare
+  onShareUpdate: (input: UpsertItemShareInput) => void
   onSave: (item: CalendarItem) => void
   onDelete?: (id: string) => void
   onClose: () => void
@@ -45,6 +49,8 @@ export function ItemFormModal({
   links,
   emails,
   items,
+  itemShare,
+  onShareUpdate,
   onSave,
   onDelete,
   onClose,
@@ -64,6 +70,7 @@ export function ItemFormModal({
   if (!open) return null
 
   const entityType = form.id ? getItemLinkType(form, categories) : null
+  const shareState = shareStateFromRecord(itemShare)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -234,6 +241,29 @@ export function ItemFormModal({
               className="w-full resize-none rounded-xl border border-wf-border bg-wf-bg px-4 py-3 text-[15px] outline-none focus:border-wf-accent focus:ring-2 focus:ring-wf-accent/20"
             />
           </Field>
+
+          {entityType && form.id && (
+            <ShareToBoardFields
+              sharedToBoard={shareState.sharedToBoard}
+              boardDisplay={shareState.boardDisplay}
+              onSharedChange={(sharedToBoard) =>
+                onShareUpdate({
+                  itemType: entityType,
+                  itemId: form.id,
+                  sharedToBoard,
+                  boardDisplay: shareState.boardDisplay,
+                })
+              }
+              onDisplayChange={(boardDisplay) =>
+                onShareUpdate({
+                  itemType: entityType,
+                  itemId: form.id,
+                  sharedToBoard: shareState.sharedToBoard,
+                  boardDisplay,
+                })
+              }
+            />
+          )}
 
           {entityType && form.id && (
             <div className="space-y-2 rounded-xl bg-wf-bg px-4 py-3">

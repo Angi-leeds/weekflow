@@ -12,11 +12,24 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
+import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { CalendarItem, EmailMessage } from '../types'
 import { useIsWide } from '../hooks/useMediaQuery'
-import { EMAIL_CATEGORIES } from '../mockData'
+import {
+  EMAIL_CATEGORIES,
+  getEmailAccount,
+  MOCK_EMAIL_ACCOUNTS,
+  MOCK_EMAIL_FOLDERS,
+} from '../mockData'
+import { getShareForEntity } from '../lib/itemShares'
 import { Badge } from './ui/Badge'
 import { LinkChips } from './LinkChips'
+import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
+
+type InboxFilter =
+  | { mode: 'merged' }
+  | { mode: 'account'; accountId: string }
+  | { mode: 'folder'; folderId: string }
 
 interface EmailViewProps {
   emails: EmailMessage[]
@@ -24,6 +37,8 @@ interface EmailViewProps {
   onSelectedIdChange?: (id: string | null) => void
   links: ItemLink[]
   items: CalendarItem[]
+  itemShares: ItemShare[]
+  onShareUpdate: (input: UpsertItemShareInput) => void
   onToggleStar: (id: string) => void
   onToggleRead: (id: string) => void
   onCreateTask: (email: EmailMessage) => void
@@ -38,6 +53,8 @@ export function EmailView({
   onSelectedIdChange,
   links,
   items,
+  itemShares,
+  onShareUpdate,
   onToggleStar,
   onToggleRead,
   onCreateTask,
@@ -54,10 +71,33 @@ export function EmailView({
   }
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>({ mode: 'merged' })
   const isWide = useIsWide()
+
+  const activeAccountId =
+    inboxFilter.mode === 'account'
+      ? inboxFilter.accountId
+      : inboxFilter.mode === 'folder'
+        ? MOCK_EMAIL_FOLDERS.find((folder) => folder.id === inboxFilter.folderId)?.accountId
+        : null
+
+  const accountFolders = useMemo(
+    () =>
+      activeAccountId
+        ? MOCK_EMAIL_FOLDERS.filter((folder) => folder.accountId === activeAccountId)
+        : [],
+    [activeAccountId],
+  )
 
   const filtered = useMemo(() => {
     let list = emails
+
+    if (inboxFilter.mode === 'account') {
+      list = list.filter((email) => email.accountId === inboxFilter.accountId)
+    } else if (inboxFilter.mode === 'folder') {
+      list = list.filter((email) => email.folderId === inboxFilter.folderId)
+    }
+
     if (category !== 'All') {
       list = list.filter((e) => e.category === category)
     }
@@ -71,10 +111,14 @@ export function EmailView({
       )
     }
     return list
-  }, [emails, category, search])
+  }, [emails, inboxFilter, category, search])
 
   const selected = emails.find((e) => e.id === selectedId) ?? filtered[0] ?? null
   const unreadCount = emails.filter((e) => e.unread).length
+  const selectedShare = selected
+    ? getShareForEntity(itemShares, 'email', selected.id)
+    : undefined
+  const selectedShareState = shareStateFromRecord(selectedShare)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -110,6 +154,43 @@ export function EmailView({
           />
         </div>
 
+        <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <FilterChip
+            active={inboxFilter.mode === 'merged'}
+            label="All accounts"
+            onClick={() => setInboxFilter({ mode: 'merged' })}
+          />
+          {MOCK_EMAIL_ACCOUNTS.map((account) => (
+            <FilterChip
+              key={account.id}
+              active={
+                inboxFilter.mode === 'account' && inboxFilter.accountId === account.id
+              }
+              label={account.label}
+              colour={account.colour}
+              onClick={() => setInboxFilter({ mode: 'account', accountId: account.id })}
+            />
+          ))}
+        </div>
+
+        {activeAccountId && accountFolders.length > 0 && (
+          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <FilterChip
+              active={inboxFilter.mode === 'account' && inboxFilter.accountId === activeAccountId}
+              label="All folders"
+              onClick={() => setInboxFilter({ mode: 'account', accountId: activeAccountId })}
+            />
+            {accountFolders.map((folder) => (
+              <FilterChip
+                key={folder.id}
+                active={inboxFilter.mode === 'folder' && inboxFilter.folderId === folder.id}
+                label={folder.label}
+                onClick={() => setInboxFilter({ mode: 'folder', folderId: folder.id })}
+              />
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {EMAIL_CATEGORIES.map((cat) => (
             <button
@@ -142,6 +223,7 @@ export function EmailView({
                 key={email.id}
                 email={email}
                 selected={selected?.id === email.id}
+                showAccountBadge={inboxFilter.mode === 'merged'}
                 onSelect={() => {
                   setSelectedId(email.id)
                   if (email.unread) onToggleRead(email.id)
@@ -164,6 +246,8 @@ export function EmailView({
             onLinkExisting={onLinkExisting}
             onNavigateLink={onNavigateLink}
             onRemoveLink={onRemoveLink}
+            shareState={selectedShareState}
+            onShareUpdate={onShareUpdate}
           />
         )}
       </div>
@@ -171,17 +255,54 @@ export function EmailView({
   )
 }
 
+function FilterChip({
+  label,
+  active,
+  colour,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  colour?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-caption font-semibold transition-colors ${
+        active
+          ? 'bg-wf-accent text-white'
+          : 'bg-wf-surface text-wf-text-secondary shadow-[var(--shadow-card)]'
+      }`}
+    >
+      {colour && (
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: colour }}
+          aria-hidden
+        />
+      )}
+      {label}
+    </button>
+  )
+}
+
 function EmailRow({
   email,
   selected,
+  showAccountBadge,
   onSelect,
   onToggleStar,
 }: {
   email: EmailMessage
   selected: boolean
+  showAccountBadge?: boolean
   onSelect: () => void
   onToggleStar: () => void
 }) {
+  const account = showAccountBadge ? getEmailAccount(email.accountId) : undefined
+
   return (
     <div
       role="button"
@@ -213,8 +334,16 @@ function EmailRow({
           {email.subject}
         </p>
         <p className="truncate text-caption text-wf-text-tertiary">{email.preview}</p>
-        {email.labels.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
+        {(account || email.labels.length > 0) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {account && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                style={{ backgroundColor: account.colour }}
+              >
+                {account.label}
+              </span>
+            )}
             {email.labels.map((label) => (
               <Badge key={label} label={label} />
             ))}
@@ -276,6 +405,8 @@ function MessagePreview({
   onLinkExisting,
   onNavigateLink,
   onRemoveLink,
+  shareState,
+  onShareUpdate,
 }: {
   email: EmailMessage | null
   links: ItemLink[]
@@ -287,6 +418,8 @@ function MessagePreview({
   onLinkExisting: (email: EmailMessage) => void
   onNavigateLink: (type: EntityType, id: string) => void
   onRemoveLink?: (linkId: string) => void
+  shareState: { sharedToBoard: boolean; boardDisplay: BoardDisplay }
+  onShareUpdate: (input: UpsertItemShareInput) => void
 }) {
   if (!email) {
     return (
@@ -363,7 +496,29 @@ function MessagePreview({
       </div>
 
       <div className="shrink-0 border-t border-wf-border bg-wf-bg px-4 py-3">
-        <p className="mb-2 text-caption font-semibold text-wf-text-secondary">
+        <ShareToBoardFields
+          compact
+          sharedToBoard={shareState.sharedToBoard}
+          boardDisplay={shareState.boardDisplay}
+          onSharedChange={(sharedToBoard) =>
+            onShareUpdate({
+              itemType: 'email',
+              itemId: email.id,
+              sharedToBoard,
+              boardDisplay: shareState.boardDisplay,
+            })
+          }
+          onDisplayChange={(boardDisplay) =>
+            onShareUpdate({
+              itemType: 'email',
+              itemId: email.id,
+              sharedToBoard: shareState.sharedToBoard,
+              boardDisplay,
+            })
+          }
+        />
+
+        <p className="mb-2 mt-4 text-caption font-semibold text-wf-text-secondary">
           Email actions
         </p>
         <div className="flex flex-wrap gap-2">
