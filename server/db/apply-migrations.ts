@@ -115,19 +115,3 @@ export async function getDatabaseStatus(): Promise<{
   };
 }
 
-/** CLI entry: npm run db:migrate */
-const isMain =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (isMain) {
-  applyPendingMigrations()
-    .then(() => {
-      console.log("Migrations complete.");
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error("Migration failed:", error);
-      process.exit(1);
-    });
-}
