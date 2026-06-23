@@ -19,6 +19,16 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+/** Avoid SPA HTML fallback for static asset paths (e.g. /assets/*.css). */
+function isStaticAssetPath(urlPath: string): boolean {
+  const pathname = urlPath.split("?")[0] ?? urlPath;
+  return /\.[a-zA-Z0-9]+$/.test(pathname) && !pathname.endsWith(".html");
+}
+
+export function getClientDistPath(): string {
+  return path.resolve(process.cwd(), "dist", "public");
+}
+
 export async function setupVite(app: Express, server: Server) {
   const vite = await createViteServer({
     ...viteConfig,
@@ -43,8 +53,13 @@ export async function setupVite(app: Express, server: Server) {
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
 
+    if (isStaticAssetPath(req.path)) {
+      res.status(404).type("text/plain").send("Not found");
+      return;
+    }
+
     try {
-      const templatePath = path.resolve(import.meta.dirname, "..", "index.html");
+      const templatePath = path.resolve(process.cwd(), "index.html");
       let template = await fs.promises.readFile(templatePath, "utf-8");
       template = template.replace(
         'src="/src/main.tsx"',
@@ -60,7 +75,7 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "public");
+  const distPath = getClientDistPath();
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
@@ -68,9 +83,21 @@ export function serveStatic(app: Express) {
     );
   }
 
+  log(`serving client from ${distPath}`, "static");
+
   app.use(express.static(distPath));
 
-  app.use((_req, res) => {
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      next();
+      return;
+    }
+
+    if (isStaticAssetPath(req.path)) {
+      res.status(404).type("text/plain").send("Not found");
+      return;
+    }
+
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
