@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server/index.ts",
+    "dev": "node node_modules/tsx/dist/cli.mjs server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "npm run db:migrate && NODE_ENV=production node dist/index.js",
     "db:migrate": "tsx server/db/apply-migrations.ts",

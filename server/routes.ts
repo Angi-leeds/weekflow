@@ -3,10 +3,15 @@ import { createServer, type Server } from "http";
 import { getDatabaseStatus } from "./db/apply-migrations";
 import { isDatabaseConfigured } from "./db/index";
 import { registerLinkRoutes } from "./routes/links";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  registerObjectStorageRoutes(app);
+  if (process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
+    const { registerObjectStorageRoutes } = await import(
+      "./replit_integrations/object_storage/routes"
+    );
+    registerObjectStorageRoutes(app);
+  }
+
   registerLinkRoutes(app);
 
   app.get("/api/health", (_req, res) => {

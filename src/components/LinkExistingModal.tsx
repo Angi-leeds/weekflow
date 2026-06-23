@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
 import type { CalendarItem, Category, EmailMessage } from '../types'
+import { isInSameLinkCluster } from '../lib/links'
 import {
   getItemLinkType,
-  isAlreadyLinked,
   linkTargetIcon,
 } from '../lib/itemLinkHelpers'
 
@@ -58,7 +58,7 @@ export function LinkExistingModal({
 
     return list.filter((item) => {
       const targetType = getItemLinkType(item, categories)
-      return !isAlreadyLinked(links, sourceType, sourceId, targetType, item.id)
+      return !isInSameLinkCluster(links, sourceType, sourceId, targetType, item.id)
     })
   }, [items, categories, tab, search, links, sourceType, sourceId])
 

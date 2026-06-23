@@ -1,4 +1,4 @@
-import type { CreateLinkInput, ItemLink } from "../../shared/links";
+import type { CreateLinkInput, EntityType, ItemLink } from "../../shared/links";
 
 const STORAGE_KEY = "weekflow-links";
 
@@ -107,4 +107,95 @@ export function getOtherEnd(link: ItemLink, entityType: string, entityId: string
     return { type: link.toType, id: link.toId };
   }
   return { type: link.fromType, id: link.fromId };
+}
+
+export function toEntityKey(type: EntityType, id: string): string {
+  return `${type}\u001f${id}`;
+}
+
+export function fromEntityKey(key: string): { type: EntityType; id: string } {
+  const separator = key.indexOf("\u001f");
+  return {
+    type: key.slice(0, separator) as EntityType,
+    id: key.slice(separator + 1),
+  };
+}
+
+export interface RelatedEntityRef {
+  type: EntityType;
+  id: string;
+  hops: number;
+  directLink?: ItemLink;
+}
+
+/** All entities in the same link cluster as the given entity (excluding itself). */
+export function getConnectedRelatedEntities(
+  allLinks: ItemLink[],
+  entityType: EntityType,
+  entityId: string,
+): RelatedEntityRef[] {
+  const startKey = toEntityKey(entityType, entityId);
+  const adjacency = new Map<string, Set<string>>();
+
+  for (const link of allLinks) {
+    const fromKey = toEntityKey(link.fromType, link.fromId);
+    const toKey = toEntityKey(link.toType, link.toId);
+
+    if (!adjacency.has(fromKey)) adjacency.set(fromKey, new Set());
+    if (!adjacency.has(toKey)) adjacency.set(toKey, new Set());
+
+    adjacency.get(fromKey)!.add(toKey);
+    adjacency.get(toKey)!.add(fromKey);
+  }
+
+  const hopsFromStart = new Map<string, number>();
+  const queue: string[] = [startKey];
+  hopsFromStart.set(startKey, 0);
+
+  while (queue.length > 0) {
+    const key = queue.shift()!;
+    const hops = hopsFromStart.get(key) ?? 0;
+
+    for (const neighbor of adjacency.get(key) ?? []) {
+      if (!hopsFromStart.has(neighbor)) {
+        hopsFromStart.set(neighbor, hops + 1);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  const directLinks = getLinksForEntity(allLinks, entityType, entityId);
+  const directByKey = new Map<string, ItemLink>();
+  for (const link of directLinks) {
+    const other = getOtherEnd(link, entityType, entityId);
+    directByKey.set(toEntityKey(other.type as EntityType, other.id), link);
+  }
+
+  const related: RelatedEntityRef[] = [];
+  for (const [key, hops] of hopsFromStart) {
+    if (key === startKey) continue;
+    const { type, id } = fromEntityKey(key);
+    related.push({
+      type,
+      id,
+      hops,
+      directLink: directByKey.get(key),
+    });
+  }
+
+  related.sort((a, b) => a.hops - b.hops || a.type.localeCompare(b.type));
+  return related;
+}
+
+export function isInSameLinkCluster(
+  allLinks: ItemLink[],
+  aType: EntityType,
+  aId: string,
+  bType: EntityType,
+  bId: string,
+): boolean {
+  if (aType === bType && aId === bId) return true;
+  return getConnectedRelatedEntities(allLinks, aType, aId).some(
+    (entity) => entity.type === bType && entity.id === bId,
+  );
 }
