@@ -11,7 +11,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.21.0",
+    "@uppy/aws-s3": "^5.1.0",
+    "@uppy/core": "^5.2.0",
+    "@uppy/dashboard": "^5.1.1",
+    "@uppy/react": "^5.2.0",
     "express": "^5.1.0",
+    "google-auth-library": "^10.7.0",
     "lucide-react": "^1.21.0",
     "nanoid": "^5.1.6",
     "react": "^19.2.6",

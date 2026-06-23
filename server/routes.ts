@@ -1,7 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  registerObjectStorageRoutes(app);
+
   app.get("/api/health", (_req, res) => {
     res.json({
       status: "ok",
