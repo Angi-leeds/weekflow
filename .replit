@@ -42,3 +42,9 @@ waitForPort = 5000
 integrations = ["javascript_database:1.0.0", "javascript_object_storage:2.0.0"]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
+
+[userenv]
+
+[userenv.shared]
+MICROSOFT_CLIENT_ID = "e2999f75-4e17-49b7-a878-2f83ebe469be"
+APP_URL = "https://weekflow-angileeds.replit.app"
