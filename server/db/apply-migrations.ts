@@ -9,6 +9,7 @@ const migrationsDir = path.join(process.cwd(), "migrations");
 const LOCK_KEY = 847291;
 
 const WEEKFLOW_TABLES = [
+  "users",
   "households",
   "household_members",
   "links",

@@ -1,14 +1,24 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { setupAuth } from "./auth/setup-auth";
 import { getDatabaseStatus } from "./db/apply-migrations";
 import { isDatabaseConfigured } from "./db/index";
+import { createApiAuthGate } from "./middleware/require-auth";
+import { registerAuthRoutes } from "./routes/auth";
 import { registerLinkRoutes } from "./routes/links";
 import { registerItemShareRoutes } from "./routes/item-shares";
 import { registerBoardPinRoutes } from "./routes/board-pins";
 import { registerAttachmentRoutes } from "./routes/attachments";
 import { registerMicrosoftRoutes } from "./routes/microsoft";
+import { registerSuperAdminRoutes } from "./routes/super-admin";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const authActive = setupAuth(app);
+  app.use(createApiAuthGate(authActive));
+
+  registerAuthRoutes(app);
+  registerSuperAdminRoutes(app);
+
   if (process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
     const { registerObjectStorageRoutes } = await import(
       "./replit_integrations/object_storage/routes"
@@ -62,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const dbStatus = await getDatabaseStatus();
-      const schemaReady = dbStatus.weekflowTables.length >= 8;
+      const schemaReady = dbStatus.weekflowTables.length >= 9;
 
       res.json({
         database: dbStatus.connected ? (schemaReady ? "ready" : "configured") : "error",

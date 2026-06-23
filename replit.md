@@ -1,7 +1,11 @@
-# WeekFlow
+# MyAxis (WeekFlow repo)
 
 ## Overview
-WeekFlow is a mobile-first personal hub (week-list calendar, email, tasks) with an integrated family noticeboard mode (formerly Corky). Prototype uses mock data locally; full build syncs to Microsoft 365 / Google / Apple accounts.
+MyAxis is a mobile-first personal hub (week-list calendar, email, tasks, contacts, notes) with an integrated family noticeboard mode (formerly Corky). Prototype uses mock data locally; Microsoft Graph when OAuth env vars are set on Replit.
+
+**Build order:** Phase **9b** (multi-account Outlook) → Phase **11** (login + super admin — **required before public custom domain**) → Phase 9c/10. See `BUILD-PLAN.md`.
+
+**Security (until Phase 11):** Custom domain has **no app login**. Restrict URL sharing; optional Replit/Cloudflare edge gate. Phase 11 reference: **menagerie** (`export-docs/05-AUTHZ-ROLES-PERMISSIONS.md`, `server/routes.ts` auth + `/api/super-admin/*`, `client/src/pages/super-admin/app-control-centre.tsx`).
 
 ## User preferences
 - Mobile-first; week list is the signature calendar view.

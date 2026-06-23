@@ -1,6 +1,8 @@
-# WeekFlow
+# MyAxis
 
 Mobile-first calendar, email, tasks, and family noticeboard — one app.
+
+> Repo name stays `weekflow` on GitHub/Replit for deployment compatibility.
 
 ## Local development (Windows / Mac / Linux)
 

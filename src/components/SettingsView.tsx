@@ -18,6 +18,8 @@ import {
   TIME_FORMAT_LABELS,
   WEEK_START_LABELS,
 } from '../types'
+import type { AuthUser } from '../../shared/auth'
+import { APP_NAME } from '../branding'
 import { MOCK_HOUSEHOLD_MEMBERS } from '../../shared/householdPermissions'
 import type { HouseholdPermissionsConfig } from '../lib/householdPermissions'
 import type { MicrosoftIntegrationStatus } from '../../shared/microsoftGraph'
@@ -60,6 +62,10 @@ interface SettingsViewProps {
   onOpenBoard?: () => void
   onEnterKiosk?: () => void
   sharedBoardCount?: number
+  authEnabled?: boolean
+  authUser?: AuthUser | null
+  onLogout?: () => void
+  onOpenSuperAdmin?: () => void
 }
 
 const GROUP_OPTIONS: ListGroupBy[] = ['none', 'category', 'time', 'kind']
@@ -89,6 +95,10 @@ export function SettingsView({
   onOpenBoard,
   onEnterKiosk,
   sharedBoardCount = 0,
+  authEnabled = false,
+  authUser,
+  onLogout,
+  onOpenSuperAdmin,
 }: SettingsViewProps) {
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const [showSyncHelp, setShowSyncHelp] = useState(false)
@@ -305,7 +315,7 @@ export function SettingsView({
 
       <SettingsGroup title="Data &amp; sync">
         <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          What stays in Gmail/Outlook vs what WeekFlow stores.
+          What stays in Gmail/Outlook vs what {APP_NAME} stores.
         </p>
         <button
           type="button"
@@ -407,9 +417,34 @@ export function SettingsView({
         />
       </SettingsGroup>
 
+      {authEnabled && (
+        <SettingsGroup title="Account">
+          {authUser && (
+            <>
+              <SettingsRow label="Signed in as" value={authUser.displayName} />
+              <SettingsRow label="Email" value={authUser.email} muted />
+            </>
+          )}
+          {authUser?.isSuperAdmin && onOpenSuperAdmin && (
+            <SettingsActionRow
+              label="Super admin"
+              value="Open console"
+              onClick={onOpenSuperAdmin}
+            />
+          )}
+          {onLogout && (
+            <SettingsActionRow
+              label="Sign out"
+              value="End session"
+              onClick={() => void onLogout()}
+            />
+          )}
+        </SettingsGroup>
+      )}
+
       <SettingsGroup title="About">
         <SettingsRow label="Version" value="0.1.0 prototype" />
-        <SettingsRow label="App" value="WeekFlow" />
+        <SettingsRow label="App" value={APP_NAME} />
       </SettingsGroup>
     </div>
   )

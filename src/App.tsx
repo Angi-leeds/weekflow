@@ -91,6 +91,8 @@ import { PlannerView } from './components/PlannerView'
 import { ContactsView } from './components/ContactsView'
 import { NotesView } from './components/NotesView'
 import { SettingsView } from './components/SettingsView'
+import { SuperAdminView } from './components/SuperAdminView'
+import { useAuth } from './context/AuthContext'
 import { BoardSplitView } from './components/BoardSplitView'
 import { FamilyBoardView } from './components/FamilyBoardView'
 import { EmailActionFlowModal } from './components/EmailActionFlowModal'
@@ -98,6 +100,7 @@ import { Toast } from './components/Toast'
 import { KioskPinGate } from './components/KioskPinGate'
 
 export default function App() {
+  const { user, config, logout } = useAuth()
   const [section, setSection] = useState<AppSection>('calendar')
   const [categories, setCategories] = useState<Category[]>(
     () => loadStoredCategories() ?? DEFAULT_CATEGORIES,
@@ -294,9 +297,14 @@ export default function App() {
       sectionParam === 'contacts' ||
       sectionParam === 'notes' ||
       sectionParam === 'today' ||
-      sectionParam === 'settings'
+      sectionParam === 'settings' ||
+      sectionParam === 'super-admin'
     ) {
-      setSection(sectionParam)
+      if (sectionParam === 'super-admin' && !user?.isSuperAdmin) {
+        setSection('settings')
+      } else {
+        setSection(sectionParam)
+      }
     }
 
     const microsoftResult = params.get('microsoft')
@@ -312,7 +320,7 @@ export default function App() {
     if (params.has('section') || params.has('microsoft')) {
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [refreshMicrosoft])
+  }, [refreshMicrosoft, user?.isSuperAdmin])
 
   const sharedBoardItems = useMemo(
     () =>
@@ -1172,7 +1180,17 @@ export default function App() {
             onOpenBoard={() => setSection('board')}
             onEnterKiosk={() => setKioskMode(true)}
             sharedBoardCount={sharedBoardItems.length}
+            authEnabled={config?.enabled ?? false}
+            authUser={user}
+            onLogout={config?.enabled ? logout : undefined}
+            onOpenSuperAdmin={
+              user?.isSuperAdmin ? () => setSection('super-admin') : undefined
+            }
           />
+        )}
+
+        {section === 'super-admin' && user?.isSuperAdmin && (
+          <SuperAdminView onBack={() => setSection('settings')} />
         )}
       </main>
 
@@ -1187,7 +1205,11 @@ export default function App() {
         </button>
       )}
 
-      <BottomNav active={section} onChange={setSection} unreadEmails={unreadCount} />
+      <BottomNav
+        active={section === 'super-admin' ? 'settings' : section}
+        onChange={setSection}
+        unreadEmails={unreadCount}
+      />
 
       <ItemFormModal
         open={modalOpen}
