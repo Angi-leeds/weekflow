@@ -66,6 +66,10 @@ export interface CalendarItem {
   accountId: string
   /** Resolved photo URL from attachment API (legacy inline base64 fallback). */
   photoUrl?: string
+  /** Microsoft Graph event id when synced. */
+  externalId?: string
+  provider?: 'microsoft' | 'local'
+  connectedAccountId?: string
 }
 
 export interface EmailAccount {
@@ -103,4 +107,7 @@ export interface EmailMessage {
   flagged: boolean
   category: string
   labels: string[]
+  externalId?: string
+  provider?: 'microsoft' | 'mock'
+  connectedAccountId?: string
 }

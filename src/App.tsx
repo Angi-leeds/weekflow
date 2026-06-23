@@ -24,6 +24,14 @@ import {
   type HouseholdPermissionsConfig,
 } from './lib/householdPermissions'
 import { calendarFilterMatchesItem } from './components/CalendarAccountFilter'
+import {
+  createMicrosoftTodo,
+  fetchMicrosoftMail,
+  fetchMicrosoftStatus,
+  mergeGraphMail,
+  syncCalendarToMicrosoft,
+} from './lib/microsoft'
+import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -84,6 +92,32 @@ export default function App() {
   const [permissionsConfig, setPermissionsConfig] = useState<HouseholdPermissionsConfig>(() =>
     loadHouseholdPermissions(),
   )
+  const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftIntegrationStatus | null>(null)
+  const [microsoftLoading, setMicrosoftLoading] = useState(true)
+  const [graphEmails, setGraphEmails] = useState<EmailMessage[]>([])
+
+  const refreshMicrosoft = useCallback(async () => {
+    setMicrosoftLoading(true)
+    try {
+      const status = await fetchMicrosoftStatus()
+      setMicrosoftStatus(status)
+      if (status.accounts[0]) {
+        const mail = await fetchMicrosoftMail(status.accounts[0].id)
+        setGraphEmails(mail)
+      } else {
+        setGraphEmails([])
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setMicrosoftLoading(false)
+    }
+  }, [])
+
+  const displayEmails = useMemo(
+    () => mergeGraphMail(emails, graphEmails),
+    [emails, graphEmails],
+  )
 
   const activeMember = useMemo(() => getActiveMember(permissionsConfig), [permissionsConfig])
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
@@ -94,7 +128,7 @@ export default function App() {
     return items.filter((item) => calendarFilterMatchesItem(calendarFilter, item.accountId))
   }, [items, calendarFilter])
 
-  const unreadCount = useMemo(() => emails.filter((e) => e.unread).length, [emails])
+  const unreadCount = useMemo(() => displayEmails.filter((e) => e.unread).length, [displayEmails])
 
   useEffect(() => {
     saveStoredCategories(categories)
@@ -123,6 +157,39 @@ export default function App() {
   useEffect(() => {
     fetchAllAttachments().then(setAttachments).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    void refreshMicrosoft()
+  }, [refreshMicrosoft])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sectionParam = params.get('section')
+    if (
+      sectionParam === 'calendar' ||
+      sectionParam === 'planner' ||
+      sectionParam === 'board' ||
+      sectionParam === 'email' ||
+      sectionParam === 'today' ||
+      sectionParam === 'settings'
+    ) {
+      setSection(sectionParam)
+    }
+
+    const microsoftResult = params.get('microsoft')
+    if (microsoftResult === 'connected') {
+      setSection('settings')
+      setToastMessage(`Connected ${params.get('email') ?? 'Microsoft account'}`)
+      void refreshMicrosoft()
+    } else if (microsoftResult === 'error') {
+      setSection('settings')
+      setToastMessage('Microsoft sign-in failed. Check server OAuth settings.')
+    }
+
+    if (params.has('section') || params.has('microsoft')) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [refreshMicrosoft])
 
   const sharedBoardItems = useMemo(
     () => resolveSharedBoardItems(itemShares, items, emails, categories, attachments),
@@ -497,21 +564,78 @@ export default function App() {
     })
   }, [categories])
 
-  const handleSaveItem = useCallback((item: CalendarItem) => {
-    const normalized = {
-      ...item,
-      accountId: item.accountId ?? calendarAccountForCategory(item.categoryId),
-    }
-    setItems((prev) => {
-      const idx = prev.findIndex((i) => i.id === normalized.id)
-      if (idx >= 0) {
-        const next = [...prev]
-        next[idx] = normalized
-        return next
+  const handleSaveItem = useCallback(
+    async (item: CalendarItem) => {
+      const normalized = {
+        ...item,
+        accountId: item.accountId ?? calendarAccountForCategory(item.categoryId),
       }
-      return [...prev, normalized]
-    })
-  }, [])
+      setItems((prev) => {
+        const idx = prev.findIndex((i) => i.id === normalized.id)
+        if (idx >= 0) {
+          const next = [...prev]
+          next[idx] = normalized
+          return next
+        }
+        return [...prev, normalized]
+      })
+
+      const microsoftAccount = microsoftStatus?.accounts[0]
+      if (!microsoftAccount) return
+
+      const category = categories.find((entry) => entry.id === normalized.categoryId)
+      const linkType = getItemLinkType(normalized, categories)
+      const photoAttachment = attachments.find(
+        (entry) =>
+          entry.itemType === linkType &&
+          entry.itemId === normalized.id &&
+          entry.kind === 'photo',
+      )
+
+      try {
+        if (category?.kind === 'task') {
+          await createMicrosoftTodo(microsoftAccount.id, {
+            title: normalized.title,
+            dueDate: normalized.date,
+            notes: normalized.notes,
+          })
+          setToastMessage('Task synced to Microsoft To Do')
+          return
+        }
+
+        const result = await syncCalendarToMicrosoft(
+          microsoftAccount.id,
+          normalized,
+          photoAttachment
+            ? {
+                storageKey: photoAttachment.storageKey,
+                mimeType: photoAttachment.mimeType,
+                filename: photoAttachment.filename,
+              }
+            : undefined,
+        )
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.id === normalized.id
+              ? {
+                  ...entry,
+                  externalId: result.externalId,
+                  provider: 'microsoft',
+                  connectedAccountId: microsoftAccount.id,
+                }
+              : entry,
+          ),
+        )
+        setToastMessage('Synced to Outlook calendar')
+      } catch (error) {
+        console.error(error)
+        setToastMessage(
+          error instanceof Error ? error.message : 'Saved locally; Outlook sync failed',
+        )
+      }
+    },
+    [attachments, categories, microsoftStatus],
+  )
 
   const handleDeleteItem = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id))
@@ -690,7 +814,7 @@ export default function App() {
 
         {section === 'email' && (
           <EmailView
-            emails={emails}
+            emails={displayEmails}
             selectedId={emailSelectedId}
             onSelectedIdChange={setEmailSelectedId}
             links={links}
@@ -736,6 +860,9 @@ export default function App() {
             onDeleteCategory={handleDeleteCategory}
             permissionsConfig={permissionsConfig}
             onPermissionsChange={setPermissionsConfig}
+            microsoftStatus={microsoftStatus}
+            microsoftLoading={microsoftLoading}
+            onMicrosoftRefresh={refreshMicrosoft}
             onOpenBoard={() => setSection('board')}
             onEnterKiosk={() => setKioskMode(true)}
             sharedBoardCount={sharedBoardItems.length}

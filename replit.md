@@ -35,8 +35,8 @@ WeekFlow is a mobile-first personal hub (week-list calendar, email, tasks) with 
 | `npm run start` | Production server (after build) |
 
 ## Prototype vs full build
-- **Now**: client state in localStorage; mock email/calendar data; API health endpoints only.
-- **Later**: Graph/Gmail OAuth, household cloud sync, folder tagging via OneDrive API.
+- **Now**: client state in localStorage; mock email/calendar data; optional Microsoft Graph when OAuth env vars are set.
+- **Later**: Gmail OAuth, household cloud sync, OneDrive folder picker UI.
 
 ## Key paths
 - `src/` — React app

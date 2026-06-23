@@ -109,5 +109,57 @@ export const attachments = pgTable("attachments", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const connectedAccounts = pgTable(
+  "connected_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    scopes: text("scopes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("connected_accounts_provider_unique").on(
+      table.householdId,
+      table.provider,
+      table.providerAccountId,
+    ),
+  ],
+);
+
+export const providerItemMappings = pgTable(
+  "provider_item_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    connectedAccountId: uuid("connected_account_id")
+      .notNull()
+      .references(() => connectedAccounts.id, { onDelete: "cascade" }),
+    itemType: text("item_type").notNull(),
+    localItemId: text("local_item_id").notNull(),
+    externalId: text("external_id").notNull(),
+    provider: text("provider").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("provider_item_mappings_local_unique").on(
+      table.householdId,
+      table.itemType,
+      table.localItemId,
+    ),
+  ],
+);
+
 /** Fixed demo household for prototype phases before real auth. */
 export const DEMO_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000001";

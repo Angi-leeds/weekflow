@@ -15,6 +15,8 @@ const WEEKFLOW_TABLES = [
   "item_shares",
   "board_pins",
   "attachments",
+  "connected_accounts",
+  "provider_item_mappings",
 ];
 
 export async function applyPendingMigrations(): Promise<void> {

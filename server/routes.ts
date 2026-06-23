@@ -6,6 +6,7 @@ import { registerLinkRoutes } from "./routes/links";
 import { registerItemShareRoutes } from "./routes/item-shares";
 import { registerBoardPinRoutes } from "./routes/board-pins";
 import { registerAttachmentRoutes } from "./routes/attachments";
+import { registerMicrosoftRoutes } from "./routes/microsoft";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   if (process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
@@ -19,6 +20,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerItemShareRoutes(app);
   registerBoardPinRoutes(app);
   registerAttachmentRoutes(app);
+  registerMicrosoftRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -30,11 +32,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/status", async (_req, res) => {
     const objectStorageConfigured = Boolean(process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID);
+    const microsoftConfigured = Boolean(
+      process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET,
+    );
+    let microsoftConnected = false;
+    try {
+      const { listConnectedAccounts } = await import("./services/connected-account-service");
+      const accounts = await listConnectedAccounts();
+      microsoftConnected = accounts.length > 0;
+    } catch {
+      microsoftConnected = false;
+    }
 
     if (!isDatabaseConfigured()) {
       res.json({
         database: "not configured",
         objectStorage: objectStorageConfigured ? "configured" : "not configured",
+        microsoft: microsoftConfigured
+          ? microsoftConnected
+            ? "connected"
+            : "configured"
+          : "not configured",
         phase: "prototype",
         tables: 0,
         weekflowTables: [],
@@ -44,11 +62,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const dbStatus = await getDatabaseStatus();
-      const schemaReady = dbStatus.weekflowTables.length >= 6;
+      const schemaReady = dbStatus.weekflowTables.length >= 8;
 
       res.json({
         database: dbStatus.connected ? (schemaReady ? "ready" : "configured") : "error",
         objectStorage: objectStorageConfigured ? "configured" : "not configured",
+        microsoft: microsoftConfigured
+          ? microsoftConnected
+            ? "connected"
+            : "configured"
+          : "not configured",
         phase: "prototype",
         tables: dbStatus.tables,
         weekflowTables: dbStatus.weekflowTables,
@@ -59,6 +82,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(503).json({
         database: "error",
         objectStorage: objectStorageConfigured ? "configured" : "not configured",
+        microsoft: microsoftConfigured ? "configured" : "not configured",
         phase: "prototype",
         tables: 0,
         weekflowTables: [],

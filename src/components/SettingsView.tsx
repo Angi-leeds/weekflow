@@ -4,9 +4,11 @@ import { LIST_GROUP_LABELS, LIST_SORT_LABELS } from '../types'
 import { MOCK_CALENDAR_ACCOUNTS, MOCK_EMAIL_ACCOUNTS } from '../mockData'
 import { MOCK_HOUSEHOLD_MEMBERS } from '../../shared/householdPermissions'
 import type { HouseholdPermissionsConfig } from '../lib/householdPermissions'
+import type { MicrosoftIntegrationStatus } from '../../shared/microsoftGraph'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SyncHelpView } from './SyncHelpView'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
+import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
@@ -20,6 +22,9 @@ interface SettingsViewProps {
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
   onPermissionsChange: (config: HouseholdPermissionsConfig) => void
+  microsoftStatus: MicrosoftIntegrationStatus | null
+  microsoftLoading: boolean
+  onMicrosoftRefresh: () => void
   onOpenBoard?: () => void
   onEnterKiosk?: () => void
   sharedBoardCount?: number
@@ -34,6 +39,9 @@ export function SettingsView({
   onDeleteCategory,
   permissionsConfig,
   onPermissionsChange,
+  microsoftStatus,
+  microsoftLoading,
+  onMicrosoftRefresh,
   onOpenBoard,
   onEnterKiosk,
   sharedBoardCount = 0,
@@ -219,8 +227,13 @@ export function SettingsView({
       </SettingsGroup>
 
       <SettingsGroup title="Email">
-        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          Mock connected accounts — OAuth coming in a later phase.
+        <MicrosoftConnectPanel
+          status={microsoftStatus}
+          loading={microsoftLoading}
+          onRefresh={onMicrosoftRefresh}
+        />
+        <p className="px-4 pb-2 pt-1 text-caption text-wf-text-tertiary">
+          Mock accounts remain for demo. Connected Outlook mail merges into the inbox.
         </p>
         {MOCK_EMAIL_ACCOUNTS.map((account) => (
           <div
@@ -239,9 +252,8 @@ export function SettingsView({
             <span className="shrink-0 text-caption font-medium text-wf-green">Connected</span>
           </div>
         ))}
-        <SettingsRow label="Gmail (add account)" value="Coming soon" muted />
-        <SettingsRow label="Outlook / Microsoft 365" value="Coming soon" muted />
-        <SettingsRow label="Apple Mail" value="Coming soon" muted />
+        <SettingsRow label="Gmail (add account)" value="Phase 10" muted />
+        <SettingsRow label="Apple Mail" value="Phase 10" muted />
       </SettingsGroup>
 
       <SettingsGroup title="Integrations">

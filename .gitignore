@@ -27,3 +27,4 @@ dist-ssr
 *.sw?
 
 .local-object-storage
+.local-connected-accounts
