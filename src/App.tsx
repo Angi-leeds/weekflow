@@ -5,9 +5,10 @@ import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
-import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage } from './types'
+import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage, CalendarFilter } from './types'
 import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
-import { initialEmails, initialItems, getMockCloudFolder } from './mockData'
+import { memberCan } from '../shared/householdPermissions'
+import { initialEmails, initialItems, getMockCloudFolder, calendarAccountForCategory } from './mockData'
 import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from './dateUtils'
 import type { EmailActionFlowOptions } from '../shared/emailActionFlow'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
@@ -15,6 +16,14 @@ import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/it
 import { createBoardPin, fetchAllBoardPins, getPinForItem, updateBoardPin } from './lib/boardPins'
 import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { fetchAllAttachments } from './lib/attachments'
+import { loadCalendarFilter, saveCalendarFilter } from './lib/calendarSettings'
+import {
+  getActiveMember,
+  loadHouseholdPermissions,
+  saveHouseholdPermissions,
+  type HouseholdPermissionsConfig,
+} from './lib/householdPermissions'
+import { calendarFilterMatchesItem } from './components/CalendarAccountFilter'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -71,12 +80,33 @@ export default function App() {
   } | null>(null)
   const [emailActionFlowEmail, setEmailActionFlowEmail] = useState<EmailMessage | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>(() => loadCalendarFilter())
+  const [permissionsConfig, setPermissionsConfig] = useState<HouseholdPermissionsConfig>(() =>
+    loadHouseholdPermissions(),
+  )
+
+  const activeMember = useMemo(() => getActiveMember(permissionsConfig), [permissionsConfig])
+  const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
+  const canManageBoardLayout = memberCan(activeMember, permissionsConfig, 'manageBoardLayout')
+
+  const calendarItems = useMemo(() => {
+    if (calendarFilter.mode === 'merged') return items
+    return items.filter((item) => calendarFilterMatchesItem(calendarFilter, item.accountId))
+  }, [items, calendarFilter])
 
   const unreadCount = useMemo(() => emails.filter((e) => e.unread).length, [emails])
 
   useEffect(() => {
     saveStoredCategories(categories)
   }, [categories])
+
+  useEffect(() => {
+    saveCalendarFilter(calendarFilter)
+  }, [calendarFilter])
+
+  useEffect(() => {
+    saveHouseholdPermissions(permissionsConfig)
+  }, [permissionsConfig])
 
   useEffect(() => {
     fetchAllLinks().then(setLinks).catch(console.error)
@@ -152,6 +182,9 @@ export default function App() {
 
   const mergePinIntoState = useCallback((pin: BoardPin) => {
     setBoardPins((prev) => {
+      if (pin.dismissedAt) {
+        return prev.filter((entry) => entry.id !== pin.id)
+      }
       const idx = prev.findIndex((entry) => entry.id === pin.id)
       if (idx >= 0) {
         const next = [...prev]
@@ -171,6 +204,7 @@ export default function App() {
           x: pin.x,
           y: pin.y,
           rotation: pin.rotation,
+          dismissedAt: pin.dismissedAt,
         })
         mergePinIntoState(updated)
       } catch {
@@ -232,6 +266,7 @@ export default function App() {
         allDay: true,
         categoryId: taskCategory.id,
         colour: taskCategory.colour,
+        accountId: calendarAccountForCategory(taskCategory.id),
         notes: `From: ${email.from} <${email.fromEmail}>\n\n${email.body.slice(0, 500)}`,
         completed: false,
       }
@@ -270,6 +305,7 @@ export default function App() {
           allDay: true,
           categoryId: eventCategory.id,
           colour: eventCategory.colour,
+          accountId: calendarAccountForCategory(eventCategory.id),
           notes: `From: ${email.from} <${email.fromEmail}>\n\n${email.body.slice(0, 500)}`,
         }
         setItems((prev) => [...prev, calendarItem!])
@@ -291,6 +327,7 @@ export default function App() {
           allDay: true,
           categoryId: taskCategory.id,
           colour: taskCategory.colour,
+          accountId: calendarAccountForCategory(taskCategory.id),
           notes: `Reminder linked to bill email: ${email.subject}`,
           completed: false,
         }
@@ -461,14 +498,18 @@ export default function App() {
   }, [categories])
 
   const handleSaveItem = useCallback((item: CalendarItem) => {
+    const normalized = {
+      ...item,
+      accountId: item.accountId ?? calendarAccountForCategory(item.categoryId),
+    }
     setItems((prev) => {
-      const idx = prev.findIndex((i) => i.id === item.id)
+      const idx = prev.findIndex((i) => i.id === normalized.id)
       if (idx >= 0) {
         const next = [...prev]
-        next[idx] = item
+        next[idx] = normalized
         return next
       }
-      return [...prev, item]
+      return [...prev, normalized]
     })
   }, [])
 
@@ -533,6 +574,7 @@ export default function App() {
           emails={emails}
           onPinsChange={setBoardPins}
           onPinUpdate={handlePinUpdate}
+          canDismissVoicePins={canDismissVoicePins}
           onItemTap={handleSharedBoardItemTap}
           onNavigateLink={handleNavigateLink}
           kiosk
@@ -563,6 +605,8 @@ export default function App() {
               selectedDay={selectedDay}
               categories={categories}
               listOptions={listOptions}
+              calendarFilter={calendarFilter}
+              onCalendarFilterChange={setCalendarFilter}
               onListOptionsChange={setListOptions}
               onPrevWeek={() => setWeekStart((w) => addWeeks(w, -1))}
               onNextWeek={() => setWeekStart((w) => addWeeks(w, 1))}
@@ -574,7 +618,7 @@ export default function App() {
               {viewMode === 'week-list' || viewMode === 'week-board' || viewMode === 'week-timeline' ? (
                 <WeekView
                   weekStart={weekStart}
-                  items={items}
+                  items={calendarItems}
                   categories={categories}
                   viewMode={viewMode}
                   listOptions={listOptions}
@@ -584,7 +628,7 @@ export default function App() {
               ) : viewMode === 'day' ? (
                 <DayView
                   date={selectedDay}
-                  items={items}
+                  items={calendarItems}
                   categories={categories}
                   listOptions={listOptions}
                   onItemTap={openEditModal}
@@ -593,13 +637,13 @@ export default function App() {
               ) : viewMode === 'month' ? (
                 <MonthView
                   currentDate={monthDate}
-                  items={items}
+                  items={calendarItems}
                   onDaySelect={handleDaySelect}
                   onMonthChange={setMonthDate}
                 />
               ) : viewMode === 'agenda' ? (
                 <AgendaView
-                  items={items}
+                  items={calendarItems}
                   categories={categories}
                   listOptions={listOptions}
                   onItemTap={openEditModal}
@@ -639,6 +683,8 @@ export default function App() {
             onSharedItemTap={handleSharedBoardItemTap}
             onNavigateLink={handleNavigateLink}
             onEnterKiosk={() => setKioskMode(true)}
+            canDismissVoicePins={canDismissVoicePins}
+            canManageBoardLayout={canManageBoardLayout}
           />
         )}
 
@@ -688,6 +734,8 @@ export default function App() {
             onListOptionsChange={setListOptions}
             onSaveCategory={handleSaveCategory}
             onDeleteCategory={handleDeleteCategory}
+            permissionsConfig={permissionsConfig}
+            onPermissionsChange={setPermissionsConfig}
             onOpenBoard={() => setSection('board')}
             onEnterKiosk={() => setKioskMode(true)}
             sharedBoardCount={sharedBoardItems.length}

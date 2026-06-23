@@ -22,6 +22,7 @@ interface FamilyBoardViewProps {
   onNavigateLink: (type: EntityType, id: string) => void
   selectedPinId?: string | null
   onSelectPin?: (pinId: string | null) => void
+  canDismissVoicePins?: boolean
   kiosk?: boolean
   onEnterKiosk?: () => void
   onExitKiosk?: () => void
@@ -53,6 +54,7 @@ export function FamilyBoardView({
   onNavigateLink,
   selectedPinId,
   onSelectPin,
+  canDismissVoicePins = false,
   kiosk = false,
   onEnterKiosk,
   onExitKiosk,
@@ -71,7 +73,7 @@ export function FamilyBoardView({
     .filter((entry): entry is ItemPinEntry => entry !== null)
 
   const voicePinEntries: VoicePinEntry[] = pins
-    .filter((pin) => isVoicePinContent(pin.contentJson))
+    .filter((pin) => !pin.dismissedAt && isVoicePinContent(pin.contentJson))
     .map((pin) => ({
       kind: 'voice' as const,
       pin,
@@ -254,6 +256,13 @@ export function FamilyBoardView({
                       },
                     })
                   }}
+                  canDismiss={canDismissVoicePins}
+                  onDismiss={() =>
+                    onPinUpdate({
+                      ...entry.pin,
+                      dismissedAt: new Date().toISOString(),
+                    })
+                  }
                 />
               ) : (
                 <>

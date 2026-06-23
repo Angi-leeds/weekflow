@@ -1,10 +1,11 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { CalendarViewMode, Category, ListDisplayOptions } from '../types'
+import type { CalendarFilter, CalendarViewMode, Category, ListDisplayOptions } from '../types'
 import { formatMonthYear, formatWeekRange, isToday } from '../dateUtils'
 import { IconButton } from './ui/IconButton'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { getPrimaryTab, ViewsMenu, type PrimaryCalendarTab } from './ui/ViewsMenu'
+import { CalendarAccountFilter } from './CalendarAccountFilter'
 
 interface CalendarNavProps {
   weekStart: Date
@@ -13,6 +14,8 @@ interface CalendarNavProps {
   selectedDay: Date
   categories: Category[]
   listOptions: ListDisplayOptions
+  calendarFilter: CalendarFilter
+  onCalendarFilterChange: (filter: CalendarFilter) => void
   onListOptionsChange: (options: ListDisplayOptions) => void
   onPrevWeek: () => void
   onNextWeek: () => void
@@ -34,6 +37,8 @@ export function CalendarNav({
   selectedDay,
   categories,
   listOptions,
+  calendarFilter,
+  onCalendarFilterChange,
   onListOptionsChange,
   onPrevWeek,
   onNextWeek,
@@ -91,6 +96,10 @@ export function CalendarNav({
         <ListOptionsMenu categories={categories} options={listOptions} onChange={onListOptionsChange} />
         <ViewsMenu viewMode={viewMode} onViewChange={onViewChange} />
       </div>
+
+      {isWeekBased && (
+        <CalendarAccountFilter filter={calendarFilter} onChange={onCalendarFilterChange} />
+      )}
     </div>
   )
 }

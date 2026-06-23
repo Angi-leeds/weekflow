@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mic, Play, Reply } from "lucide-react";
+import { Mic, Play, Reply, X } from "lucide-react";
 import type { BoardPin } from "../../shared/boardPins";
 import type { VoicePinContent, VoicePinReply } from "../../shared/boardLayout";
 
@@ -8,8 +8,10 @@ interface VoicePinCardProps {
   content: VoicePinContent;
   pulsing?: boolean;
   compact?: boolean;
+  canDismiss?: boolean;
   onPlay: () => void;
   onReply: (text: string) => void;
+  onDismiss?: () => void;
 }
 
 export function VoicePinCard({
@@ -17,8 +19,10 @@ export function VoicePinCard({
   content,
   pulsing = false,
   compact = false,
+  canDismiss = false,
   onPlay,
   onReply,
+  onDismiss,
 }: VoicePinCardProps) {
   const [replyDraft, setReplyDraft] = useState("");
   const [showReply, setShowReply] = useState(false);
@@ -73,6 +77,16 @@ export function VoicePinCard({
             <Reply size={12} />
             Reply
           </button>
+          {canDismiss && onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="inline-flex items-center justify-center rounded-lg bg-wf-bg px-2 py-1 text-[11px] font-semibold text-wf-text-secondary"
+              aria-label="Dismiss voice pin"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
       )}
 

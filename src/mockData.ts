@@ -5,7 +5,22 @@ function catColour(id: string): string {
   return DEFAULT_CATEGORIES.find((c) => c.id === id)?.colour ?? '#8E8E93'
 }
 
-export const initialItems: CalendarItem[] = [
+function calendarAccountForCategory(categoryId: string): string {
+  if (['work', 'appointment', 'task'].includes(categoryId)) return 'work-outlook'
+  if (['family', 'holiday'].includes(categoryId)) return 'family-icloud'
+  return 'personal-gmail'
+}
+
+export { calendarAccountForCategory }
+
+function withCalendarAccount(item: Omit<CalendarItem, 'accountId'>): CalendarItem {
+  return {
+    ...item,
+    accountId: calendarAccountForCategory(item.categoryId),
+  }
+}
+
+const rawItems: Omit<CalendarItem, 'accountId'>[] = [
   {
     id: '1',
     title: 'Julie Holiday',
@@ -200,6 +215,8 @@ export const initialItems: CalendarItem[] = [
   },
 ]
 
+export const initialItems: CalendarItem[] = rawItems.map(withCalendarAccount)
+
 export const initialEmails: EmailMessage[] = [
   {
     id: 'e1',
@@ -356,6 +373,15 @@ export const MOCK_EMAIL_ACCOUNTS = [
     colour: '#555555',
   },
 ] as const
+
+export const MOCK_CALENDAR_ACCOUNTS = MOCK_EMAIL_ACCOUNTS.map((account) => ({
+  ...account,
+  label: `${account.label} calendar`,
+}))
+
+export function getCalendarAccount(accountId: string) {
+  return MOCK_CALENDAR_ACCOUNTS.find((account) => account.id === accountId)
+}
 
 export const MOCK_EMAIL_FOLDERS = [
   { id: 'work-inbox', label: 'Inbox', accountId: 'work-outlook' },

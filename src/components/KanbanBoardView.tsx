@@ -26,6 +26,7 @@ interface KanbanBoardViewProps {
   onItemTap?: (item: SharedBoardItem) => void;
   onNavigateLink: (type: EntityType, id: string) => void;
   onPinUpdate: (pin: BoardPin) => void;
+  canDismissVoicePins?: boolean;
 }
 
 export function KanbanBoardView({
@@ -40,11 +41,14 @@ export function KanbanBoardView({
   onItemTap,
   onNavigateLink,
   onPinUpdate,
+  canDismissVoicePins = false,
 }: KanbanBoardViewProps) {
   const columns =
     groupBy === "people" ? [...KANBAN_PEOPLE_COLUMNS] : [...KANBAN_STATUS_COLUMNS];
 
-  const voicePins = pins.filter((pin) => isVoicePinContent(pin.contentJson));
+  const voicePins = pins.filter(
+    (pin) => !pin.dismissedAt && isVoicePinContent(pin.contentJson),
+  );
 
   const cardsByColumn = new Map<string, Array<{ type: "item"; item: SharedBoardItem; pin: BoardPin } | { type: "voice"; pin: BoardPin; content: VoicePinContent }>>();
 
@@ -141,6 +145,13 @@ export function KanbanBoardView({
                         },
                       });
                     }}
+                    canDismiss={canDismissVoicePins}
+                    onDismiss={() =>
+                      onPinUpdate({
+                        ...entry.pin,
+                        dismissedAt: new Date().toISOString(),
+                      })
+                    }
                   />
                 ) : (
                   <div key={entry.pin.id} className="rounded-xl bg-wf-surface p-1 shadow-sm">

@@ -62,6 +62,8 @@ export interface CalendarItem {
   colour: string
   notes?: string
   completed?: boolean
+  /** Connected calendar account (mock — mirrors email accounts). */
+  accountId: string
   /** Resolved photo URL from attachment API (legacy inline base64 fallback). */
   photoUrl?: string
 }
@@ -81,6 +83,10 @@ export interface EmailFolder {
 }
 
 export type EmailInboxMode = 'merged' | 'account' | 'folder'
+
+export type CalendarFilter =
+  | { mode: 'merged' }
+  | { mode: 'account'; accountId: string }
 
 export interface EmailMessage {
   id: string

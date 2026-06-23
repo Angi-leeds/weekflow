@@ -43,7 +43,10 @@ function isUpdateBoardPinInput(body: unknown): body is UpdateBoardPinInput {
     typeof value.pinStyle === "string" ||
     value.pinStyle === null ||
     value.contentJson === undefined ||
-    (typeof value.contentJson === "object" && value.contentJson !== null)
+    (typeof value.contentJson === "object" && value.contentJson !== null) ||
+    value.dismissedAt === undefined ||
+    typeof value.dismissedAt === "string" ||
+    value.dismissedAt === null
   );
 }
 

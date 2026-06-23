@@ -15,7 +15,7 @@ function readLocalPins(): BoardPin[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as BoardPin[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.filter((pin) => !pin.dismissedAt) : [];
   } catch {
     return [];
   }
@@ -117,6 +117,8 @@ export async function updateBoardPin(id: string, input: UpdateBoardPinInput): Pr
       pinStyle: input.pinStyle === undefined ? local[idx].pinStyle : input.pinStyle,
       contentJson:
         input.contentJson === undefined ? local[idx].contentJson : input.contentJson,
+      dismissedAt:
+        input.dismissedAt === undefined ? local[idx].dismissedAt : input.dismissedAt,
     };
     const next = [...local];
     next[idx] = updated;

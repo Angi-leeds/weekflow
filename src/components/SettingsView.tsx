@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { CalendarItem, Category, ListDisplayOptions } from '../types'
 import { LIST_GROUP_LABELS, LIST_SORT_LABELS } from '../types'
-import { MOCK_EMAIL_ACCOUNTS } from '../mockData'
+import { MOCK_CALENDAR_ACCOUNTS, MOCK_EMAIL_ACCOUNTS } from '../mockData'
+import { MOCK_HOUSEHOLD_MEMBERS } from '../../shared/householdPermissions'
+import type { HouseholdPermissionsConfig } from '../lib/householdPermissions'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SyncHelpView } from './SyncHelpView'
+import { HouseholdPermissionsView } from './HouseholdPermissionsView'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
@@ -15,6 +18,8 @@ interface SettingsViewProps {
   onListOptionsChange: (options: ListDisplayOptions) => void
   onSaveCategory: (category: Category) => void
   onDeleteCategory: (id: string) => void
+  permissionsConfig: HouseholdPermissionsConfig
+  onPermissionsChange: (config: HouseholdPermissionsConfig) => void
   onOpenBoard?: () => void
   onEnterKiosk?: () => void
   sharedBoardCount?: number
@@ -27,12 +32,15 @@ export function SettingsView({
   onListOptionsChange,
   onSaveCategory,
   onDeleteCategory,
+  permissionsConfig,
+  onPermissionsChange,
   onOpenBoard,
   onEnterKiosk,
   sharedBoardCount = 0,
 }: SettingsViewProps) {
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const [showSyncHelp, setShowSyncHelp] = useState(false)
+  const [showPermissions, setShowPermissions] = useState(false)
   const categorySummary =
     listOptions.categoryFilter && listOptions.categoryFilter.length > 0
       ? `${listOptions.categoryFilter.length} selected`
@@ -48,6 +56,16 @@ export function SettingsView({
 
   if (showSyncHelp) {
     return <SyncHelpView onBack={() => setShowSyncHelp(false)} />
+  }
+
+  if (showPermissions) {
+    return (
+      <HouseholdPermissionsView
+        config={permissionsConfig}
+        onChange={onPermissionsChange}
+        onBack={() => setShowPermissions(false)}
+      />
+    )
   }
 
   return (
@@ -86,6 +104,60 @@ export function SettingsView({
         <SettingsRow label="Default view" value="Week list" />
         <SettingsRow label="Week starts on" value="Monday" />
         <SettingsRow label="Time format" value="24 hour" />
+        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+          Mock connected calendars — filter by account in week view.
+        </p>
+        {MOCK_CALENDAR_ACCOUNTS.map((account) => (
+          <div
+            key={account.id}
+            className="flex items-center gap-3 border-b border-wf-border/50 px-4 py-3.5 last:border-0"
+          >
+            <span
+              className="h-3 w-3 shrink-0 rounded-full"
+              style={{ backgroundColor: account.colour }}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-body font-medium text-wf-text">{account.label}</p>
+              <p className="truncate text-caption text-wf-text-tertiary">{account.email}</p>
+            </div>
+            <span className="shrink-0 text-caption font-medium text-wf-green">Connected</span>
+          </div>
+        ))}
+      </SettingsGroup>
+
+      <SettingsGroup title="Household">
+        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+          Prototype profile — permissions apply to the signed-in household member.
+        </p>
+        <div className="border-b border-wf-border/50 px-4 py-3.5">
+          <label className="block">
+            <span className="text-body font-medium text-wf-text">Signed in as</span>
+            <select
+              value={permissionsConfig.activeMemberId}
+              onChange={(event) =>
+                onPermissionsChange({
+                  ...permissionsConfig,
+                  activeMemberId: event.target.value,
+                })
+              }
+              className="mt-2 w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+            >
+              {MOCK_HOUSEHOLD_MEMBERS.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.displayName} ({member.role})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPermissions(true)}
+          className="mx-4 mb-4 mt-2 w-[calc(100%-2rem)] rounded-xl bg-wf-accent-soft py-2.5 text-body font-semibold text-wf-accent"
+        >
+          Household permissions
+        </button>
       </SettingsGroup>
 
       <SettingsGroup title="Family board">

@@ -36,6 +36,7 @@ export interface UpdateBoardPinInput {
   rotation?: number;
   pinStyle?: string | null;
   contentJson?: Record<string, unknown> | null;
+  dismissedAt?: string | null;
 }
 
 export interface CreateVoicePinInput {

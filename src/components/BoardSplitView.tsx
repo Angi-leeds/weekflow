@@ -34,6 +34,8 @@ interface BoardSplitViewProps {
   onSharedItemTap?: (item: SharedBoardItem) => void
   onNavigateLink: (type: EntityType, id: string) => void
   onEnterKiosk?: () => void
+  canDismissVoicePins?: boolean
+  canManageBoardLayout?: boolean
 }
 
 export function BoardSplitView({
@@ -51,6 +53,8 @@ export function BoardSplitView({
   onSharedItemTap,
   onNavigateLink,
   onEnterKiosk,
+  canDismissVoicePins = false,
+  canManageBoardLayout = true,
 }: BoardSplitViewProps) {
   const [layout, setLayout] = useState<BoardLayoutMode>(() => loadBoardLayout())
   const [kanbanGroupBy, setKanbanGroupBy] = useState<KanbanGroupBy>(() => loadKanbanGroupBy())
@@ -125,6 +129,7 @@ export function BoardSplitView({
         onItemTap={onSharedItemTap}
         onNavigateLink={onNavigateLink}
         onPinUpdate={onPinUpdate}
+        canDismissVoicePins={canDismissVoicePins}
       />
     ) : (
       <FamilyBoardView
@@ -135,6 +140,7 @@ export function BoardSplitView({
         emails={emails}
         onPinsChange={onPinsChange}
         onPinUpdate={onPinUpdate}
+        canDismissVoicePins={canDismissVoicePins}
         onItemTap={onSharedItemTap}
         onNavigateLink={onNavigateLink}
         selectedPinId={selectedPinId}
@@ -145,15 +151,17 @@ export function BoardSplitView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <BoardLayoutToolbar
-        layout={layout}
-        sleepModeEnabled={sleepModeEnabled}
-        selectedPinStyle={selectedPin?.pinStyle}
-        onLayoutChange={setLayout}
-        onSleepModeToggle={setSleepModeEnabled}
-        onPinStyleChange={layout !== 'kanban' ? handlePinStyleChange : undefined}
-        onAddVoicePin={handleAddVoicePin}
-      />
+      {canManageBoardLayout && (
+        <BoardLayoutToolbar
+          layout={layout}
+          sleepModeEnabled={sleepModeEnabled}
+          selectedPinStyle={selectedPin?.pinStyle}
+          onLayoutChange={setLayout}
+          onSleepModeToggle={setSleepModeEnabled}
+          onPinStyleChange={layout !== 'kanban' ? handlePinStyleChange : undefined}
+          onAddVoicePin={handleAddVoicePin}
+        />
+      )}
 
       <div className={`flex min-h-0 flex-1 ${layout === 'split' ? 'flex-col md:flex-row' : 'flex-col'}`}>
         {layout === 'split' && (

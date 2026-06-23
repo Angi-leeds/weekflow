@@ -111,6 +111,9 @@ export async function updateBoardPin(
       ...(input.rotation !== undefined ? { rotation: input.rotation } : {}),
       ...(input.pinStyle !== undefined ? { pinStyle: input.pinStyle } : {}),
       ...(input.contentJson !== undefined ? { contentJson: input.contentJson } : {}),
+      ...(input.dismissedAt !== undefined
+        ? { dismissedAt: input.dismissedAt ? new Date(input.dismissedAt) : null }
+        : {}),
     })
     .where(and(eq(boardPins.id, id), eq(boardPins.householdId, DEMO_HOUSEHOLD_ID)))
     .returning();
