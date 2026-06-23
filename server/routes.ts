@@ -5,6 +5,7 @@ import { isDatabaseConfigured } from "./db/index";
 import { registerLinkRoutes } from "./routes/links";
 import { registerItemShareRoutes } from "./routes/item-shares";
 import { registerBoardPinRoutes } from "./routes/board-pins";
+import { registerAttachmentRoutes } from "./routes/attachments";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   if (process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
@@ -17,6 +18,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerLinkRoutes(app);
   registerItemShareRoutes(app);
   registerBoardPinRoutes(app);
+  registerAttachmentRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({

@@ -1,7 +1,9 @@
+import type { Attachment } from "../../shared/attachments";
 import type { SharedBoardItem } from "../../shared/boardPins";
 import type { ItemShare } from "../../shared/itemShares";
 import type { CalendarItem, Category, EmailMessage } from "../types";
 import { getItemLinkType } from "./itemLinkHelpers";
+import { getPhotoUrlForItem } from "./attachments";
 
 function formatItemDate(item: CalendarItem): string | undefined {
   const d = new Date(item.date);
@@ -22,6 +24,7 @@ export function resolveSharedBoardItems(
   items: CalendarItem[],
   emails: EmailMessage[],
   categories: Category[],
+  attachments: Attachment[] = [],
 ): SharedBoardItem[] {
   return shares
     .filter((share) => share.sharedToBoard)
@@ -57,7 +60,8 @@ export function resolveSharedBoardItems(
         colour: item.colour,
         boardDisplay: share.boardDisplay,
         dateLabel: formatItemDate(item),
-        photoUrl: item.photoUrl,
+        photoUrl:
+          getPhotoUrlForItem(attachments, share.itemType, share.itemId) ?? item.photoUrl,
       } satisfies SharedBoardItem;
     })
     .filter((entry): entry is SharedBoardItem => entry !== null);

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link2 } from 'lucide-react'
+import type { Attachment } from '../../shared/attachments'
 import type { EntityType, ItemLink } from '../../shared/links'
 import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { CalendarItem, Category, EmailMessage } from '../types'
 import { resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
+import { getPhotoUrlForItem, uploadAttachment } from '../lib/attachments'
 import { isTaskOrReminder } from './itemHelpers'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
@@ -18,6 +20,8 @@ interface ItemFormModalProps {
   links: ItemLink[]
   emails: EmailMessage[]
   items: CalendarItem[]
+  attachments: Attachment[]
+  onAttachmentUploaded: (attachment: Attachment) => void
   itemShare?: ItemShare
   onShareUpdate: (input: UpsertItemShareInput) => void
   onSave: (item: CalendarItem) => void
@@ -49,6 +53,8 @@ export function ItemFormModal({
   links,
   emails,
   items,
+  attachments,
+  onAttachmentUploaded,
   itemShare,
   onShareUpdate,
   onSave,
@@ -59,6 +65,8 @@ export function ItemFormModal({
   onRemoveLink,
 }: ItemFormModalProps) {
   const [form, setForm] = useState<CalendarItem>(() => emptyForm(defaultDate, categories))
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const isEdit = Boolean(item?.id)
 
   useEffect(() => {
@@ -71,6 +79,30 @@ export function ItemFormModal({
 
   const entityType = form.id ? getItemLinkType(form, categories) : null
   const shareState = shareStateFromRecord(itemShare)
+  const photoUrl =
+    (entityType && form.id
+      ? getPhotoUrlForItem(attachments, entityType, form.id)
+      : undefined) ?? form.photoUrl
+
+  const handlePhotoUpload = async (file: File) => {
+    setUploadError(null)
+    const itemId = form.id || generateId()
+    if (!form.id) {
+      setForm((prev) => ({ ...prev, id: itemId }))
+    }
+
+    const linkType = getItemLinkType({ ...form, id: itemId }, categories)
+    setUploadingPhoto(true)
+    try {
+      const attachment = await uploadAttachment(file, linkType, itemId, 'photo')
+      onAttachmentUploaded(attachment)
+      setForm((prev) => ({ ...prev, photoUrl: attachment.url }))
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Upload failed')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -97,30 +129,35 @@ export function ItemFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden sm:items-center sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/30 animate-fade-in backdrop-blur-sm"
         onClick={onClose}
         aria-label="Close"
       />
-      <div className="relative z-10 w-full max-w-lg animate-slide-up rounded-t-3xl bg-wf-surface px-5 pb-8 pt-4 shadow-[var(--shadow-modal)] safe-bottom sm:rounded-3xl sm:mx-4">
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-wf-border sm:hidden" />
+      <div className="relative z-10 flex w-full max-w-lg max-h-[min(92dvh,100%)] flex-col animate-slide-up rounded-t-3xl bg-wf-surface shadow-[var(--shadow-modal)] safe-bottom sm:mx-4 sm:max-h-[min(88dvh,900px)] sm:rounded-3xl">
+        <div className="shrink-0 px-5 pt-4">
+          <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-wf-border sm:hidden" />
 
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="font-display text-[20px] font-bold">
-            {isEdit ? 'Edit item' : 'New item'}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[15px] font-medium text-wf-accent"
-          >
-            Cancel
-          </button>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-[20px] font-bold">
+              {isEdit ? 'Edit item' : 'New item'}
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[15px] font-medium text-wf-accent"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-8 [-webkit-overflow-scrolling:touch]"
+        >
           <Field label="Title">
             <input
               type="text"
@@ -242,39 +279,32 @@ export function ItemFormModal({
             />
           </Field>
 
-          <Field label="Photo attachment (mock)">
-            {form.photoUrl ? (
+          <Field label="Photo attachment">
+            {photoUrl ? (
               <div className="space-y-2">
                 <img
-                  src={form.photoUrl}
+                  src={photoUrl}
                   alt="Attachment preview"
                   className="max-h-40 w-full rounded-xl object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, photoUrl: undefined })}
-                  className="text-subhead font-medium text-wf-red"
-                >
-                  Remove photo
-                </button>
+                <p className="text-caption text-wf-text-tertiary">
+                  Stored via attachment API{uploadingPhoto ? ' — uploading…' : ''}
+                </p>
               </div>
             ) : (
               <input
                 type="file"
                 accept="image/*"
+                disabled={uploadingPhoto}
                 onChange={(event) => {
                   const file = event.target.files?.[0]
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    if (typeof reader.result === 'string') {
-                      setForm({ ...form, photoUrl: reader.result })
-                    }
-                  }
-                  reader.readAsDataURL(file)
+                  if (file) void handlePhotoUpload(file)
                 }}
-                className="w-full text-body file:mr-3 file:rounded-lg file:border-0 file:bg-wf-accent-soft file:px-3 file:py-2 file:text-subhead file:font-semibold file:text-wf-accent"
+                className="w-full text-body file:mr-3 file:rounded-lg file:border-0 file:bg-wf-accent-soft file:px-3 file:py-2 file:text-subhead file:font-semibold file:text-wf-accent disabled:opacity-50"
               />
+            )}
+            {uploadError && (
+              <p className="mt-1 text-caption font-medium text-wf-red">{uploadError}</p>
             )}
           </Field>
 

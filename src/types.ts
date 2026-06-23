@@ -62,7 +62,7 @@ export interface CalendarItem {
   colour: string
   notes?: string
   completed?: boolean
-  /** Mock/base64 photo attachment (Phase 5 prototype). */
+  /** Resolved photo URL from attachment API (legacy inline base64 fallback). */
   photoUrl?: string
 }
 

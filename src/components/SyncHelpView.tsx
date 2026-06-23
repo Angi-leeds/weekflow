@@ -52,7 +52,7 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Attachments (photos)',
     safeAtSource: false,
     weekflowOnly: true,
-    notes: 'Prototype stores mock/base64 locally; Phase 6 moves to object storage.',
+    notes: 'Uploaded via attachment API; Replit object storage when configured, local filesystem in dev.',
   },
   {
     dataType: 'Categories & colours',

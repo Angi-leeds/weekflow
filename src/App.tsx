@@ -4,6 +4,7 @@ import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
+import type { Attachment } from '../shared/attachments'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage } from './types'
 import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
 import { initialEmails, initialItems, getMockCloudFolder } from './mockData'
@@ -13,6 +14,7 @@ import { createLink, fetchAllLinks, removeLink } from './lib/links'
 import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/itemShares'
 import { createBoardPin, fetchAllBoardPins, getPinForItem } from './lib/boardPins'
 import { resolveSharedBoardItems } from './lib/boardItemHelpers'
+import { fetchAllAttachments } from './lib/attachments'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -58,6 +60,7 @@ export default function App() {
   const [links, setLinks] = useState<ItemLink[]>([])
   const [itemShares, setItemShares] = useState<ItemShare[]>([])
   const [boardPins, setBoardPins] = useState<BoardPin[]>([])
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [kioskMode, setKioskMode] = useState(false)
   const [kioskPinGateOpen, setKioskPinGateOpen] = useState(false)
   const [emailSelectedId, setEmailSelectedId] = useState<string | null>(null)
@@ -87,9 +90,13 @@ export default function App() {
     fetchAllBoardPins().then(setBoardPins).catch(console.error)
   }, [])
 
+  useEffect(() => {
+    fetchAllAttachments().then(setAttachments).catch(console.error)
+  }, [])
+
   const sharedBoardItems = useMemo(
-    () => resolveSharedBoardItems(itemShares, items, emails, categories),
-    [itemShares, items, emails, categories],
+    () => resolveSharedBoardItems(itemShares, items, emails, categories, attachments),
+    [itemShares, items, emails, categories, attachments],
   )
 
   useEffect(() => {
@@ -360,6 +367,20 @@ export default function App() {
       sourceLabel: item.title,
     })
   }, [categories])
+
+  const handleAttachmentUploaded = useCallback((attachment: Attachment) => {
+    setAttachments((prev) => [
+      ...prev.filter(
+        (entry) =>
+          !(
+            entry.itemType === attachment.itemType &&
+            entry.itemId === attachment.itemId &&
+            entry.kind === attachment.kind
+          ),
+      ),
+      attachment,
+    ])
+  }, [])
 
   const handleSaveCategory = useCallback((incoming: Category) => {
     const savedId = incoming.id
@@ -663,6 +684,8 @@ export default function App() {
         links={links}
         emails={emails}
         items={items}
+        attachments={attachments}
+        onAttachmentUploaded={handleAttachmentUploaded}
         itemShare={
           editingItem
             ? getShareForEntity(
