@@ -12,7 +12,7 @@ import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from
 import type { EmailActionFlowOptions } from '../shared/emailActionFlow'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
 import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/itemShares'
-import { createBoardPin, fetchAllBoardPins, getPinForItem } from './lib/boardPins'
+import { createBoardPin, fetchAllBoardPins, getPinForItem, updateBoardPin } from './lib/boardPins'
 import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { fetchAllAttachments } from './lib/attachments'
 import { getItemLinkType } from './lib/itemLinkHelpers'
@@ -149,6 +149,36 @@ export default function App() {
       share,
     ])
   }, [])
+
+  const mergePinIntoState = useCallback((pin: BoardPin) => {
+    setBoardPins((prev) => {
+      const idx = prev.findIndex((entry) => entry.id === pin.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = pin
+        return next
+      }
+      return [...prev, pin]
+    })
+  }, [])
+
+  const handlePinUpdate = useCallback(
+    async (pin: BoardPin) => {
+      try {
+        const updated = await updateBoardPin(pin.id, {
+          contentJson: pin.contentJson,
+          pinStyle: pin.pinStyle,
+          x: pin.x,
+          y: pin.y,
+          rotation: pin.rotation,
+        })
+        mergePinIntoState(updated)
+      } catch {
+        mergePinIntoState(pin)
+      }
+    },
+    [mergePinIntoState],
+  )
 
   const handleNavigateLink = useCallback(
     (type: EntityType, id: string) => {
@@ -502,6 +532,7 @@ export default function App() {
           items={items}
           emails={emails}
           onPinsChange={setBoardPins}
+          onPinUpdate={handlePinUpdate}
           onItemTap={handleSharedBoardItemTap}
           onNavigateLink={handleNavigateLink}
           kiosk
@@ -603,6 +634,7 @@ export default function App() {
             links={links}
             emails={emails}
             onPinsChange={setBoardPins}
+            onPinUpdate={handlePinUpdate}
             onItemTap={openEditModal}
             onSharedItemTap={handleSharedBoardItemTap}
             onNavigateLink={handleNavigateLink}

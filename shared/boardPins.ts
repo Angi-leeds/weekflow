@@ -30,6 +30,20 @@ export interface UpdateBoardPinPositionInput {
   rotation?: number;
 }
 
+export interface UpdateBoardPinInput {
+  x?: number;
+  y?: number;
+  rotation?: number;
+  pinStyle?: string | null;
+  contentJson?: Record<string, unknown> | null;
+}
+
+export interface CreateVoicePinInput {
+  message: string;
+  from?: string;
+  pinStyle?: string;
+}
+
 export interface SharedBoardItem {
   itemType: ShareEntityType;
   itemId: string;

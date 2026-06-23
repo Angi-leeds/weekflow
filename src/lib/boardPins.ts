@@ -1,8 +1,11 @@
 import type {
   BoardPin,
   CreateBoardPinInput,
+  CreateVoicePinInput,
+  UpdateBoardPinInput,
   UpdateBoardPinPositionInput,
 } from "../../shared/boardPins";
+import type { VoicePinContent } from "../../shared/boardLayout";
 import { DEMO_HOUSEHOLD_ID } from "../../shared/links";
 
 const STORAGE_KEY = "weekflow-board-pins";
@@ -88,6 +91,10 @@ export async function updateBoardPinPosition(
   id: string,
   input: UpdateBoardPinPositionInput,
 ): Promise<BoardPin> {
+  return updateBoardPin(id, input);
+}
+
+export async function updateBoardPin(id: string, input: UpdateBoardPinInput): Promise<BoardPin> {
   try {
     const pin = await apiFetch<BoardPin>(`/api/board-pins/${id}`, {
       method: "PATCH",
@@ -103,14 +110,54 @@ export async function updateBoardPinPosition(
 
     const updated: BoardPin = {
       ...local[idx],
-      x: input.x,
-      y: input.y,
+      ...input,
+      x: input.x ?? local[idx].x,
+      y: input.y ?? local[idx].y,
       rotation: input.rotation ?? local[idx].rotation,
+      pinStyle: input.pinStyle === undefined ? local[idx].pinStyle : input.pinStyle,
+      contentJson:
+        input.contentJson === undefined ? local[idx].contentJson : input.contentJson,
     };
     const next = [...local];
     next[idx] = updated;
     writeLocalPins(next);
     return updated;
+  }
+}
+
+export async function createVoicePin(input: CreateVoicePinInput): Promise<BoardPin> {
+  try {
+    const pin = await apiFetch<BoardPin>("/api/board-pins/voice", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    const local = readLocalPins();
+    writeLocalPins([...local, pin]);
+    return pin;
+  } catch {
+    const contentJson: VoicePinContent = {
+      kind: "voice",
+      message: input.message,
+      from: input.from ?? "Mum",
+      durationSec: Math.max(3, Math.round(input.message.length / 8)),
+      played: false,
+      replies: [],
+    };
+    const fallback: BoardPin = {
+      id: crypto.randomUUID(),
+      householdId: DEMO_HOUSEHOLD_ID,
+      itemType: null,
+      itemId: null,
+      x: Math.random() * 60 + 20,
+      y: Math.random() * 50 + 20,
+      rotation: 0,
+      pinStyle: input.pinStyle ?? "🎙️",
+      contentJson,
+      dismissedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    writeLocalPins([...readLocalPins(), fallback]);
+    return fallback;
   }
 }
 
