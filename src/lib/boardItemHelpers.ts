@@ -57,6 +57,7 @@ export function resolveSharedBoardItems(
         colour: item.colour,
         boardDisplay: share.boardDisplay,
         dateLabel: formatItemDate(item),
+        photoUrl: item.photoUrl,
       } satisfies SharedBoardItem;
     })
     .filter((entry): entry is SharedBoardItem => entry !== null);

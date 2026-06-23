@@ -1,6 +1,7 @@
 import type { BoardPin } from '../../shared/boardPins'
 import type { SharedBoardItem } from '../../shared/boardPins'
-import type { CalendarItem, Category, ListDisplayOptions } from '../types'
+import type { EntityType, ItemLink } from '../../shared/links'
+import type { CalendarItem, Category, EmailMessage, ListDisplayOptions } from '../types'
 import { WeekListPortrait } from './WeekListPortrait'
 import { FamilyBoardView } from './FamilyBoardView'
 
@@ -11,9 +12,12 @@ interface BoardSplitViewProps {
   listOptions: ListDisplayOptions
   sharedItems: SharedBoardItem[]
   pins: BoardPin[]
+  links: ItemLink[]
+  emails: EmailMessage[]
   onPinsChange: (pins: BoardPin[]) => void
   onItemTap: (item: CalendarItem) => void
   onSharedItemTap?: (item: SharedBoardItem) => void
+  onNavigateLink: (type: EntityType, id: string) => void
   onEnterKiosk?: () => void
 }
 
@@ -24,9 +28,12 @@ export function BoardSplitView({
   listOptions,
   sharedItems,
   pins,
+  links,
+  emails,
   onPinsChange,
   onItemTap,
   onSharedItemTap,
+  onNavigateLink,
   onEnterKiosk,
 }: BoardSplitViewProps) {
   return (
@@ -51,8 +58,12 @@ export function BoardSplitView({
         <FamilyBoardView
           sharedItems={sharedItems}
           pins={pins}
+          links={links}
+          items={items}
+          emails={emails}
           onPinsChange={onPinsChange}
           onItemTap={onSharedItemTap}
+          onNavigateLink={onNavigateLink}
           onEnterKiosk={onEnterKiosk}
         />
       </div>

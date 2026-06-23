@@ -62,6 +62,8 @@ export interface CalendarItem {
   colour: string
   notes?: string
   completed?: boolean
+  /** Mock/base64 photo attachment (Phase 5 prototype). */
+  photoUrl?: string
 }
 
 export interface EmailAccount {

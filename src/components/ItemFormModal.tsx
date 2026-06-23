@@ -242,6 +242,42 @@ export function ItemFormModal({
             />
           </Field>
 
+          <Field label="Photo attachment (mock)">
+            {form.photoUrl ? (
+              <div className="space-y-2">
+                <img
+                  src={form.photoUrl}
+                  alt="Attachment preview"
+                  className="max-h-40 w-full rounded-xl object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, photoUrl: undefined })}
+                  className="text-subhead font-medium text-wf-red"
+                >
+                  Remove photo
+                </button>
+              </div>
+            ) : (
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    if (typeof reader.result === 'string') {
+                      setForm({ ...form, photoUrl: reader.result })
+                    }
+                  }
+                  reader.readAsDataURL(file)
+                }}
+                className="w-full text-body file:mr-3 file:rounded-lg file:border-0 file:bg-wf-accent-soft file:px-3 file:py-2 file:text-subhead file:font-semibold file:text-wf-accent"
+              />
+            )}
+          </Field>
+
           {entityType && form.id && (
             <ShareToBoardFields
               sharedToBoard={shareState.sharedToBoard}

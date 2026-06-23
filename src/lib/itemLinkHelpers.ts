@@ -1,5 +1,6 @@
 import type { CalendarItem, Category, EmailMessage } from '../types'
 import type { EntityType, ItemLink } from '../../shared/links'
+import { getMockCloudFolder } from '../mockData'
 import { getCategoryById } from '../categories'
 
 export function getItemLinkType(
@@ -16,16 +17,27 @@ export function resolveLinkTargetLabel(
   id: string,
   items: CalendarItem[],
   emails: EmailMessage[],
+  links?: ItemLink[],
 ): string {
   if (type === 'email') {
     const email = emails.find((entry) => entry.id === id)
     return email?.subject ?? 'Email'
   }
 
+  if (type === 'folder_ref') {
+    const folder = getMockCloudFolder(id)
+    if (folder) return folder.label
+    const link = links?.find(
+      (entry) =>
+        (entry.toType === 'folder_ref' && entry.toId === id) ||
+        (entry.fromType === 'folder_ref' && entry.fromId === id),
+    )
+    return link?.folderUrl ?? 'Folder'
+  }
+
   const item = items.find((entry) => entry.id === id)
   if (item) return item.title
 
-  if (type === 'folder_ref') return 'Folder'
   if (type === 'board_pin') return 'Board pin'
   return 'Linked item'
 }

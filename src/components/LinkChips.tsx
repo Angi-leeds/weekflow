@@ -37,7 +37,7 @@ export function LinkChips({
       )}
       <div className="flex flex-wrap gap-1.5">
         {related.map((entry) => {
-          const label = resolveLinkTargetLabel(entry.type, entry.id, items, emails)
+          const label = resolveLinkTargetLabel(entry.type, entry.id, items, emails, links)
           const kindLabel = entry.directLink
             ? LINK_KIND_LABELS[entry.directLink.kind]
             : entry.hops > 1

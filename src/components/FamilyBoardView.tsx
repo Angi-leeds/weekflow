@@ -2,13 +2,20 @@ import { useCallback, useRef, useState } from 'react'
 import { Lock, Maximize2 } from 'lucide-react'
 import type { BoardPin } from '../../shared/boardPins'
 import type { SharedBoardItem } from '../../shared/boardPins'
+import type { EntityType, ItemLink } from '../../shared/links'
+import type { CalendarItem, EmailMessage } from '../types'
 import { updateBoardPinPosition } from '../lib/boardPins'
+import { LinkChips } from './LinkChips'
 
 interface FamilyBoardViewProps {
   sharedItems: SharedBoardItem[]
   pins: BoardPin[]
+  links: ItemLink[]
+  items: CalendarItem[]
+  emails: EmailMessage[]
   onPinsChange: (pins: BoardPin[]) => void
   onItemTap?: (item: SharedBoardItem) => void
+  onNavigateLink: (type: EntityType, id: string) => void
   kiosk?: boolean
   onEnterKiosk?: () => void
   onExitKiosk?: () => void
@@ -22,8 +29,12 @@ interface PinEntry {
 export function FamilyBoardView({
   sharedItems,
   pins,
+  links,
+  items,
+  emails,
   onPinsChange,
   onItemTap,
+  onNavigateLink,
   kiosk = false,
   onEnterKiosk,
   onExitKiosk,
@@ -181,15 +192,32 @@ export function FamilyBoardView({
                 📌
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => onItemTap?.(item)}
-              className={`block max-w-[160px] text-left transition-transform active:scale-[0.98] ${
-                draggingId === pin.id ? 'scale-105 shadow-lg' : 'shadow-md'
+            <div
+              className={`max-w-[180px] text-left transition-transform ${
+                draggingId === pin.id ? 'scale-105' : ''
               }`}
             >
-              <BoardPinCard item={item} />
-            </button>
+              <button
+                type="button"
+                onClick={() => onItemTap?.(item)}
+                className={`block w-full text-left transition-transform active:scale-[0.98] ${
+                  draggingId === pin.id ? 'shadow-lg' : 'shadow-md'
+                }`}
+              >
+                <BoardPinCard item={item} />
+              </button>
+              <div className="mt-1.5">
+                <LinkChips
+                  entityType={item.itemType}
+                  entityId={item.itemId}
+                  links={links}
+                  items={items}
+                  emails={emails}
+                  onNavigate={onNavigateLink}
+                  compact
+                />
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -210,6 +238,9 @@ function BoardPinCard({ item }: { item: SharedBoardItem }) {
           You&apos;re invited
         </div>
         <div className="bg-white/95 px-3 py-2 text-wf-text">
+          {item.photoUrl && (
+            <img src={item.photoUrl} alt="" className="mb-2 h-12 w-full rounded-md object-cover" />
+          )}
           <p className="font-display text-subhead font-bold leading-tight">{item.title}</p>
           {item.dateLabel && (
             <p className="mt-1 text-caption text-wf-text-secondary">{item.dateLabel}</p>
@@ -222,10 +253,14 @@ function BoardPinCard({ item }: { item: SharedBoardItem }) {
   if (display === 'title_photo') {
     return (
       <div className="overflow-hidden rounded-xl bg-white shadow-md">
-        <div
-          className="h-16 bg-gradient-to-br from-wf-accent/30 to-wf-accent/60"
-          style={{ background: `linear-gradient(135deg, ${item.colour}44, ${item.colour}99)` }}
-        />
+        {item.photoUrl ? (
+          <img src={item.photoUrl} alt="" className="h-16 w-full object-cover" />
+        ) : (
+          <div
+            className="h-16 bg-gradient-to-br from-wf-accent/30 to-wf-accent/60"
+            style={{ background: `linear-gradient(135deg, ${item.colour}44, ${item.colour}99)` }}
+          />
+        )}
         <div className="px-2.5 py-2">
           <p className="line-clamp-2 text-caption font-bold leading-tight text-wf-text">
             {item.title}

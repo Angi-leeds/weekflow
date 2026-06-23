@@ -313,6 +313,22 @@ export const initialEmails: EmailMessage[] = [
     category: 'Work',
     labels: ['Design', 'Projects'],
   },
+  {
+    id: 'e8',
+    accountId: 'personal-gmail',
+    folderId: 'personal-inbox',
+    from: 'British Gas',
+    fromEmail: 'billing@britishgas.co.uk',
+    subject: 'Your energy bill — £142.50 due 30 June',
+    preview: 'Your latest energy bill is ready. Amount due: £142.50. Payment due by 30 June 2026…',
+    body: 'Dear Customer,\n\nYour latest energy bill is ready to view.\n\nAccount: ****4521\nAmount due: £142.50\nDue date: 30 June 2026\n\nPlease pay by the due date to avoid late fees. Your bill PDF is attached.\n\nBritish Gas',
+    date: '2026-06-23T09:30:00',
+    unread: true,
+    starred: false,
+    flagged: true,
+    category: 'Finance',
+    labels: ['Bills', 'Urgent'],
+  },
 ]
 
 export const EMAIL_CATEGORIES = ['All', 'Work', 'Finance', 'Personal', 'Family', 'Social']
@@ -357,4 +373,32 @@ export function getEmailAccount(accountId: string) {
 
 export function getEmailFolder(folderId: string) {
   return MOCK_EMAIL_FOLDERS.find((folder) => folder.id === folderId)
+}
+
+export const MOCK_CLOUD_FOLDERS = [
+  {
+    id: 'folder-bills-2026',
+    label: 'OneDrive / Bills / 2026',
+    path: '/Documents/Bills/2026',
+    provider: 'OneDrive',
+    url: 'https://onedrive.live.com/mock/Bills/2026',
+  },
+  {
+    id: 'folder-finance-vat',
+    label: 'OneDrive / Finance / VAT',
+    path: '/Documents/Finance/VAT',
+    provider: 'OneDrive',
+    url: 'https://onedrive.live.com/mock/Finance/VAT',
+  },
+  {
+    id: 'folder-household',
+    label: 'OneDrive / Household',
+    path: '/Documents/Household',
+    provider: 'OneDrive',
+    url: 'https://onedrive.live.com/mock/Household',
+  },
+] as const
+
+export function getMockCloudFolder(folderId: string) {
+  return MOCK_CLOUD_FOLDERS.find((folder) => folder.id === folderId)
 }

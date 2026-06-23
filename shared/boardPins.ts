@@ -38,4 +38,5 @@ export interface SharedBoardItem {
   colour: string;
   boardDisplay: BoardDisplay;
   dateLabel?: string;
+  photoUrl?: string;
 }

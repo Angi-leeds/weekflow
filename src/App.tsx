@@ -6,8 +6,9 @@ import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage } from './types'
 import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
-import { initialEmails, initialItems } from './mockData'
-import { addWeeks, generateId, startOfWeek, toISODate } from './dateUtils'
+import { initialEmails, initialItems, getMockCloudFolder } from './mockData'
+import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from './dateUtils'
+import type { EmailActionFlowOptions } from '../shared/emailActionFlow'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
 import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/itemShares'
 import { createBoardPin, fetchAllBoardPins, getPinForItem } from './lib/boardPins'
@@ -35,6 +36,8 @@ import { PlannerView } from './components/PlannerView'
 import { SettingsView } from './components/SettingsView'
 import { BoardSplitView } from './components/BoardSplitView'
 import { FamilyBoardView } from './components/FamilyBoardView'
+import { EmailActionFlowModal } from './components/EmailActionFlowModal'
+import { Toast } from './components/Toast'
 import { KioskPinGate } from './components/KioskPinGate'
 
 export default function App() {
@@ -63,6 +66,8 @@ export default function App() {
     sourceId: string
     sourceLabel: string
   } | null>(null)
+  const [emailActionFlowEmail, setEmailActionFlowEmail] = useState<EmailMessage | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const unreadCount = useMemo(() => emails.filter((e) => e.unread).length, [emails])
 
@@ -146,6 +151,22 @@ export default function App() {
         return
       }
 
+      if (type === 'folder_ref') {
+        const link = links.find(
+          (entry) =>
+            (entry.toType === 'folder_ref' && entry.toId === id) ||
+            (entry.fromType === 'folder_ref' && entry.fromId === id),
+        )
+        const folder = getMockCloudFolder(id)
+        const url = link?.folderUrl ?? folder?.url
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer')
+        } else {
+          setToastMessage('Folder link (mock) — connect OneDrive in a later phase.')
+        }
+        return
+      }
+
       const item = items.find((entry) => entry.id === id)
       if (!item) return
 
@@ -154,7 +175,7 @@ export default function App() {
       setEditingItem(item)
       setModalOpen(true)
     },
-    [items, categories],
+    [items, categories, links],
   )
 
   const handleSharedBoardItemTap = useCallback(
@@ -192,6 +213,120 @@ export default function App() {
       setModalOpen(true)
     },
     [categories, handleCreateLink],
+  )
+
+  const handleEmailActionFlow = useCallback(
+    async (email: EmailMessage, options: EmailActionFlowOptions) => {
+      const eventCategory =
+        categories.find((category) => category.id === 'appointment') ?? categories[0]
+      const taskCategory = categories.find((category) => category.id === 'task') ?? categories[0]
+      const folder = options.folderId ? getMockCloudFolder(options.folderId) : undefined
+
+      let calendarItem: CalendarItem | null = null
+      let taskItem: CalendarItem | null = null
+
+      if (options.createCalendar) {
+        calendarItem = {
+          id: generateId(),
+          title: `Pay: ${email.from}`,
+          date: options.dueDate,
+          allDay: true,
+          categoryId: eventCategory.id,
+          colour: eventCategory.colour,
+          notes: `From: ${email.from} <${email.fromEmail}>\n\n${email.body.slice(0, 500)}`,
+        }
+        setItems((prev) => [...prev, calendarItem!])
+        await handleCreateLink({
+          fromType: 'email',
+          fromId: email.id,
+          toType: 'calendar',
+          toId: calendarItem.id,
+          kind: 'created_from',
+        })
+      }
+
+      if (options.createTask) {
+        const dueDate = parseDate(options.dueDate)
+        taskItem = {
+          id: generateId(),
+          title: `Pay before due: ${email.from}`,
+          date: toISODate(addDays(dueDate, -options.taskLeadDays)),
+          allDay: true,
+          categoryId: taskCategory.id,
+          colour: taskCategory.colour,
+          notes: `Reminder linked to bill email: ${email.subject}`,
+          completed: false,
+        }
+        setItems((prev) => [...prev, taskItem!])
+        await handleCreateLink({
+          fromType: 'email',
+          fromId: email.id,
+          toType: 'task',
+          toId: taskItem.id,
+          kind: 'created_from',
+        })
+        if (calendarItem) {
+          await handleCreateLink({
+            fromType: 'calendar',
+            fromId: calendarItem.id,
+            toType: 'task',
+            toId: taskItem.id,
+            kind: 'follow_up',
+          })
+        }
+      }
+
+      if (options.tagFolder && options.folderId && folder) {
+        await handleCreateLink({
+          fromType: 'email',
+          fromId: email.id,
+          toType: 'folder_ref',
+          toId: options.folderId,
+          kind: 'folder_ref',
+          folderUrl: folder.url,
+          folderProvider: folder.provider,
+        })
+        if (calendarItem) {
+          await handleCreateLink({
+            fromType: 'calendar',
+            fromId: calendarItem.id,
+            toType: 'folder_ref',
+            toId: options.folderId,
+            kind: 'folder_ref',
+            folderUrl: folder.url,
+            folderProvider: folder.provider,
+          })
+        }
+      }
+
+      if (options.shareToBoard && calendarItem) {
+        await handleShareUpdate({
+          itemType: 'calendar',
+          itemId: calendarItem.id,
+          sharedToBoard: true,
+          boardDisplay: options.boardDisplay,
+        })
+      }
+
+      if (options.autoCopy) {
+        setToastMessage(
+          folder
+            ? `Email copied to ${folder.label} (mock)`
+            : 'Email copied to folder (mock)',
+        )
+      }
+
+      if (calendarItem) {
+        setSection('calendar')
+        setEditingItem(calendarItem)
+        setModalOpen(true)
+      } else if (taskItem) {
+        setSection('planner')
+        setEditingItem(taskItem)
+        setModalOpen(true)
+      }
+    },
+    [categories, handleCreateLink, handleShareUpdate],
   )
 
   const handleLinkExistingSelect = useCallback(
@@ -342,8 +477,12 @@ export default function App() {
         <FamilyBoardView
           sharedItems={sharedBoardItems}
           pins={boardPins}
+          links={links}
+          items={items}
+          emails={emails}
           onPinsChange={setBoardPins}
           onItemTap={handleSharedBoardItemTap}
+          onNavigateLink={handleNavigateLink}
           kiosk
           onExitKiosk={() => setKioskPinGateOpen(true)}
         />
@@ -440,9 +579,12 @@ export default function App() {
             listOptions={listOptions}
             sharedItems={sharedBoardItems}
             pins={boardPins}
+            links={links}
+            emails={emails}
             onPinsChange={setBoardPins}
             onItemTap={openEditModal}
             onSharedItemTap={handleSharedBoardItemTap}
+            onNavigateLink={handleNavigateLink}
             onEnterKiosk={() => setKioskMode(true)}
           />
         )}
@@ -470,6 +612,7 @@ export default function App() {
             onRemoveLink={handleRemoveLink}
             itemShares={itemShares}
             onShareUpdate={handleShareUpdate}
+            onOpenActionFlow={setEmailActionFlowEmail}
           />
         )}
 
@@ -550,6 +693,16 @@ export default function App() {
         onClose={() => setLinkPicker(null)}
         onSelect={handleLinkExistingSelect}
       />
+
+      <EmailActionFlowModal
+        open={emailActionFlowEmail !== null}
+        email={emailActionFlowEmail}
+        defaultDueDate="2026-06-30"
+        onClose={() => setEmailActionFlowEmail(null)}
+        onSubmit={handleEmailActionFlow}
+      />
+
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   )
 }

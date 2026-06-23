@@ -3,6 +3,7 @@ import type { CalendarItem, Category, ListDisplayOptions } from '../types'
 import { LIST_GROUP_LABELS, LIST_SORT_LABELS } from '../types'
 import { MOCK_EMAIL_ACCOUNTS } from '../mockData'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
+import { SyncHelpView } from './SyncHelpView'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
@@ -31,6 +32,7 @@ export function SettingsView({
   sharedBoardCount = 0,
 }: SettingsViewProps) {
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
+  const [showSyncHelp, setShowSyncHelp] = useState(false)
   const categorySummary =
     listOptions.categoryFilter && listOptions.categoryFilter.length > 0
       ? `${listOptions.categoryFilter.length} selected`
@@ -43,6 +45,10 @@ export function SettingsView({
     }
     return counts
   }, [items])
+
+  if (showSyncHelp) {
+    return <SyncHelpView onBack={() => setShowSyncHelp(false)} />
+  }
 
   return (
     <div className="px-4 pb-6 pt-2 safe-top">
@@ -125,6 +131,19 @@ export function SettingsView({
             Enter kiosk mode
           </button>
         )}
+      </SettingsGroup>
+
+      <SettingsGroup title="Data &amp; sync">
+        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+          What stays in Gmail/Outlook vs what WeekFlow stores.
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowSyncHelp(true)}
+          className="mx-4 mb-4 w-[calc(100%-2rem)] rounded-xl bg-wf-accent-soft py-2.5 text-body font-semibold text-wf-accent"
+        >
+          View sync matrix
+        </button>
       </SettingsGroup>
 
       <SettingsGroup title="Email">

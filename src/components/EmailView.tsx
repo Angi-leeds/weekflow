@@ -39,6 +39,7 @@ interface EmailViewProps {
   items: CalendarItem[]
   itemShares: ItemShare[]
   onShareUpdate: (input: UpsertItemShareInput) => void
+  onOpenActionFlow: (email: EmailMessage) => void
   onToggleStar: (id: string) => void
   onToggleRead: (id: string) => void
   onCreateTask: (email: EmailMessage) => void
@@ -55,6 +56,7 @@ export function EmailView({
   items,
   itemShares,
   onShareUpdate,
+  onOpenActionFlow,
   onToggleStar,
   onToggleRead,
   onCreateTask,
@@ -248,6 +250,9 @@ export function EmailView({
             onRemoveLink={onRemoveLink}
             shareState={selectedShareState}
             onShareUpdate={onShareUpdate}
+            onOpenActionFlow={() => {
+              if (selected) onOpenActionFlow(selected)
+            }}
           />
         )}
       </div>
@@ -407,6 +412,7 @@ function MessagePreview({
   onRemoveLink,
   shareState,
   onShareUpdate,
+  onOpenActionFlow,
 }: {
   email: EmailMessage | null
   links: ItemLink[]
@@ -420,6 +426,7 @@ function MessagePreview({
   onRemoveLink?: (linkId: string) => void
   shareState: { sharedToBoard: boolean; boardDisplay: BoardDisplay }
   onShareUpdate: (input: UpsertItemShareInput) => void
+  onOpenActionFlow: () => void
 }) {
   if (!email) {
     return (
@@ -521,6 +528,13 @@ function MessagePreview({
         <p className="mb-2 mt-4 text-caption font-semibold text-wf-text-secondary">
           Email actions
         </p>
+        <button
+          type="button"
+          onClick={onOpenActionFlow}
+          className="mb-3 w-full rounded-xl bg-wf-accent py-3 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-[0.98]"
+        >
+          Action flow — calendar + task + folder
+        </button>
         <div className="flex flex-wrap gap-2">
           <EmailAction
             icon={ClipboardList}
