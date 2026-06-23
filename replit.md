@@ -17,9 +17,15 @@ WeekFlow is a mobile-first personal hub (week-list calendar, email, tasks) with 
 ## Replit setup (for agent)
 1. Import this repo from GitHub (`Angi-leeds/weekflow`).
 2. Run `npm install` then `npm run dev` — app on port 5000.
-3. **Database** (when needed): attach Replit PostgreSQL. App reads `DATABASE_URL`. Use Drizzle ORM (recommended, matches other apps). First use: household sync, link graph, share-to-board flags, voice pin metadata.
-4. **Object storage** (when needed): attach Replit Object Storage. Use for attachment uploads, voice message audio, board photos — until provider sync (OneDrive etc.) is wired in full build.
-5. Check `/api/status` — shows whether DATABASE_URL and object storage are configured.
+3. **Database:** Replit PostgreSQL → `DATABASE_URL`. Migrations run automatically on server start (or run `npm run db:migrate`).
+4. **Object storage:** attach Replit Object Storage for attachment uploads.
+5. Check `/api/status` — `database: "ready"` when all 6 WeekFlow tables exist.
+
+### Database commands
+| Command | Purpose |
+|---------|---------|
+| `npm run db:migrate` | Apply pending SQL migrations |
+| `npm run db:push` | Drizzle-kit push (dev schema sync) |
 
 ## Scripts
 | Command | Purpose |

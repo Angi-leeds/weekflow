@@ -1,6 +1,8 @@
+import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { registerRoutes } from "./routes";
 import { log, serveStatic, setupVite } from "./vite";
+import { applyPendingMigrations } from "./db/apply-migrations";
 
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "development";
@@ -25,6 +27,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    await applyPendingMigrations();
+  } catch (error) {
+    console.error("Failed to apply database migrations:", error);
+    if (process.env.NODE_ENV === "production") {
+      process.exit(1);
+    }
+  }
+
   const server = await registerRoutes(app);
 
   if (process.env.NODE_ENV !== "production") {
