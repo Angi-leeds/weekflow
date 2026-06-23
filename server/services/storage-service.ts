@@ -1,11 +1,17 @@
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import { objectStorageClient } from "../replit_integrations/object_storage/objectStorage";
 
 const LOCAL_DIR = path.resolve(
   process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), ".local-object-storage"),
 );
+
+async function getObjectStorageClient() {
+  const { objectStorageClient } = await import(
+    "../replit_integrations/object_storage/objectStorage"
+  );
+  return objectStorageClient;
+}
 
 export function isObjectStorageConfigured(): boolean {
   return Boolean(
@@ -43,6 +49,7 @@ export async function uploadAttachmentFile(
     const prefix = privateDir.endsWith("/") ? privateDir : `${privateDir}/`;
     const entityPath = `${prefix}attachments/${objectId}${ext}`;
     const { bucketName, objectName } = parseObjectPath(entityPath);
+    const objectStorageClient = await getObjectStorageClient();
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
 
