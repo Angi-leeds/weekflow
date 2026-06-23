@@ -9,7 +9,7 @@ export type CalendarViewMode =
   | 'agenda'
   | 'year'
 
-export type AppSection = 'calendar' | 'planner' | 'email' | 'today' | 'settings'
+export type AppSection = 'calendar' | 'planner' | 'board' | 'email' | 'today' | 'settings'
 
 export type ListGroupBy = 'none' | 'category' | 'time' | 'kind'
 

@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { CalendarItem, Category, ListDisplayOptions } from '../types'
 import { LIST_GROUP_LABELS, LIST_SORT_LABELS } from '../types'
 import { MOCK_EMAIL_ACCOUNTS } from '../mockData'
+import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
@@ -13,6 +14,9 @@ interface SettingsViewProps {
   onListOptionsChange: (options: ListDisplayOptions) => void
   onSaveCategory: (category: Category) => void
   onDeleteCategory: (id: string) => void
+  onOpenBoard?: () => void
+  onEnterKiosk?: () => void
+  sharedBoardCount?: number
 }
 
 export function SettingsView({
@@ -22,7 +26,11 @@ export function SettingsView({
   onListOptionsChange,
   onSaveCategory,
   onDeleteCategory,
+  onOpenBoard,
+  onEnterKiosk,
+  sharedBoardCount = 0,
 }: SettingsViewProps) {
+  const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const categorySummary =
     listOptions.categoryFilter && listOptions.categoryFilter.length > 0
       ? `${listOptions.categoryFilter.length} selected`
@@ -72,6 +80,51 @@ export function SettingsView({
         <SettingsRow label="Default view" value="Week list" />
         <SettingsRow label="Week starts on" value="Monday" />
         <SettingsRow label="Time format" value="24 hour" />
+      </SettingsGroup>
+
+      <SettingsGroup title="Family board">
+        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+          Corky-style noticeboard for shared household items. Share events from the item editor or email view.
+        </p>
+        {onOpenBoard && (
+          <button
+            type="button"
+            onClick={onOpenBoard}
+            className="mx-4 mb-3 w-[calc(100%-2rem)] rounded-xl bg-wf-accent-soft py-2.5 text-body font-semibold text-wf-accent"
+          >
+            Open family board
+          </button>
+        )}
+        <SettingsRow label="Shared on board" value={String(sharedBoardCount)} />
+        <div className="border-b border-wf-border/50 px-4 py-3.5">
+          <label className="block">
+            <span className="text-body font-medium text-wf-text">Kiosk exit PIN</span>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={kioskPin}
+              onChange={(event) => {
+                const next = event.target.value.replace(/\D/g, '').slice(0, 4)
+                setKioskPin(next)
+                if (next.length === 4) saveKioskPin(next)
+              }}
+              className="mt-2 w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body tracking-[0.3em] outline-none focus:border-wf-accent"
+            />
+          </label>
+          <p className="mt-1.5 text-caption text-wf-text-tertiary">
+            Required to leave fullscreen kiosk mode on the family board.
+          </p>
+        </div>
+        {onEnterKiosk && (
+          <button
+            type="button"
+            onClick={onEnterKiosk}
+            className="mx-4 mb-4 w-[calc(100%-2rem)] rounded-xl border border-wf-border py-2.5 text-body font-semibold text-wf-text-secondary"
+          >
+            Enter kiosk mode
+          </button>
+        )}
       </SettingsGroup>
 
       <SettingsGroup title="Email">

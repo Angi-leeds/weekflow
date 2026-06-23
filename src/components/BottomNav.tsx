@@ -1,6 +1,7 @@
 import {
   Calendar,
   CheckSquare,
+  LayoutGrid,
   Mail,
   Settings,
   Sun,
@@ -17,6 +18,7 @@ interface BottomNavProps {
 const TABS: { id: AppSection; label: string; icon: LucideIcon; activeIcon?: LucideIcon }[] = [
   { id: 'calendar', label: 'Calendar', icon: Calendar },
   { id: 'planner', label: 'Planner', icon: CheckSquare },
+  { id: 'board', label: 'Board', icon: LayoutGrid },
   { id: 'email', label: 'Email', icon: Mail },
   { id: 'today', label: 'Today', icon: Sun },
   { id: 'settings', label: 'Settings', icon: Settings },

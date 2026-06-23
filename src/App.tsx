@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
+import type { BoardPin } from '../shared/boardPins'
+import type { SharedBoardItem } from '../shared/boardPins'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage } from './types'
 import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
 import { initialEmails, initialItems } from './mockData'
 import { addWeeks, generateId, startOfWeek, toISODate } from './dateUtils'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
 import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/itemShares'
+import { createBoardPin, fetchAllBoardPins, getPinForItem } from './lib/boardPins'
+import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -29,6 +33,9 @@ import { EmailView } from './components/EmailView'
 import { LinkExistingModal } from './components/LinkExistingModal'
 import { PlannerView } from './components/PlannerView'
 import { SettingsView } from './components/SettingsView'
+import { BoardSplitView } from './components/BoardSplitView'
+import { FamilyBoardView } from './components/FamilyBoardView'
+import { KioskPinGate } from './components/KioskPinGate'
 
 export default function App() {
   const [section, setSection] = useState<AppSection>('calendar')
@@ -47,6 +54,9 @@ export default function App() {
   const [listOptions, setListOptions] = useState<ListDisplayOptions>(DEFAULT_LIST_OPTIONS)
   const [links, setLinks] = useState<ItemLink[]>([])
   const [itemShares, setItemShares] = useState<ItemShare[]>([])
+  const [boardPins, setBoardPins] = useState<BoardPin[]>([])
+  const [kioskMode, setKioskMode] = useState(false)
+  const [kioskPinGateOpen, setKioskPinGateOpen] = useState(false)
   const [emailSelectedId, setEmailSelectedId] = useState<string | null>(null)
   const [linkPicker, setLinkPicker] = useState<{
     sourceType: EntityType
@@ -67,6 +77,38 @@ export default function App() {
   useEffect(() => {
     fetchAllItemShares().then(setItemShares).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    fetchAllBoardPins().then(setBoardPins).catch(console.error)
+  }, [])
+
+  const sharedBoardItems = useMemo(
+    () => resolveSharedBoardItems(itemShares, items, emails, categories),
+    [itemShares, items, emails, categories],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function ensurePinsForSharedItems() {
+      for (const item of sharedBoardItems) {
+        const pin = await createBoardPin({
+          itemType: item.itemType,
+          itemId: item.itemId,
+        })
+        if (cancelled) return
+        setBoardPins((prev) => {
+          if (getPinForItem(prev, item.itemType, item.itemId)) return prev
+          return [...prev, pin]
+        })
+      }
+    }
+
+    void ensurePinsForSharedItems()
+    return () => {
+      cancelled = true
+    }
+  }, [sharedBoardItems])
 
   const upsertLink = useCallback((link: ItemLink) => {
     setLinks((prev) => [...prev.filter((entry) => entry.id !== link.id), link])
@@ -113,6 +155,13 @@ export default function App() {
       setModalOpen(true)
     },
     [items, categories],
+  )
+
+  const handleSharedBoardItemTap = useCallback(
+    (item: SharedBoardItem) => {
+      handleNavigateLink(item.itemType, item.itemId)
+    },
+    [handleNavigateLink],
   )
 
   const handleCreateTaskFromEmail = useCallback(
@@ -281,9 +330,35 @@ export default function App() {
   }
 
   const showFab =
-    section === 'calendar' ||
-    section === 'planner' ||
-    section === 'today'
+    !kioskMode &&
+    (section === 'calendar' ||
+      section === 'planner' ||
+      section === 'today')
+
+  if (kioskMode) {
+    return (
+      <div className="fixed inset-0 z-40 flex flex-col bg-wf-bg">
+        <div className="relative min-h-0 flex-1">
+        <FamilyBoardView
+          sharedItems={sharedBoardItems}
+          pins={boardPins}
+          onPinsChange={setBoardPins}
+          onItemTap={handleSharedBoardItemTap}
+          kiosk
+          onExitKiosk={() => setKioskPinGateOpen(true)}
+        />
+        </div>
+        <KioskPinGate
+          open={kioskPinGateOpen}
+          onClose={() => setKioskPinGateOpen(false)}
+          onSuccess={() => {
+            setKioskMode(false)
+            setKioskPinGateOpen(false)
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-wf-bg">
@@ -357,6 +432,21 @@ export default function App() {
           />
         )}
 
+        {section === 'board' && (
+          <BoardSplitView
+            weekStart={weekStart}
+            items={items}
+            categories={categories}
+            listOptions={listOptions}
+            sharedItems={sharedBoardItems}
+            pins={boardPins}
+            onPinsChange={setBoardPins}
+            onItemTap={openEditModal}
+            onSharedItemTap={handleSharedBoardItemTap}
+            onEnterKiosk={() => setKioskMode(true)}
+          />
+        )}
+
         {section === 'email' && (
           <EmailView
             emails={emails}
@@ -402,6 +492,9 @@ export default function App() {
             onListOptionsChange={setListOptions}
             onSaveCategory={handleSaveCategory}
             onDeleteCategory={handleDeleteCategory}
+            onOpenBoard={() => setSection('board')}
+            onEnterKiosk={() => setKioskMode(true)}
+            sharedBoardCount={sharedBoardItems.length}
           />
         )}
       </main>
