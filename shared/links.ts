@@ -1,4 +1,4 @@
-export type EntityType = "email" | "calendar" | "task" | "board_pin" | "folder_ref";
+export type EntityType = "email" | "calendar" | "task" | "note" | "board_pin" | "folder_ref";
 
 export type LinkKind = "created_from" | "relates_to" | "follow_up" | "folder_ref";
 
@@ -38,6 +38,7 @@ export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   email: "Email",
   calendar: "Calendar",
   task: "Task",
+  note: "Note",
   board_pin: "Board",
   folder_ref: "Folder",
 };

@@ -1,9 +1,10 @@
 import type { Attachment } from "../../shared/attachments";
 import type { SharedBoardItem } from "../../shared/boardPins";
 import type { ItemShare } from "../../shared/itemShares";
-import type { CalendarItem, Category, EmailMessage } from "../types";
+import type { CalendarItem, Category, EmailMessage, Note } from "../types";
 import { getItemLinkType } from "./itemLinkHelpers";
 import { getPhotoUrlForItem } from "./attachments";
+import { notePreview } from "./notes";
 
 function formatItemDate(item: CalendarItem): string | undefined {
   const d = new Date(item.date);
@@ -25,6 +26,7 @@ export function resolveSharedBoardItems(
   emails: EmailMessage[],
   categories: Category[],
   attachments: Attachment[] = [],
+  notes: Note[] = [],
 ): SharedBoardItem[] {
   return shares
     .filter((share) => share.sharedToBoard)
@@ -40,6 +42,23 @@ export function resolveSharedBoardItems(
           colour: "#0078d4",
           boardDisplay: share.boardDisplay,
           dateLabel: new Date(email.date).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+          }),
+        } satisfies SharedBoardItem;
+      }
+
+      if (share.itemType === "note") {
+        const note = notes.find((entry) => entry.id === share.itemId);
+        if (!note) return null;
+        return {
+          itemType: share.itemType,
+          itemId: share.itemId,
+          title: note.title,
+          subtitle: notePreview(note, 60),
+          colour: note.colour ?? "#FFF4B8",
+          boardDisplay: share.boardDisplay,
+          dateLabel: new Date(note.updatedAt).toLocaleDateString("en-GB", {
             day: "numeric",
             month: "short",
           }),

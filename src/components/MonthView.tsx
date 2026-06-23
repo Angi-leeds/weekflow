@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { CalendarItem } from '../types'
+import type { CalendarItem, WeekStartsOn } from '../types'
 import {
   formatMonthYear,
   getItemsForDate,
@@ -12,21 +12,27 @@ import {
 interface MonthViewProps {
   currentDate: Date
   items: CalendarItem[]
+  weekStartsOn?: WeekStartsOn
   onDaySelect: (date: Date) => void
   onMonthChange: (date: Date) => void
 }
 
-const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+function weekdayLabels(weekStartsOn: WeekStartsOn): string[] {
+  const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+  return Array.from({ length: 7 }, (_, index) => labels[(weekStartsOn + index) % 7])
+}
 
 export function MonthView({
   currentDate,
   items,
+  weekStartsOn = 1,
   onDaySelect,
   onMonthChange,
 }: MonthViewProps) {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
-  const weeks = getMonthGrid(year, month)
+  const weeks = getMonthGrid(year, month, weekStartsOn)
+  const weekdayHeaders = weekdayLabels(weekStartsOn)
 
   const countForDay = (date: Date) => getItemsForDate(items, date).length
 
@@ -56,7 +62,7 @@ export function MonthView({
 
       <div className="rounded-2xl bg-wf-surface p-4 shadow-[var(--shadow-card)]">
         <div className="mb-2 grid grid-cols-7 gap-1">
-          {WEEKDAY_LABELS.map((label, i) => (
+          {weekdayHeaders.map((label, i) => (
             <div key={i} className="py-1 text-center text-caption font-semibold text-wf-text-secondary">
               {label}
             </div>

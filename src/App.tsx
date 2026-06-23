@@ -5,8 +5,8 @@ import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
-import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage, CalendarFilter } from './types'
-import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
+import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationPreferences, Note } from './types'
+import { type ListDisplayOptions } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, initialItems, getMockCloudFolder, calendarAccountForCategory } from './mockData'
 import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from './dateUtils'
@@ -18,6 +18,14 @@ import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { fetchAllAttachments } from './lib/attachments'
 import { loadCalendarFilter, saveCalendarFilter } from './lib/calendarSettings'
 import {
+  loadCalendarPreferences,
+  loadIntegrationPreferences,
+  loadListOptions,
+  saveCalendarPreferences,
+  saveIntegrationPreferences,
+  saveListOptions,
+} from './lib/appSettings'
+import {
   getActiveMember,
   loadHouseholdPermissions,
   saveHouseholdPermissions,
@@ -25,12 +33,40 @@ import {
 } from './lib/householdPermissions'
 import { calendarFilterMatchesItem } from './components/CalendarAccountFilter'
 import {
+  createMicrosoftNote,
   createMicrosoftTodo,
+  deleteMicrosoftNote,
+  fetchMicrosoftCalendar,
   fetchMicrosoftMail,
+  fetchMicrosoftNotes,
   fetchMicrosoftStatus,
+  mergeGraphCalendar,
   mergeGraphMail,
+  mergeGraphNotes,
+  microsoftAccountKey,
   syncCalendarToMicrosoft,
+  updateMicrosoftNote,
 } from './lib/microsoft'
+import {
+  INITIAL_CONTACTS,
+  loadStoredContacts,
+  saveStoredContacts,
+} from './lib/contacts'
+import {
+  INITIAL_NOTES,
+  createLocalNote,
+  loadStoredNotes,
+  saveStoredNotes,
+} from './lib/notes'
+import {
+  isMockCalendarItem,
+  isMockEmail,
+  isMockNote,
+  resolveCalendarAccounts,
+  resolveEmailAccounts,
+  resolveEmailFolders,
+  useRealMicrosoftData,
+} from './lib/connectedAccounts'
 import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
@@ -52,6 +88,8 @@ import { ItemFormModal } from './components/ItemFormModal'
 import { EmailView } from './components/EmailView'
 import { LinkExistingModal } from './components/LinkExistingModal'
 import { PlannerView } from './components/PlannerView'
+import { ContactsView } from './components/ContactsView'
+import { NotesView } from './components/NotesView'
 import { SettingsView } from './components/SettingsView'
 import { BoardSplitView } from './components/BoardSplitView'
 import { FamilyBoardView } from './components/FamilyBoardView'
@@ -66,14 +104,29 @@ export default function App() {
   )
   const [items, setItems] = useState<CalendarItem[]>(initialItems)
   const [emails, setEmails] = useState(initialEmails)
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
-  const [viewMode, setViewMode] = useState<CalendarViewMode>('week-list')
+  const [contacts, setContacts] = useState<Contact[]>(
+    () => loadStoredContacts() ?? INITIAL_CONTACTS,
+  )
+  const [notes, setNotes] = useState<Note[]>(
+    () => loadStoredNotes() ?? INITIAL_NOTES,
+  )
+  const [emailSearchQuery, setEmailSearchQuery] = useState<string | null>(null)
+  const [calendarPreferences, setCalendarPreferences] = useState(() => loadCalendarPreferences())
+  const [weekStart, setWeekStart] = useState(() =>
+    startOfWeek(new Date(), loadCalendarPreferences().weekStartsOn),
+  )
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(
+    () => loadCalendarPreferences().defaultView,
+  )
   const [selectedDay, setSelectedDay] = useState(new Date())
   const [monthDate, setMonthDate] = useState(new Date())
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<CalendarItem | null>(null)
-  const [listOptions, setListOptions] = useState<ListDisplayOptions>(DEFAULT_LIST_OPTIONS)
+  const [listOptions, setListOptions] = useState<ListDisplayOptions>(() => loadListOptions())
+  const [integrationPreferences, setIntegrationPreferences] = useState(() =>
+    loadIntegrationPreferences(),
+  )
   const [links, setLinks] = useState<ItemLink[]>([])
   const [itemShares, setItemShares] = useState<ItemShare[]>([])
   const [boardPins, setBoardPins] = useState<BoardPin[]>([])
@@ -81,6 +134,7 @@ export default function App() {
   const [kioskMode, setKioskMode] = useState(false)
   const [kioskPinGateOpen, setKioskPinGateOpen] = useState(false)
   const [emailSelectedId, setEmailSelectedId] = useState<string | null>(null)
+  const [noteSelectedId, setNoteSelectedId] = useState<string | null>(null)
   const [linkPicker, setLinkPicker] = useState<{
     sourceType: EntityType
     sourceId: string
@@ -95,17 +149,39 @@ export default function App() {
   const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftIntegrationStatus | null>(null)
   const [microsoftLoading, setMicrosoftLoading] = useState(true)
   const [graphEmails, setGraphEmails] = useState<EmailMessage[]>([])
+  const [graphCalendarItems, setGraphCalendarItems] = useState<CalendarItem[]>([])
+  const [graphNotes, setGraphNotes] = useState<Note[]>([])
+
+  const usingRealMicrosoft = useRealMicrosoftData(microsoftStatus, microsoftLoading)
+  const emailAccounts = useMemo(
+    () => resolveEmailAccounts(microsoftStatus),
+    [microsoftStatus],
+  )
+  const calendarAccounts = useMemo(
+    () => resolveCalendarAccounts(microsoftStatus),
+    [microsoftStatus],
+  )
+  const emailFolders = useMemo(() => resolveEmailFolders(emailAccounts), [emailAccounts])
 
   const refreshMicrosoft = useCallback(async () => {
     setMicrosoftLoading(true)
     try {
       const status = await fetchMicrosoftStatus()
       setMicrosoftStatus(status)
-      if (status.accounts[0]) {
-        const mail = await fetchMicrosoftMail(status.accounts[0].id)
+      const account = status.accounts[0]
+      if (account) {
+        const [mail, calendar, outlookNotes] = await Promise.all([
+          fetchMicrosoftMail(account.id),
+          fetchMicrosoftCalendar(account.id),
+          fetchMicrosoftNotes(account.id),
+        ])
         setGraphEmails(mail)
+        setGraphCalendarItems(calendar)
+        setGraphNotes(outlookNotes)
       } else {
         setGraphEmails([])
+        setGraphCalendarItems([])
+        setGraphNotes([])
       }
     } catch (error) {
       console.error(error)
@@ -119,16 +195,45 @@ export default function App() {
     [emails, graphEmails],
   )
 
+  const displayCalendarItems = useMemo(
+    () => mergeGraphCalendar(items, graphCalendarItems),
+    [items, graphCalendarItems],
+  )
+
+  const displayNotes = useMemo(
+    () => mergeGraphNotes(notes, graphNotes),
+    [notes, graphNotes],
+  )
+
   const activeMember = useMemo(() => getActiveMember(permissionsConfig), [permissionsConfig])
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
   const canManageBoardLayout = memberCan(activeMember, permissionsConfig, 'manageBoardLayout')
 
   const calendarItems = useMemo(() => {
-    if (calendarFilter.mode === 'merged') return items
-    return items.filter((item) => calendarFilterMatchesItem(calendarFilter, item.accountId))
-  }, [items, calendarFilter])
+    if (calendarFilter.mode === 'merged') return displayCalendarItems
+    return displayCalendarItems.filter((item) =>
+      calendarFilterMatchesItem(calendarFilter, item.accountId),
+    )
+  }, [displayCalendarItems, calendarFilter])
+
+  useEffect(() => {
+    if (microsoftLoading) return
+    if (!usingRealMicrosoft) return
+
+    setEmails((prev) => prev.filter((email) => !isMockEmail(email)))
+    setItems((prev) => prev.filter((item) => !isMockCalendarItem(item)))
+    setNotes((prev) => prev.filter((note) => !isMockNote(note)))
+  }, [microsoftLoading, usingRealMicrosoft])
 
   const unreadCount = useMemo(() => displayEmails.filter((e) => e.unread).length, [displayEmails])
+
+  useEffect(() => {
+    saveStoredContacts(contacts)
+  }, [contacts])
+
+  useEffect(() => {
+    saveStoredNotes(notes)
+  }, [notes])
 
   useEffect(() => {
     saveStoredCategories(categories)
@@ -137,6 +242,22 @@ export default function App() {
   useEffect(() => {
     saveCalendarFilter(calendarFilter)
   }, [calendarFilter])
+
+  useEffect(() => {
+    saveListOptions(listOptions)
+  }, [listOptions])
+
+  useEffect(() => {
+    saveCalendarPreferences(calendarPreferences)
+  }, [calendarPreferences])
+
+  useEffect(() => {
+    saveIntegrationPreferences(integrationPreferences)
+  }, [integrationPreferences])
+
+  useEffect(() => {
+    setWeekStart(startOfWeek(new Date(), calendarPreferences.weekStartsOn))
+  }, [calendarPreferences.weekStartsOn])
 
   useEffect(() => {
     saveHouseholdPermissions(permissionsConfig)
@@ -170,6 +291,8 @@ export default function App() {
       sectionParam === 'planner' ||
       sectionParam === 'board' ||
       sectionParam === 'email' ||
+      sectionParam === 'contacts' ||
+      sectionParam === 'notes' ||
       sectionParam === 'today' ||
       sectionParam === 'settings'
     ) {
@@ -192,8 +315,16 @@ export default function App() {
   }, [refreshMicrosoft])
 
   const sharedBoardItems = useMemo(
-    () => resolveSharedBoardItems(itemShares, items, emails, categories, attachments),
-    [itemShares, items, emails, categories, attachments],
+    () =>
+      resolveSharedBoardItems(
+        itemShares,
+        displayCalendarItems,
+        displayEmails,
+        categories,
+        attachments,
+        displayNotes,
+      ),
+    [itemShares, displayCalendarItems, displayEmails, categories, attachments, displayNotes],
   )
 
   useEffect(() => {
@@ -289,6 +420,12 @@ export default function App() {
         return
       }
 
+      if (type === 'note') {
+        setSection('notes')
+        setNoteSelectedId(id)
+        return
+      }
+
       if (type === 'folder_ref') {
         const link = links.find(
           (entry) =>
@@ -318,7 +455,7 @@ export default function App() {
 
   const handleSharedBoardItemTap = useCallback(
     (item: SharedBoardItem) => {
-      handleNavigateLink(item.itemType, item.itemId)
+      handleNavigateLink(item.itemType as EntityType, item.itemId)
     },
     [handleNavigateLink],
   )
@@ -568,7 +705,11 @@ export default function App() {
     async (item: CalendarItem) => {
       const normalized = {
         ...item,
-        accountId: item.accountId ?? calendarAccountForCategory(item.categoryId),
+        accountId:
+          item.accountId ??
+          (microsoftStatus?.accounts[0]
+            ? microsoftAccountKey(microsoftStatus.accounts[0].id)
+            : calendarAccountForCategory(item.categoryId)),
       }
       setItems((prev) => {
         const idx = prev.findIndex((i) => i.id === normalized.id)
@@ -657,12 +798,130 @@ export default function App() {
     setModalOpen(true)
   }
 
+  const handleSaveContact = useCallback((contact: Contact) => {
+    setContacts((prev) => {
+      const index = prev.findIndex((entry) => entry.id === contact.id)
+      if (index >= 0) {
+        const next = [...prev]
+        next[index] = contact
+        return next
+      }
+      return [...prev, contact]
+    })
+  }, [])
+
+  const handleDeleteContact = useCallback((id: string) => {
+    setContacts((prev) => prev.filter((contact) => contact.id !== id))
+  }, [])
+
+  const handleToggleContactStar = useCallback((id: string) => {
+    setContacts((prev) =>
+      prev.map((contact) =>
+        contact.id === id ? { ...contact, starred: !contact.starred } : contact,
+      ),
+    )
+  }, [])
+
+  const handleOpenEmailFromContact = useCallback((email: EmailMessage) => {
+    setEmailSelectedId(email.id)
+    setEmailSearchQuery(null)
+    setSection('email')
+  }, [])
+
+  const handleSaveNote = useCallback(
+    async (input: {
+      note: Note | null
+      title: string
+      body: string
+      colour?: string
+      saveToOutlook: boolean
+    }) => {
+      const now = new Date().toISOString()
+      const account = microsoftStatus?.accounts[0]
+
+      if (input.note?.externalId && input.note.connectedAccountId) {
+        await updateMicrosoftNote(input.note.connectedAccountId, input.note.externalId, {
+          title: input.title,
+          body: input.body,
+        })
+        const updated: Note = {
+          ...input.note,
+          title: input.title,
+          body: input.body,
+          updatedAt: now,
+        }
+        setGraphNotes((prev) =>
+          prev.map((note) => (note.id === updated.id ? updated : note)),
+        )
+        return
+      }
+
+      if (input.saveToOutlook && account) {
+        const created = await createMicrosoftNote(account.id, {
+          title: input.title,
+          body: input.body,
+        })
+        await refreshMicrosoft()
+        void created
+        return
+      }
+
+      if (input.note) {
+        const updated: Note = {
+          ...input.note,
+          title: input.title,
+          body: input.body,
+          colour: input.colour ?? input.note.colour,
+          updatedAt: now,
+        }
+        setNotes((prev) => prev.map((note) => (note.id === updated.id ? updated : note)))
+        return
+      }
+
+      setNotes((prev) => [
+        ...prev,
+        createLocalNote({
+          title: input.title,
+          body: input.body,
+          colour: input.colour,
+        }),
+      ])
+    },
+    [microsoftStatus, refreshMicrosoft],
+  )
+
+  const handleDeleteNote = useCallback(
+    async (note: Note) => {
+      if (note.externalId && note.connectedAccountId) {
+        await deleteMicrosoftNote(note.connectedAccountId, note.externalId)
+        setGraphNotes((prev) => prev.filter((entry) => entry.id !== note.id))
+        return
+      }
+      setNotes((prev) => prev.filter((entry) => entry.id !== note.id))
+    },
+    [],
+  )
+
   const goToday = () => {
     const today = new Date()
-    setWeekStart(startOfWeek(today))
+    setWeekStart(startOfWeek(today, calendarPreferences.weekStartsOn))
     setSelectedDay(today)
     setMonthDate(today)
   }
+
+  const handleCalendarPreferencesChange = useCallback((prefs: CalendarPreferences) => {
+    setCalendarPreferences(prefs)
+    setViewMode(prefs.defaultView)
+  }, [])
+
+  const handleShowCalendarAccount = useCallback(
+    (accountId: string) => {
+      setCalendarFilter({ mode: 'account', accountId })
+      setSection('calendar')
+      setViewMode(calendarPreferences.defaultView)
+    },
+    [calendarPreferences.defaultView],
+  )
 
   const handleDaySelect = (date: Date) => {
     setSelectedDay(date)
@@ -671,7 +930,11 @@ export default function App() {
 
   const handlePrimaryTabChange = (tab: PrimaryCalendarTab) => {
     if (tab === 'week') {
-      setViewMode('week-list')
+      setViewMode(
+        calendarPreferences.defaultView.startsWith('week')
+          ? calendarPreferences.defaultView
+          : 'week-list',
+      )
     } else if (tab === 'today') {
       setSelectedDay(new Date())
       setViewMode('day')
@@ -694,8 +957,8 @@ export default function App() {
           sharedItems={sharedBoardItems}
           pins={boardPins}
           links={links}
-          items={items}
-          emails={emails}
+          items={displayCalendarItems}
+          emails={displayEmails}
           onPinsChange={setBoardPins}
           onPinUpdate={handlePinUpdate}
           canDismissVoicePins={canDismissVoicePins}
@@ -730,6 +993,7 @@ export default function App() {
               categories={categories}
               listOptions={listOptions}
               calendarFilter={calendarFilter}
+              calendarAccounts={calendarAccounts}
               onCalendarFilterChange={setCalendarFilter}
               onListOptionsChange={setListOptions}
               onPrevWeek={() => setWeekStart((w) => addWeeks(w, -1))}
@@ -762,6 +1026,7 @@ export default function App() {
                 <MonthView
                   currentDate={monthDate}
                   items={calendarItems}
+                  weekStartsOn={calendarPreferences.weekStartsOn}
                   onDaySelect={handleDaySelect}
                   onMonthChange={setMonthDate}
                 />
@@ -782,7 +1047,7 @@ export default function App() {
 
         {section === 'planner' && (
           <PlannerView
-            items={items}
+            items={displayCalendarItems}
             categories={categories}
             listOptions={listOptions}
             onListOptionsChange={setListOptions}
@@ -794,13 +1059,13 @@ export default function App() {
         {section === 'board' && (
           <BoardSplitView
             weekStart={weekStart}
-            items={items}
+            items={displayCalendarItems}
             categories={categories}
             listOptions={listOptions}
             sharedItems={sharedBoardItems}
             pins={boardPins}
             links={links}
-            emails={emails}
+            emails={displayEmails}
             onPinsChange={setBoardPins}
             onPinUpdate={handlePinUpdate}
             onItemTap={openEditModal}
@@ -815,10 +1080,14 @@ export default function App() {
         {section === 'email' && (
           <EmailView
             emails={displayEmails}
+            emailAccounts={emailAccounts}
+            emailFolders={emailFolders}
+            initialSearch={emailSearchQuery ?? undefined}
+            onClearInitialSearch={() => setEmailSearchQuery(null)}
             selectedId={emailSelectedId}
             onSelectedIdChange={setEmailSelectedId}
             links={links}
-            items={items}
+            items={displayCalendarItems}
             onToggleStar={(id) =>
               setEmails((prev) =>
                 prev.map((e) => (e.id === id ? { ...e, starred: !e.starred } : e)),
@@ -839,9 +1108,37 @@ export default function App() {
           />
         )}
 
+        {section === 'contacts' && (
+          <ContactsView
+            contacts={contacts}
+            emails={displayEmails}
+            emailAccounts={emailAccounts}
+            emailFolders={emailFolders}
+            onSaveContact={handleSaveContact}
+            onDeleteContact={handleDeleteContact}
+            onToggleStar={handleToggleContactStar}
+            onOpenEmail={handleOpenEmailFromContact}
+          />
+        )}
+
+        {section === 'notes' && (
+          <NotesView
+            notes={displayNotes}
+            usingRealMicrosoft={usingRealMicrosoft}
+            microsoftLoading={microsoftLoading}
+            selectedId={noteSelectedId}
+            onSelectedIdChange={setNoteSelectedId}
+            itemShares={itemShares}
+            onShareUpdate={handleShareUpdate}
+            onSaveNote={handleSaveNote}
+            onDeleteNote={handleDeleteNote}
+            onOpenSettings={() => setSection('settings')}
+          />
+        )}
+
         {section === 'today' && (
           <TodayView
-            items={items}
+            items={displayCalendarItems}
             categories={categories}
             listOptions={listOptions}
             onListOptionsChange={setListOptions}
@@ -853,9 +1150,13 @@ export default function App() {
         {section === 'settings' && (
           <SettingsView
             categories={categories}
-            items={items}
+            items={displayCalendarItems}
             listOptions={listOptions}
             onListOptionsChange={setListOptions}
+            calendarPreferences={calendarPreferences}
+            onCalendarPreferencesChange={handleCalendarPreferencesChange}
+            integrationPreferences={integrationPreferences}
+            onIntegrationPreferencesChange={setIntegrationPreferences}
             onSaveCategory={handleSaveCategory}
             onDeleteCategory={handleDeleteCategory}
             permissionsConfig={permissionsConfig}
@@ -863,6 +1164,11 @@ export default function App() {
             microsoftStatus={microsoftStatus}
             microsoftLoading={microsoftLoading}
             onMicrosoftRefresh={refreshMicrosoft}
+            emailAccounts={emailAccounts}
+            calendarAccounts={calendarAccounts}
+            usingRealMicrosoft={usingRealMicrosoft}
+            onShowCalendarAccount={handleShowCalendarAccount}
+            onShowToast={setToastMessage}
             onOpenBoard={() => setSection('board')}
             onEnterKiosk={() => setKioskMode(true)}
             sharedBoardCount={sharedBoardItems.length}
@@ -889,8 +1195,8 @@ export default function App() {
         categories={categories}
         defaultDate={section === 'today' ? new Date() : selectedDay}
         links={links}
-        emails={emails}
-        items={items}
+        emails={displayEmails}
+        items={displayCalendarItems}
         attachments={attachments}
         onAttachmentUploaded={handleAttachmentUploaded}
         itemShare={
@@ -916,9 +1222,9 @@ export default function App() {
         sourceType={linkPicker?.sourceType ?? 'email'}
         sourceId={linkPicker?.sourceId ?? ''}
         sourceLabel={linkPicker?.sourceLabel ?? ''}
-        items={items}
+        items={displayCalendarItems}
         categories={categories}
-        emails={emails}
+        emails={displayEmails}
         links={links}
         onClose={() => setLinkPicker(null)}
         onSelect={handleLinkExistingSelect}

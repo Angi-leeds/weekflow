@@ -50,6 +50,8 @@ export function linkTargetIcon(type: EntityType): string {
       return '📅'
     case 'task':
       return '✓'
+    case 'note':
+      return '📝'
     case 'folder_ref':
       return '📁'
     case 'board_pin':

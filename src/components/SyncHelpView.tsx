@@ -25,6 +25,12 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     notes: 'Tasks can live in Microsoft To Do or stay local until connected.',
   },
   {
+    dataType: 'Sticky notes (Outlook / Apple)',
+    safeAtSource: true,
+    weekflowOnly: false,
+    notes: 'Outlook Notes sync via Graph when connected. Share chosen notes to the family board like email.',
+  },
+  {
     dataType: 'Link graph',
     safeAtSource: false,
     weekflowOnly: true,

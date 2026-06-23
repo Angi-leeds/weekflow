@@ -4,6 +4,29 @@ import type { BoardDisplay } from "../../shared/itemShares";
 export function BoardPinCard({ item }: { item: SharedBoardItem }) {
   const display = item.boardDisplay;
 
+  if (item.itemType === "note") {
+    return (
+      <div
+        className="overflow-hidden rounded-xl border border-black/10 shadow-md"
+        style={{ backgroundColor: item.colour }}
+      >
+        <div className="px-2.5 py-2">
+          <p className="line-clamp-2 text-caption font-bold leading-tight text-wf-text">
+            {item.title}
+          </p>
+          {item.subtitle && (
+            <p className="mt-1 line-clamp-3 text-[10px] leading-snug text-wf-text/80">
+              {item.subtitle}
+            </p>
+          )}
+          {(display === "title_date" || item.dateLabel) && item.dateLabel && (
+            <p className="mt-1.5 text-[10px] font-medium text-wf-text-secondary">{item.dateLabel}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (display === "invite_card") {
     return (
       <div

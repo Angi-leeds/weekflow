@@ -1,4 +1,5 @@
 import type { CalendarItem } from './types'
+import { getTimeFormat } from './lib/appSettings'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_NAMES = [
@@ -149,7 +150,12 @@ export function formatWeekRange(weekStart: Date): string {
 
 export function formatTime(time: string): string {
   const [h, m] = time.split(':').map(Number)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  if (getTimeFormat() === '24h') {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+  const period = h >= 12 ? 'pm' : 'am'
+  const hour12 = h % 12 || 12
+  return `${hour12}:${String(m).padStart(2, '0')}${period}`
 }
 
 export function formatTimeRange(start?: string, end?: string): string {
@@ -158,10 +164,10 @@ export function formatTimeRange(start?: string, end?: string): string {
   return `${formatTime(start)} – ${formatTime(end)}`
 }
 
-export function getMonthGrid(year: number, month: number): (Date | null)[][] {
+export function getMonthGrid(year: number, month: number, weekStartsOn = 1): (Date | null)[][] {
   const first = new Date(year, month, 1)
   const last = new Date(year, month + 1, 0)
-  const startPad = (first.getDay() - 1 + 7) % 7
+  const startPad = (first.getDay() - weekStartsOn + 7) % 7
   const days: (Date | null)[] = []
 
   for (let i = 0; i < startPad; i++) days.push(null)

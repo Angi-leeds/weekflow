@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { CalendarFilter, CalendarViewMode, Category, ListDisplayOptions } from '../types'
+import type { CalendarFilter, CalendarViewMode, Category, EmailAccount, ListDisplayOptions } from '../types'
 import { formatMonthYear, formatWeekRange, isToday } from '../dateUtils'
 import { IconButton } from './ui/IconButton'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
@@ -15,6 +15,7 @@ interface CalendarNavProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   calendarFilter: CalendarFilter
+  calendarAccounts: EmailAccount[]
   onCalendarFilterChange: (filter: CalendarFilter) => void
   onListOptionsChange: (options: ListDisplayOptions) => void
   onPrevWeek: () => void
@@ -38,6 +39,7 @@ export function CalendarNav({
   categories,
   listOptions,
   calendarFilter,
+  calendarAccounts,
   onCalendarFilterChange,
   onListOptionsChange,
   onPrevWeek,
@@ -98,7 +100,11 @@ export function CalendarNav({
       </div>
 
       {isWeekBased && (
-        <CalendarAccountFilter filter={calendarFilter} onChange={onCalendarFilterChange} />
+        <CalendarAccountFilter
+          filter={calendarFilter}
+          accounts={calendarAccounts}
+          onChange={onCalendarFilterChange}
+        />
       )}
     </div>
   )

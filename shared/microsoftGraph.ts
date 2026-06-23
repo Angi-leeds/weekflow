@@ -5,6 +5,7 @@ export const MICROSOFT_GRAPH_SCOPES = [
   "Mail.Send",
   "Calendars.ReadWrite",
   "Tasks.ReadWrite",
+  "Notes.ReadWrite",
   "Files.Read.All",
 ] as const;
 

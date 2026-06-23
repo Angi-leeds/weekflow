@@ -4,7 +4,9 @@ import {
   LayoutGrid,
   Mail,
   Settings,
+  StickyNote,
   Sun,
+  Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { AppSection } from '../types'
@@ -20,6 +22,8 @@ const TABS: { id: AppSection; label: string; icon: LucideIcon; activeIcon?: Luci
   { id: 'planner', label: 'Planner', icon: CheckSquare },
   { id: 'board', label: 'Board', icon: LayoutGrid },
   { id: 'email', label: 'Email', icon: Mail },
+  { id: 'contacts', label: 'Contacts', icon: Users },
+  { id: 'notes', label: 'Notes', icon: StickyNote },
   { id: 'today', label: 'Today', icon: Sun },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]

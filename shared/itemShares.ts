@@ -1,4 +1,4 @@
-export type ShareEntityType = "email" | "calendar" | "task";
+export type ShareEntityType = "email" | "calendar" | "task" | "note";
 
 export type BoardDisplay = "title_only" | "title_date" | "title_photo" | "invite_card";
 

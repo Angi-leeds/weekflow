@@ -11,7 +11,7 @@ import {
   updateBoardPin,
 } from "../services/board-pin-service";
 
-const SHARE_ENTITY_TYPES = new Set(["email", "calendar", "task"]);
+const SHARE_ENTITY_TYPES = new Set(["email", "calendar", "task", "note"]);
 
 function isCreateBoardPinInput(body: unknown): body is CreateBoardPinInput {
   if (!body || typeof body !== "object") return false;

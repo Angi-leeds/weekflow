@@ -8,9 +8,14 @@ import {
   getAppBaseUrl,
 } from "../services/microsoft-auth-service";
 import {
+  createMicrosoftNote,
   createMicrosoftTodoTask,
+  deleteMicrosoftNote,
+  fetchMicrosoftCalendarEvents,
   fetchMicrosoftMessages,
+  fetchMicrosoftNotes,
   syncCalendarItemToMicrosoft,
+  updateMicrosoftNote,
 } from "../services/microsoft-graph-service";
 import {
   deleteConnectedAccount,
@@ -109,6 +114,26 @@ export function registerMicrosoftRoutes(app: Express): void {
     }
   });
 
+  app.get("/api/microsoft/calendar", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    const startDate = typeof req.query.startDate === "string" ? req.query.startDate : undefined;
+    const endDate = typeof req.query.endDate === "string" ? req.query.endDate : undefined;
+
+    try {
+      const events = await fetchMicrosoftCalendarEvents(accountId, startDate, endDate);
+      res.json(events);
+    } catch (error) {
+      console.error("GET /api/microsoft/calendar failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch Outlook calendar";
+      res.status(500).json({ message });
+    }
+  });
+
   app.post("/api/microsoft/calendar/sync", async (req, res) => {
     const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
     const item = req.body?.item as CalendarSyncInput | undefined;
@@ -147,6 +172,83 @@ export function registerMicrosoftRoutes(app: Express): void {
     } catch (error) {
       console.error("POST /api/microsoft/todo failed:", error);
       const message = error instanceof Error ? error.message : "Failed to create To Do task";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/notes", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const notes = await fetchMicrosoftNotes(accountId);
+      res.json(notes);
+    } catch (error) {
+      console.error("GET /api/microsoft/notes failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch Outlook notes";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/microsoft/notes", async (req, res) => {
+    const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
+    const title = typeof req.body?.title === "string" ? req.body.title : null;
+    const body = typeof req.body?.body === "string" ? req.body.body : "";
+
+    if (!accountId || !title) {
+      res.status(400).json({ message: "Invalid note payload" });
+      return;
+    }
+
+    try {
+      const result = await createMicrosoftNote(accountId, { title, body });
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("POST /api/microsoft/notes failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to create Outlook note";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.patch("/api/microsoft/notes/:externalId", async (req, res) => {
+    const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
+    const title = typeof req.body?.title === "string" ? req.body.title : null;
+    const body = typeof req.body?.body === "string" ? req.body.body : "";
+    const { externalId } = req.params;
+
+    if (!accountId || !title || !externalId) {
+      res.status(400).json({ message: "Invalid note update payload" });
+      return;
+    }
+
+    try {
+      await updateMicrosoftNote(accountId, externalId, { title, body });
+      res.status(204).send();
+    } catch (error) {
+      console.error("PATCH /api/microsoft/notes/:externalId failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to update Outlook note";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.delete("/api/microsoft/notes/:externalId", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const { externalId } = req.params;
+
+    if (!accountId || !externalId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      await deleteMicrosoftNote(accountId, externalId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("DELETE /api/microsoft/notes/:externalId failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to delete Outlook note";
       res.status(500).json({ message });
     }
   });

@@ -1,7 +1,23 @@
-import { useMemo, useState } from 'react'
-import type { CalendarItem, Category, ListDisplayOptions } from '../types'
-import { LIST_GROUP_LABELS, LIST_SORT_LABELS } from '../types'
-import { MOCK_CALENDAR_ACCOUNTS, MOCK_EMAIL_ACCOUNTS } from '../mockData'
+import { useMemo, useRef, useState } from 'react'
+import type {
+  CalendarItem,
+  CalendarPreferences,
+  Category,
+  EmailAccount,
+  IntegrationPreferences,
+  ListDisplayOptions,
+  ListGroupBy,
+  ListSortBy,
+  WeekStartsOn,
+} from '../types'
+import {
+  DEFAULT_VIEW_LABELS,
+  LIST_GROUP_LABELS,
+  LIST_SORT_LABELS,
+  SETTINGS_DEFAULT_VIEWS,
+  TIME_FORMAT_LABELS,
+  WEEK_START_LABELS,
+} from '../types'
 import { MOCK_HOUSEHOLD_MEMBERS } from '../../shared/householdPermissions'
 import type { HouseholdPermissionsConfig } from '../lib/householdPermissions'
 import type { MicrosoftIntegrationStatus } from '../../shared/microsoftGraph'
@@ -12,12 +28,23 @@ import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
+import {
+  SettingsActionRow,
+  SettingsCategoryFilterRow,
+  SettingsIntegrationRow,
+  SettingsSelectRow,
+  SettingsToggleRow,
+} from './ui/SettingsControls'
 
 interface SettingsViewProps {
   categories: Category[]
   items: CalendarItem[]
   listOptions: ListDisplayOptions
   onListOptionsChange: (options: ListDisplayOptions) => void
+  calendarPreferences: CalendarPreferences
+  onCalendarPreferencesChange: (prefs: CalendarPreferences) => void
+  integrationPreferences: IntegrationPreferences
+  onIntegrationPreferencesChange: (prefs: IntegrationPreferences) => void
   onSaveCategory: (category: Category) => void
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
@@ -25,16 +52,28 @@ interface SettingsViewProps {
   microsoftStatus: MicrosoftIntegrationStatus | null
   microsoftLoading: boolean
   onMicrosoftRefresh: () => void
+  emailAccounts: EmailAccount[]
+  calendarAccounts: EmailAccount[]
+  usingRealMicrosoft: boolean
+  onShowCalendarAccount: (accountId: string) => void
+  onShowToast?: (message: string) => void
   onOpenBoard?: () => void
   onEnterKiosk?: () => void
   sharedBoardCount?: number
 }
+
+const GROUP_OPTIONS: ListGroupBy[] = ['none', 'category', 'time', 'kind']
+const SORT_OPTIONS: ListSortBy[] = ['time', 'alpha']
 
 export function SettingsView({
   categories,
   items,
   listOptions,
   onListOptionsChange,
+  calendarPreferences,
+  onCalendarPreferencesChange,
+  integrationPreferences,
+  onIntegrationPreferencesChange,
   onSaveCategory,
   onDeleteCategory,
   permissionsConfig,
@@ -42,6 +81,11 @@ export function SettingsView({
   microsoftStatus,
   microsoftLoading,
   onMicrosoftRefresh,
+  emailAccounts,
+  calendarAccounts,
+  usingRealMicrosoft,
+  onShowCalendarAccount,
+  onShowToast,
   onOpenBoard,
   onEnterKiosk,
   sharedBoardCount = 0,
@@ -49,10 +93,7 @@ export function SettingsView({
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const [showSyncHelp, setShowSyncHelp] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
-  const categorySummary =
-    listOptions.categoryFilter && listOptions.categoryFilter.length > 0
-      ? `${listOptions.categoryFilter.length} selected`
-      : 'All'
+  const outlookPanelRef = useRef<HTMLDivElement>(null)
 
   const itemCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -61,6 +102,14 @@ export function SettingsView({
     }
     return counts
   }, [items])
+
+  const scrollToOutlook = () => {
+    outlookPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const showPhase10Toast = (name: string) => {
+    onShowToast?.(`${name} is planned for Phase 10`)
+  }
 
   if (showSyncHelp) {
     return <SyncHelpView onBack={() => setShowSyncHelp(false)} />
@@ -102,35 +151,76 @@ export function SettingsView({
       </SettingsGroup>
 
       <SettingsGroup title="List display">
-        <SettingsRow label="Group by" value={LIST_GROUP_LABELS[listOptions.groupBy]} />
-        <SettingsRow label="Sort" value={LIST_SORT_LABELS[listOptions.sortBy]} />
-        <SettingsRow label="Categories shown" value={categorySummary} />
-        <SettingsRow label="Hide completed" value={listOptions.hideCompleted ? 'On' : 'Off'} />
+        <SettingsSelectRow
+          label="Group by"
+          value={listOptions.groupBy}
+          options={GROUP_OPTIONS.map((key) => ({ value: key, label: LIST_GROUP_LABELS[key] }))}
+          onChange={(groupBy) => onListOptionsChange({ ...listOptions, groupBy })}
+        />
+        <SettingsSelectRow
+          label="Sort"
+          value={listOptions.sortBy}
+          options={SORT_OPTIONS.map((key) => ({ value: key, label: LIST_SORT_LABELS[key] }))}
+          onChange={(sortBy) => onListOptionsChange({ ...listOptions, sortBy })}
+        />
+        <SettingsCategoryFilterRow
+          categories={categories}
+          categoryFilter={listOptions.categoryFilter}
+          onChange={(categoryFilter) => onListOptionsChange({ ...listOptions, categoryFilter })}
+        />
+        <SettingsToggleRow
+          label="Hide completed"
+          checked={listOptions.hideCompleted}
+          onChange={(hideCompleted) => onListOptionsChange({ ...listOptions, hideCompleted })}
+        />
       </SettingsGroup>
 
       <SettingsGroup title="Calendar">
-        <SettingsRow label="Default view" value="Week list" />
-        <SettingsRow label="Week starts on" value="Monday" />
-        <SettingsRow label="Time format" value="24 hour" />
+        <SettingsSelectRow
+          label="Default view"
+          value={calendarPreferences.defaultView}
+          options={SETTINGS_DEFAULT_VIEWS.map((mode) => ({
+            value: mode,
+            label: DEFAULT_VIEW_LABELS[mode],
+          }))}
+          onChange={(defaultView) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, defaultView })
+          }
+        />
+        <SettingsSelectRow
+          label="Week starts on"
+          value={calendarPreferences.weekStartsOn}
+          options={([0, 1] as WeekStartsOn[]).map((value) => ({
+            value,
+            label: WEEK_START_LABELS[value],
+          }))}
+          onChange={(weekStartsOn) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, weekStartsOn })
+          }
+        />
+        <SettingsSelectRow
+          label="Time format"
+          value={calendarPreferences.timeFormat}
+          options={(['24h', '12h'] as const).map((value) => ({
+            value,
+            label: TIME_FORMAT_LABELS[value],
+          }))}
+          onChange={(timeFormat) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, timeFormat })
+          }
+        />
         <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          Mock connected calendars — filter by account in week view.
+          {usingRealMicrosoft
+            ? 'Tap a calendar to filter the week view to that account.'
+            : 'Demo calendars — tap to preview the account filter.'}
         </p>
-        {MOCK_CALENDAR_ACCOUNTS.map((account) => (
-          <div
+        {calendarAccounts.map((account) => (
+          <SettingsActionRow
             key={account.id}
-            className="flex items-center gap-3 border-b border-wf-border/50 px-4 py-3.5 last:border-0"
-          >
-            <span
-              className="h-3 w-3 shrink-0 rounded-full"
-              style={{ backgroundColor: account.colour }}
-              aria-hidden
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-body font-medium text-wf-text">{account.label}</p>
-              <p className="truncate text-caption text-wf-text-tertiary">{account.email}</p>
-            </div>
-            <span className="shrink-0 text-caption font-medium text-wf-green">Connected</span>
-          </div>
+            label={account.label}
+            value={usingRealMicrosoft ? account.email : 'Demo · tap to filter'}
+            onClick={() => onShowCalendarAccount(account.id)}
+          />
         ))}
       </SettingsGroup>
 
@@ -227,39 +317,94 @@ export function SettingsView({
       </SettingsGroup>
 
       <SettingsGroup title="Email">
-        <MicrosoftConnectPanel
-          status={microsoftStatus}
-          loading={microsoftLoading}
-          onRefresh={onMicrosoftRefresh}
+        <div ref={outlookPanelRef}>
+          <MicrosoftConnectPanel
+            status={microsoftStatus}
+            loading={microsoftLoading}
+            onRefresh={onMicrosoftRefresh}
+          />
+        </div>
+
+        {!usingRealMicrosoft && !microsoftStatus?.configured && (
+          <>
+            <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+              Demo inboxes — tap to jump to Outlook setup above.
+            </p>
+            {emailAccounts.map((account) => (
+              <SettingsActionRow
+                key={account.id}
+                label={account.label}
+                value={`${account.email} · Demo`}
+                onClick={scrollToOutlook}
+              />
+            ))}
+          </>
+        )}
+
+        <SettingsIntegrationRow
+          label="Gmail"
+          description="Google mail and calendar sync."
+          phaseLabel="Phase 10"
+          notifyChecked={integrationPreferences.googleInterest}
+          onNotifyChange={(googleInterest) =>
+            onIntegrationPreferencesChange({ ...integrationPreferences, googleInterest })
+          }
+          onConnect={() => showPhase10Toast('Gmail')}
         />
-        <p className="px-4 pb-2 pt-1 text-caption text-wf-text-tertiary">
-          Mock accounts remain for demo. Connected Outlook mail merges into the inbox.
-        </p>
-        {MOCK_EMAIL_ACCOUNTS.map((account) => (
-          <div
-            key={account.id}
-            className="flex items-center gap-3 border-b border-wf-border/50 px-4 py-3.5 last:border-0"
-          >
-            <span
-              className="h-3 w-3 shrink-0 rounded-full"
-              style={{ backgroundColor: account.colour }}
-              aria-hidden
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-body font-medium text-wf-text">{account.label}</p>
-              <p className="truncate text-caption text-wf-text-tertiary">{account.email}</p>
-            </div>
-            <span className="shrink-0 text-caption font-medium text-wf-green">Connected</span>
-          </div>
-        ))}
-        <SettingsRow label="Gmail (add account)" value="Phase 10" muted />
-        <SettingsRow label="Apple Mail" value="Phase 10" muted />
+        <SettingsIntegrationRow
+          label="Apple Mail"
+          description="iCloud mail with hyperlink fallbacks where APIs are limited."
+          phaseLabel="Phase 10"
+          notifyChecked={integrationPreferences.appleInterest}
+          onNotifyChange={(appleInterest) =>
+            onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
+          }
+          onConnect={() => showPhase10Toast('Apple Mail')}
+        />
       </SettingsGroup>
 
       <SettingsGroup title="Integrations">
-        <SettingsRow label="Apple Calendar" value="Coming soon" muted />
-        <SettingsRow label="Google Calendar" value="Coming soon" muted />
-        <SettingsRow label="Notifications" value="Coming soon" muted />
+        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+          Outlook sticky notes sync when connected (Notes tab). Contacts import is a future Graph update.
+        </p>
+        <SettingsIntegrationRow
+          label="Google Calendar"
+          description="Sync events from Google Calendar accounts."
+          phaseLabel="Phase 10"
+          notifyChecked={integrationPreferences.googleInterest}
+          onNotifyChange={(googleInterest) =>
+            onIntegrationPreferencesChange({ ...integrationPreferences, googleInterest })
+          }
+          onConnect={() => showPhase10Toast('Google Calendar')}
+        />
+        <SettingsIntegrationRow
+          label="Apple Calendar"
+          description="Subscribe to iCloud calendars where supported."
+          phaseLabel="Phase 10"
+          notifyChecked={integrationPreferences.appleInterest}
+          onNotifyChange={(appleInterest) =>
+            onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
+          }
+          onConnect={() => showPhase10Toast('Apple Calendar')}
+        />
+        <SettingsIntegrationRow
+          label="Apple Notes"
+          description="No public iCloud Notes API — device export or deep links in Phase 10."
+          phaseLabel="Phase 10"
+          notifyChecked={integrationPreferences.appleInterest}
+          onNotifyChange={(appleInterest) =>
+            onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
+          }
+          onConnect={() => showPhase10Toast('Apple Notes')}
+        />
+        <SettingsToggleRow
+          label="Push notifications"
+          description="Reminders and household updates (Phase 10)."
+          checked={integrationPreferences.notificationsEnabled}
+          onChange={(notificationsEnabled) =>
+            onIntegrationPreferencesChange({ ...integrationPreferences, notificationsEnabled })
+          }
+        />
       </SettingsGroup>
 
       <SettingsGroup title="About">

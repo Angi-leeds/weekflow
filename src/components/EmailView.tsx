@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarPlus,
   ChevronLeft,
@@ -17,10 +17,8 @@ import type { CalendarItem, EmailMessage } from '../types'
 import { useIsWide } from '../hooks/useMediaQuery'
 import {
   EMAIL_CATEGORIES,
-  getEmailAccount,
-  MOCK_EMAIL_ACCOUNTS,
-  MOCK_EMAIL_FOLDERS,
 } from '../mockData'
+import type { EmailAccount, EmailFolder } from '../types'
 import { getShareForEntity } from '../lib/itemShares'
 import { Badge } from './ui/Badge'
 import { LinkChips } from './LinkChips'
@@ -33,6 +31,10 @@ type InboxFilter =
 
 interface EmailViewProps {
   emails: EmailMessage[]
+  emailAccounts: EmailAccount[]
+  emailFolders: EmailFolder[]
+  initialSearch?: string
+  onClearInitialSearch?: () => void
   selectedId?: string | null
   onSelectedIdChange?: (id: string | null) => void
   links: ItemLink[]
@@ -50,6 +52,10 @@ interface EmailViewProps {
 
 export function EmailView({
   emails,
+  emailAccounts,
+  emailFolders,
+  initialSearch,
+  onClearInitialSearch,
   selectedId: controlledSelectedId,
   onSelectedIdChange,
   links,
@@ -76,19 +82,26 @@ export function EmailView({
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>({ mode: 'merged' })
   const isWide = useIsWide()
 
+  useEffect(() => {
+    if (initialSearch) {
+      setSearch(initialSearch)
+      onClearInitialSearch?.()
+    }
+  }, [initialSearch, onClearInitialSearch])
+
   const activeAccountId =
     inboxFilter.mode === 'account'
       ? inboxFilter.accountId
       : inboxFilter.mode === 'folder'
-        ? MOCK_EMAIL_FOLDERS.find((folder) => folder.id === inboxFilter.folderId)?.accountId
+        ? emailFolders.find((folder) => folder.id === inboxFilter.folderId)?.accountId
         : null
 
   const accountFolders = useMemo(
     () =>
       activeAccountId
-        ? MOCK_EMAIL_FOLDERS.filter((folder) => folder.accountId === activeAccountId)
+        ? emailFolders.filter((folder) => folder.accountId === activeAccountId)
         : [],
-    [activeAccountId],
+    [activeAccountId, emailFolders],
   )
 
   const filtered = useMemo(() => {
@@ -162,7 +175,7 @@ export function EmailView({
             label="All accounts"
             onClick={() => setInboxFilter({ mode: 'merged' })}
           />
-          {MOCK_EMAIL_ACCOUNTS.map((account) => (
+          {emailAccounts.map((account) => (
             <FilterChip
               key={account.id}
               active={
@@ -224,6 +237,7 @@ export function EmailView({
               <EmailRow
                 key={email.id}
                 email={email}
+                emailAccounts={emailAccounts}
                 selected={selected?.id === email.id}
                 showAccountBadge={inboxFilter.mode === 'merged'}
                 onSelect={() => {
@@ -295,18 +309,22 @@ function FilterChip({
 
 function EmailRow({
   email,
+  emailAccounts,
   selected,
   showAccountBadge,
   onSelect,
   onToggleStar,
 }: {
   email: EmailMessage
+  emailAccounts: EmailAccount[]
   selected: boolean
   showAccountBadge?: boolean
   onSelect: () => void
   onToggleStar: () => void
 }) {
-  const account = showAccountBadge ? getEmailAccount(email.accountId) : undefined
+  const account = showAccountBadge
+    ? emailAccounts.find((entry) => entry.id === email.accountId)
+    : undefined
 
   return (
     <div

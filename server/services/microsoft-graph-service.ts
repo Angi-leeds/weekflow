@@ -3,6 +3,7 @@ import path from "path";
 import type { GraphCalendarEventResult } from "../../shared/microsoftGraph";
 import { MICROSOFT_GRAPH_BASE } from "../../shared/microsoftGraph";
 import {
+  type ConnectedAccountRecord,
   getConnectedAccountRecord,
   getProviderMapping,
   updateConnectedAccountTokens,
@@ -25,6 +26,31 @@ interface GraphMessage {
   flag?: { flagStatus?: string };
 }
 
+interface GraphNote {
+  id: string;
+  subject?: string;
+  bodyPreview?: string;
+  body?: { contentType?: string; content?: string };
+  createdDateTime?: string;
+  lastModifiedDateTime?: string;
+  categories?: string[];
+}
+
+export interface GraphNoteDto {
+  id: string;
+  title: string;
+  body: string;
+  preview: string;
+  createdAt: string;
+  updatedAt: string;
+  categories: string[];
+  colour: string;
+  accountId: string;
+  externalId: string;
+  provider: "microsoft";
+  connectedAccountId: string;
+}
+
 export interface GraphEmailDto {
   id: string;
   accountId: string;
@@ -43,6 +69,33 @@ export interface GraphEmailDto {
   labels: string[];
   externalId: string;
   provider: "microsoft";
+}
+
+interface GraphEvent {
+  id: string;
+  subject?: string;
+  bodyPreview?: string;
+  start?: { dateTime?: string; timeZone?: string };
+  end?: { dateTime?: string; timeZone?: string };
+  isAllDay?: boolean;
+  webLink?: string;
+}
+
+export interface GraphCalendarItemDto {
+  id: string;
+  title: string;
+  date: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  categoryId: string;
+  colour: string;
+  notes?: string;
+  accountId: string;
+  externalId: string;
+  provider: "microsoft";
+  connectedAccountId: string;
 }
 
 export interface CalendarSyncInput {
@@ -93,9 +146,82 @@ async function graphFetch(accountId: string, path: string, init?: RequestInit): 
   return response;
 }
 
+function parseGraphEventDateTime(dateTime: string | undefined): { date: string; time?: string } {
+  if (!dateTime) {
+    const today = new Date().toISOString().slice(0, 10);
+    return { date: today };
+  }
+
+  const [datePart, timePart] = dateTime.split("T");
+  const time = timePart?.slice(0, 5);
+  return { date: datePart, time: time && time !== "00:00" ? time : undefined };
+}
+
+function subtractOneDayIso(date: string): string {
+  const value = new Date(`${date}T12:00:00`);
+  value.setDate(value.getDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
+function mapGraphEventToDto(event: GraphEvent, account: ConnectedAccountRecord): GraphCalendarItemDto {
+  const accountKey = `ms-${account.id}`;
+  const allDay = Boolean(event.isAllDay);
+  const start = parseGraphEventDateTime(event.start?.dateTime);
+  const end = parseGraphEventDateTime(event.end?.dateTime);
+
+  let endDate: string | undefined;
+  if (allDay && end.date > start.date) {
+    endDate = subtractOneDayIso(end.date);
+  } else if (!allDay && end.date > start.date) {
+    endDate = end.date;
+  }
+
+  return {
+    id: `graph-${event.id}`,
+    title: event.subject ?? "(No title)",
+    date: start.date,
+    endDate,
+    startTime: allDay ? undefined : start.time,
+    endTime: allDay ? undefined : end.time,
+    allDay,
+    categoryId: "work",
+    colour: "#C45C4A",
+    notes: event.bodyPreview,
+    accountId: accountKey,
+    externalId: event.id,
+    provider: "microsoft",
+    connectedAccountId: account.id,
+  };
+}
+
+export async function fetchMicrosoftCalendarEvents(
+  accountId: string,
+  startDate?: string,
+  endDate?: string,
+): Promise<GraphCalendarItemDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const start = startDate ?? addDaysIso(new Date().toISOString().slice(0, 10), -30);
+  const end = endDate ?? addDaysIso(new Date().toISOString().slice(0, 10), 90);
+
+  const params = new URLSearchParams({
+    startDateTime: `${start}T00:00:00`,
+    endDateTime: `${end}T23:59:59`,
+    $top: "250",
+    $orderby: "start/dateTime",
+    $select: "id,subject,bodyPreview,start,end,isAllDay,webLink",
+  });
+
+  const response = await graphFetch(accountId, `/me/calendarView?${params.toString()}`);
+  const payload = (await response.json()) as { value?: GraphEvent[] };
+
+  return (payload.value ?? []).map((event) => mapGraphEventToDto(event, account));
+}
+
 export async function fetchMicrosoftMessages(
   accountId: string,
-  top = 25,
+  top = 50,
 ): Promise<GraphEmailDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
@@ -129,6 +255,112 @@ export async function fetchMicrosoftMessages(
     externalId: message.id,
     provider: "microsoft",
   }));
+}
+
+const OUTLOOK_NOTE_COLOUR = "#FFF4B8";
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function noteBodyText(note: GraphNote): string {
+  const raw = note.body?.content ?? note.bodyPreview ?? "";
+  if (note.body?.contentType?.toLowerCase() === "html") {
+    return stripHtml(raw);
+  }
+  return raw.trim();
+}
+
+function mapGraphNoteToDto(note: GraphNote, account: ConnectedAccountRecord): GraphNoteDto {
+  const accountKey = `ms-${account.id}`;
+  const body = noteBodyText(note);
+  const title = note.subject?.trim() || body.split("\n")[0]?.slice(0, 80) || "(Untitled note)";
+
+  return {
+    id: `graph-note-${note.id}`,
+    title,
+    body,
+    preview: note.bodyPreview ?? body.split("\n")[0] ?? "",
+    createdAt: note.createdDateTime ?? new Date().toISOString(),
+    updatedAt: note.lastModifiedDateTime ?? note.createdDateTime ?? new Date().toISOString(),
+    categories: note.categories ?? [],
+    colour: OUTLOOK_NOTE_COLOUR,
+    accountId: accountKey,
+    externalId: note.id,
+    provider: "microsoft",
+    connectedAccountId: account.id,
+  };
+}
+
+export async function fetchMicrosoftNotes(
+  accountId: string,
+  top = 100,
+): Promise<GraphNoteDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const params = new URLSearchParams({
+    $top: String(top),
+    $orderby: "lastModifiedDateTime desc",
+    $select: "id,subject,bodyPreview,body,createdDateTime,lastModifiedDateTime,categories",
+  });
+
+  const response = await graphFetch(accountId, `/me/outlook/notes?${params.toString()}`);
+  const payload = (await response.json()) as { value?: GraphNote[] };
+
+  return (payload.value ?? []).map((note) => mapGraphNoteToDto(note, account));
+}
+
+export async function createMicrosoftNote(
+  accountId: string,
+  input: { title: string; body: string },
+): Promise<{ externalId: string }> {
+  const response = await graphFetch(accountId, "/me/outlook/notes", {
+    method: "POST",
+    body: JSON.stringify({
+      subject: input.title,
+      body: {
+        contentType: "Text",
+        content: input.body,
+      },
+    }),
+  });
+  const note = (await response.json()) as { id: string };
+  return { externalId: note.id };
+}
+
+export async function updateMicrosoftNote(
+  accountId: string,
+  externalId: string,
+  input: { title: string; body: string },
+): Promise<void> {
+  await graphFetch(accountId, `/me/outlook/notes/${externalId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      subject: input.title,
+      body: {
+        contentType: "Text",
+        content: input.body,
+      },
+    }),
+  });
+}
+
+export async function deleteMicrosoftNote(
+  accountId: string,
+  externalId: string,
+): Promise<void> {
+  await graphFetch(accountId, `/me/outlook/notes/${externalId}`, {
+    method: "DELETE",
+  });
 }
 
 function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {

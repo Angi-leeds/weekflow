@@ -1,13 +1,13 @@
-import { MOCK_CALENDAR_ACCOUNTS } from "../mockData";
-import type { CalendarFilter } from "../types";
+import type { CalendarFilter, EmailAccount } from "../types";
 
 interface CalendarAccountFilterProps {
   filter: CalendarFilter;
+  accounts: EmailAccount[];
   onChange: (filter: CalendarFilter) => void;
   showAccountBadge?: boolean;
 }
 
-export function CalendarAccountFilter({ filter, onChange }: CalendarAccountFilterProps) {
+export function CalendarAccountFilter({ filter, accounts = [], onChange }: CalendarAccountFilterProps) {
   return (
     <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <FilterChip
@@ -15,7 +15,7 @@ export function CalendarAccountFilter({ filter, onChange }: CalendarAccountFilte
         label="All calendars"
         onClick={() => onChange({ mode: "merged" })}
       />
-      {MOCK_CALENDAR_ACCOUNTS.map((account) => (
+      {accounts.map((account) => (
         <FilterChip
           key={account.id}
           active={filter.mode === "account" && filter.accountId === account.id}

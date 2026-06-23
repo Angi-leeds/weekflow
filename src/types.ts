@@ -9,7 +9,7 @@ export type CalendarViewMode =
   | 'agenda'
   | 'year'
 
-export type AppSection = 'calendar' | 'planner' | 'board' | 'email' | 'today' | 'settings'
+export type AppSection = 'calendar' | 'planner' | 'board' | 'email' | 'contacts' | 'notes' | 'today' | 'settings'
 
 export type ListGroupBy = 'none' | 'category' | 'time' | 'kind'
 
@@ -48,6 +48,63 @@ export const LIST_GROUP_LABELS: Record<ListGroupBy, string> = {
 export const LIST_SORT_LABELS: Record<ListSortBy, string> = {
   time: 'By time',
   alpha: 'A – Z',
+}
+
+export type TimeFormat = '12h' | '24h'
+
+export type WeekStartsOn = 0 | 1
+
+export const TIME_FORMAT_LABELS: Record<TimeFormat, string> = {
+  '12h': '12 hour',
+  '24h': '24 hour',
+}
+
+export const WEEK_START_LABELS: Record<WeekStartsOn, string> = {
+  0: 'Sunday',
+  1: 'Monday',
+}
+
+export const DEFAULT_VIEW_LABELS: Record<CalendarViewMode, string> = {
+  'week-list': 'Week list',
+  'week-board': 'Week board',
+  'week-timeline': 'Week timeline',
+  day: 'Day',
+  month: 'Month',
+  agenda: 'Agenda',
+  year: 'Year',
+}
+
+export const SETTINGS_DEFAULT_VIEWS: CalendarViewMode[] = [
+  'week-list',
+  'week-board',
+  'week-timeline',
+  'day',
+  'month',
+  'agenda',
+]
+
+export interface CalendarPreferences {
+  defaultView: CalendarViewMode
+  weekStartsOn: WeekStartsOn
+  timeFormat: TimeFormat
+}
+
+export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
+  defaultView: 'week-list',
+  weekStartsOn: 1,
+  timeFormat: '24h',
+}
+
+export interface IntegrationPreferences {
+  googleInterest: boolean
+  appleInterest: boolean
+  notificationsEnabled: boolean
+}
+
+export const DEFAULT_INTEGRATION_PREFERENCES: IntegrationPreferences = {
+  googleInterest: false,
+  appleInterest: false,
+  notificationsEnabled: false,
 }
 
 export interface CalendarItem {
@@ -110,4 +167,51 @@ export interface EmailMessage {
   externalId?: string
   provider?: 'microsoft' | 'mock'
   connectedAccountId?: string
+}
+
+export type NoteSource = 'local' | 'mock' | 'microsoft' | 'apple'
+
+export type NotesViewMode = 'icons' | 'list'
+
+export interface Note {
+  id: string
+  title: string
+  body: string
+  createdAt: string
+  updatedAt: string
+  categories?: string[]
+  /** Sticky-note accent (Outlook-style yellow by default). */
+  colour?: string
+  source?: NoteSource
+  accountId?: string
+  externalId?: string
+  connectedAccountId?: string
+  provider?: 'microsoft' | 'local' | 'mock'
+}
+
+export type ContactSource = 'local' | 'mock' | 'microsoft' | 'household'
+
+export interface Contact {
+  id: string
+  name: string
+  jobTitle?: string
+  company?: string
+  department?: string
+  email?: string
+  emailSecondary?: string
+  /** Business phone */
+  phone?: string
+  mobilePhone?: string
+  homePhone?: string
+  website?: string
+  /** Multi-line postal address */
+  address?: string
+  /** ISO date YYYY-MM-DD */
+  birthday?: string
+  notes?: string
+  categories?: string[]
+  starred?: boolean
+  household?: boolean
+  source?: ContactSource
+  externalId?: string
 }

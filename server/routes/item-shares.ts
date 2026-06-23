@@ -6,7 +6,7 @@ import {
   upsertItemShare,
 } from "../services/item-share-service";
 
-const SHARE_ENTITY_TYPES = new Set(["email", "calendar", "task"]);
+const SHARE_ENTITY_TYPES = new Set(["email", "calendar", "task", "note"]);
 const BOARD_DISPLAYS = new Set(["title_only", "title_date", "title_photo", "invite_card"]);
 
 function isUpsertItemShareInput(body: unknown): body is UpsertItemShareInput {
