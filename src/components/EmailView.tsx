@@ -11,19 +11,47 @@ import {
   Star,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { EmailMessage } from '../types'
+import type { EntityType, ItemLink } from '../../shared/links'
+import type { CalendarItem, EmailMessage } from '../types'
 import { useIsWide } from '../hooks/useMediaQuery'
 import { EMAIL_CATEGORIES } from '../mockData'
 import { Badge } from './ui/Badge'
+import { LinkChips } from './LinkChips'
 
 interface EmailViewProps {
   emails: EmailMessage[]
+  selectedId?: string | null
+  onSelectedIdChange?: (id: string | null) => void
+  links: ItemLink[]
+  items: CalendarItem[]
   onToggleStar: (id: string) => void
   onToggleRead: (id: string) => void
+  onCreateTask: (email: EmailMessage) => void
+  onLinkExisting: (email: EmailMessage) => void
+  onNavigateLink: (type: EntityType, id: string) => void
+  onRemoveLink?: (linkId: string) => void
 }
 
-export function EmailView({ emails, onToggleStar, onToggleRead }: EmailViewProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(emails[0]?.id ?? null)
+export function EmailView({
+  emails,
+  selectedId: controlledSelectedId,
+  onSelectedIdChange,
+  links,
+  items,
+  onToggleStar,
+  onToggleRead,
+  onCreateTask,
+  onLinkExisting,
+  onNavigateLink,
+  onRemoveLink,
+}: EmailViewProps) {
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(emails[0]?.id ?? null)
+  const selectedId = controlledSelectedId ?? internalSelectedId
+
+  const setSelectedId = (id: string | null) => {
+    if (onSelectedIdChange) onSelectedIdChange(id)
+    else setInternalSelectedId(id)
+  }
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const isWide = useIsWide()
@@ -127,8 +155,15 @@ export function EmailView({ emails, onToggleStar, onToggleRead }: EmailViewProps
         {(isWide || selected) && (
           <MessagePreview
             email={selected}
+            links={links}
+            items={items}
+            emails={emails}
             onClose={isWide ? undefined : () => setSelectedId(null)}
             onToggleStar={selected ? () => onToggleStar(selected.id) : undefined}
+            onCreateTask={onCreateTask}
+            onLinkExisting={onLinkExisting}
+            onNavigateLink={onNavigateLink}
+            onRemoveLink={onRemoveLink}
           />
         )}
       </div>
@@ -232,12 +267,26 @@ function Avatar({ name }: { name: string }) {
 
 function MessagePreview({
   email,
+  links,
+  items,
+  emails,
   onClose,
   onToggleStar,
+  onCreateTask,
+  onLinkExisting,
+  onNavigateLink,
+  onRemoveLink,
 }: {
   email: EmailMessage | null
+  links: ItemLink[]
+  items: CalendarItem[]
+  emails: EmailMessage[]
   onClose?: () => void
   onToggleStar?: () => void
+  onCreateTask: (email: EmailMessage) => void
+  onLinkExisting: (email: EmailMessage) => void
+  onNavigateLink: (type: EntityType, id: string) => void
+  onRemoveLink?: (linkId: string) => void
 }) {
   if (!email) {
     return (
@@ -264,12 +313,28 @@ function MessagePreview({
             <span />
           )}
           <div className="flex gap-1.5">
-            <ActionChip icon={ClipboardList} label="Task" />
-            <ActionChip icon={CalendarPlus} label="Event" />
-            <ActionChip icon={Clock} label="Snooze" />
+            <ActionChip
+              icon={ClipboardList}
+              label="Task"
+              onClick={() => onCreateTask(email)}
+            />
+            <ActionChip icon={CalendarPlus} label="Event" disabled />
+            <ActionChip icon={Clock} label="Snooze" disabled />
           </div>
         </div>
         <h2 className="font-display text-body font-bold leading-snug">{email.subject}</h2>
+        <div className="mt-2">
+          <LinkChips
+            entityType="email"
+            entityId={email.id}
+            links={links}
+            items={items}
+            emails={emails}
+            onNavigate={onNavigateLink}
+            onRemove={onRemoveLink}
+            compact
+          />
+        </div>
         <div className="mt-3 flex items-center gap-3">
           <Avatar name={email.from} />
           <div className="min-w-0 flex-1">
@@ -299,13 +364,21 @@ function MessagePreview({
 
       <div className="shrink-0 border-t border-wf-border bg-wf-bg px-4 py-3">
         <p className="mb-2 text-caption font-semibold text-wf-text-secondary">
-          Email actions — coming soon
+          Email actions
         </p>
         <div className="flex flex-wrap gap-2">
-          <FutureAction icon={ClipboardList} label="Convert to task" />
-          <FutureAction icon={CalendarPlus} label="Add to calendar" />
-          <FutureAction icon={Clock} label="Snooze until date" />
-          <FutureAction icon={Link2} label="Link to appointment" />
+          <EmailAction
+            icon={ClipboardList}
+            label="Convert to task"
+            onClick={() => onCreateTask(email)}
+          />
+          <EmailAction icon={CalendarPlus} label="Add to calendar" disabled />
+          <EmailAction icon={Clock} label="Snooze until date" disabled />
+          <EmailAction
+            icon={Link2}
+            label="Link to appointment"
+            onClick={() => onLinkExisting(email)}
+          />
         </div>
         <p className="mt-3 text-caption text-wf-text-tertiary">
           Future integrations: Gmail · Outlook · Apple Mail
@@ -315,21 +388,55 @@ function MessagePreview({
   )
 }
 
-function ActionChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-wf-accent-soft px-2.5 py-1 text-caption font-semibold text-wf-accent">
-      <Icon size={12} strokeWidth={2} />
-      {label}
-    </span>
-  )
-}
+function ActionChip({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  if (disabled || !onClick) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-wf-bg px-2.5 py-1 text-caption font-semibold text-wf-text-tertiary opacity-60">
+        <Icon size={12} strokeWidth={2} />
+        {label}
+      </span>
+    )
+  }
 
-function FutureAction({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
     <button
       type="button"
-      className="flex items-center gap-2 rounded-xl bg-wf-surface px-3 py-2 text-subhead font-medium text-wf-text-secondary shadow-[var(--shadow-card)] opacity-60"
-      disabled
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-full bg-wf-accent-soft px-2.5 py-1 text-caption font-semibold text-wf-accent transition-transform active:scale-95"
+    >
+      <Icon size={12} strokeWidth={2} />
+      {label}
+    </button>
+  )
+}
+
+function EmailAction({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-2 rounded-xl bg-wf-surface px-3 py-2 text-subhead font-medium text-wf-text-secondary shadow-[var(--shadow-card)] transition-transform active:scale-[0.98] disabled:opacity-60"
     >
       <Icon size={16} strokeWidth={1.75} />
       {label}

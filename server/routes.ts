@@ -2,10 +2,12 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { getDatabaseStatus } from "./db/apply-migrations";
 import { isDatabaseConfigured } from "./db/index";
+import { registerLinkRoutes } from "./routes/links";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerObjectStorageRoutes(app);
+  registerLinkRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({

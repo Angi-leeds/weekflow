@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
-import type { AppSection, CalendarItem, CalendarViewMode, Category } from './types'
+import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
+import type { AppSection, CalendarItem, CalendarViewMode, Category, EmailMessage } from './types'
 import { DEFAULT_LIST_OPTIONS, type ListDisplayOptions } from './types'
 import { initialEmails, initialItems } from './mockData'
-import { addWeeks, startOfWeek } from './dateUtils'
+import { addWeeks, generateId, startOfWeek, toISODate } from './dateUtils'
+import { createLink, fetchAllLinks, removeLink } from './lib/links'
+import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
   generateCategoryId,
@@ -21,6 +24,7 @@ import { AgendaView } from './components/AgendaView'
 import { YearView } from './components/YearView'
 import { ItemFormModal } from './components/ItemFormModal'
 import { EmailView } from './components/EmailView'
+import { LinkExistingModal } from './components/LinkExistingModal'
 import { PlannerView } from './components/PlannerView'
 import { SettingsView } from './components/SettingsView'
 
@@ -39,11 +43,121 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<CalendarItem | null>(null)
   const [listOptions, setListOptions] = useState<ListDisplayOptions>(DEFAULT_LIST_OPTIONS)
+  const [links, setLinks] = useState<ItemLink[]>([])
+  const [emailSelectedId, setEmailSelectedId] = useState<string | null>(null)
+  const [linkPicker, setLinkPicker] = useState<{
+    sourceType: EntityType
+    sourceId: string
+    sourceLabel: string
+  } | null>(null)
 
   const unreadCount = useMemo(() => emails.filter((e) => e.unread).length, [emails])
 
   useEffect(() => {
     saveStoredCategories(categories)
+  }, [categories])
+
+  useEffect(() => {
+    fetchAllLinks().then(setLinks).catch(console.error)
+  }, [])
+
+  const upsertLink = useCallback((link: ItemLink) => {
+    setLinks((prev) => [...prev.filter((entry) => entry.id !== link.id), link])
+  }, [])
+
+  const handleCreateLink = useCallback(
+    async (input: CreateLinkInput) => {
+      const link = await createLink(input)
+      upsertLink(link)
+      return link
+    },
+    [upsertLink],
+  )
+
+  const handleRemoveLink = useCallback(async (linkId: string) => {
+    await removeLink(linkId)
+    setLinks((prev) => prev.filter((link) => link.id !== linkId))
+  }, [])
+
+  const handleNavigateLink = useCallback(
+    (type: EntityType, id: string) => {
+      if (type === 'email') {
+        setSection('email')
+        setEmailSelectedId(id)
+        return
+      }
+
+      const item = items.find((entry) => entry.id === id)
+      if (!item) return
+
+      const linkType = getItemLinkType(item, categories)
+      setSection(linkType === 'task' ? 'planner' : 'calendar')
+      setEditingItem(item)
+      setModalOpen(true)
+    },
+    [items, categories],
+  )
+
+  const handleCreateTaskFromEmail = useCallback(
+    async (email: EmailMessage) => {
+      const taskCategory = categories.find((c) => c.id === 'task') ?? categories[0]
+      const task: CalendarItem = {
+        id: generateId(),
+        title: email.subject,
+        date: toISODate(new Date(email.date)),
+        allDay: true,
+        categoryId: taskCategory.id,
+        colour: taskCategory.colour,
+        notes: `From: ${email.from} <${email.fromEmail}>\n\n${email.body.slice(0, 500)}`,
+        completed: false,
+      }
+
+      setItems((prev) => [...prev, task])
+      await handleCreateLink({
+        fromType: 'email',
+        fromId: email.id,
+        toType: 'task',
+        toId: task.id,
+        kind: 'created_from',
+      })
+
+      setSection('planner')
+      setEditingItem(task)
+      setModalOpen(true)
+    },
+    [categories, handleCreateLink],
+  )
+
+  const handleLinkExistingSelect = useCallback(
+    async (targetType: EntityType, targetId: string) => {
+      if (!linkPicker) return
+
+      await handleCreateLink({
+        fromType: linkPicker.sourceType,
+        fromId: linkPicker.sourceId,
+        toType: targetType,
+        toId: targetId,
+        kind: 'relates_to',
+      })
+      setLinkPicker(null)
+    },
+    [linkPicker, handleCreateLink],
+  )
+
+  const openLinkPickerForEmail = useCallback((email: EmailMessage) => {
+    setLinkPicker({
+      sourceType: 'email',
+      sourceId: email.id,
+      sourceLabel: email.subject,
+    })
+  }, [])
+
+  const openLinkPickerForItem = useCallback((item: CalendarItem) => {
+    setLinkPicker({
+      sourceType: getItemLinkType(item, categories),
+      sourceId: item.id,
+      sourceLabel: item.title,
+    })
   }, [categories])
 
   const handleSaveCategory = useCallback((incoming: Category) => {
@@ -229,6 +343,10 @@ export default function App() {
         {section === 'email' && (
           <EmailView
             emails={emails}
+            selectedId={emailSelectedId}
+            onSelectedIdChange={setEmailSelectedId}
+            links={links}
+            items={items}
             onToggleStar={(id) =>
               setEmails((prev) =>
                 prev.map((e) => (e.id === id ? { ...e, starred: !e.starred } : e)),
@@ -239,6 +357,10 @@ export default function App() {
                 prev.map((e) => (e.id === id ? { ...e, unread: false } : e)),
               )
             }
+            onCreateTask={handleCreateTaskFromEmail}
+            onLinkExisting={openLinkPickerForEmail}
+            onNavigateLink={handleNavigateLink}
+            onRemoveLink={handleRemoveLink}
           />
         )}
 
@@ -283,9 +405,28 @@ export default function App() {
         item={editingItem}
         categories={categories}
         defaultDate={section === 'today' ? new Date() : selectedDay}
+        links={links}
+        emails={emails}
+        items={items}
         onSave={handleSaveItem}
         onDelete={handleDeleteItem}
         onClose={() => setModalOpen(false)}
+        onNavigateLink={handleNavigateLink}
+        onLinkExisting={editingItem ? () => openLinkPickerForItem(editingItem) : undefined}
+        onRemoveLink={handleRemoveLink}
+      />
+
+      <LinkExistingModal
+        open={linkPicker !== null}
+        sourceType={linkPicker?.sourceType ?? 'email'}
+        sourceId={linkPicker?.sourceId ?? ''}
+        sourceLabel={linkPicker?.sourceLabel ?? ''}
+        items={items}
+        categories={categories}
+        emails={emails}
+        links={links}
+        onClose={() => setLinkPicker(null)}
+        onSelect={handleLinkExistingSelect}
       />
     </div>
   )
