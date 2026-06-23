@@ -27,6 +27,12 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  if (process.env.NODE_ENV !== "production") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const error = err as { status?: number; statusCode?: number; message?: string };
     const status = error.status ?? error.statusCode ?? 500;
@@ -34,12 +40,6 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
     console.error(err);
   });
-
-  if (process.env.NODE_ENV !== "production") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
 
   const port = parseInt(process.env.PORT ?? "5000", 10);
   server.listen(port, "0.0.0.0", () => {
