@@ -290,65 +290,34 @@ function mapGraphNoteToDto(note: GraphNote, account: ConnectedAccountRecord): Gr
 
 export async function fetchMicrosoftNotes(
   accountId: string,
-  top = 100,
+  _top = 100,
 ): Promise<GraphNoteDto[]> {
-  const account = await getConnectedAccountRecord(accountId);
-  if (!account) throw new Error("Connected account not found");
-
-  const params = new URLSearchParams({
-    $top: String(top),
-    $orderby: "lastModifiedDateTime desc",
-    $select: "id,subject,bodyPreview,body,createdDateTime,lastModifiedDateTime,categories",
-  });
-
-  const response = await graphFetch(accountId, `/me/outlook/notes?${params.toString()}`);
-  const payload = (await response.json()) as { value?: GraphNote[] };
-
-  return (payload.value ?? []).map((note) => mapGraphNoteToDto(note, account));
+  // Microsoft Graph has no stable /me/outlook/notes endpoint.
+  // Notes sync is not currently supported; return empty so local notes still work.
+  console.warn(`fetchMicrosoftNotes: notes sync not supported for account ${accountId} — returning empty`);
+  return [];
 }
 
 export async function createMicrosoftNote(
-  accountId: string,
-  input: { title: string; body: string },
+  _accountId: string,
+  _input: { title: string; body: string },
 ): Promise<{ externalId: string }> {
-  const response = await graphFetch(accountId, "/me/outlook/notes", {
-    method: "POST",
-    body: JSON.stringify({
-      subject: input.title,
-      body: {
-        contentType: "Text",
-        content: input.body,
-      },
-    }),
-  });
-  const note = (await response.json()) as { id: string };
-  return { externalId: note.id };
+  throw new Error("Microsoft notes sync is not supported in this version.");
 }
 
 export async function updateMicrosoftNote(
-  accountId: string,
-  externalId: string,
-  input: { title: string; body: string },
+  _accountId: string,
+  _externalId: string,
+  _input: { title: string; body: string },
 ): Promise<void> {
-  await graphFetch(accountId, `/me/outlook/notes/${externalId}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      subject: input.title,
-      body: {
-        contentType: "Text",
-        content: input.body,
-      },
-    }),
-  });
+  throw new Error("Microsoft notes sync is not supported in this version.");
 }
 
 export async function deleteMicrosoftNote(
-  accountId: string,
-  externalId: string,
+  _accountId: string,
+  _externalId: string,
 ): Promise<void> {
-  await graphFetch(accountId, `/me/outlook/notes/${externalId}`, {
-    method: "DELETE",
-  });
+  throw new Error("Microsoft notes sync is not supported in this version.");
 }
 
 function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
