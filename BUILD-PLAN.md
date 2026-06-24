@@ -642,7 +642,6 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 #### Phase 10e+ — remaining Phase 10 (deferred)
 
-- Google calendar write/sync to connected calendars
 - Apple iCloud (limited APIs — hyperlink fallbacks in notes — **d50**)
 - Native iOS/Android wrapper or Capacitor — **d61**
 - Voice recording + push notifications — **d37** full
