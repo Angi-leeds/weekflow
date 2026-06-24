@@ -21,3 +21,12 @@ export interface GoogleIntegrationStatus {
   connected: boolean;
   accounts: GoogleConnectedAccountPublic[];
 }
+
+export interface GoogleMailFolderDto {
+  id: string;
+  labelId: string;
+  label: string;
+  accountId: string;
+  connectedAccountId: string;
+  wellKnown?: "inbox" | "sentitems" | "drafts" | "deleteditems";
+}

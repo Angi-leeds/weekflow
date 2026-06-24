@@ -136,7 +136,7 @@ export interface CalendarItem {
   photoUrl?: string
   /** Microsoft Graph event id when synced. */
   externalId?: string
-  provider?: 'microsoft' | 'local'
+  provider?: 'microsoft' | 'google' | 'local'
   connectedAccountId?: string
   /** Target Outlook calendar when creating/syncing events. */
   calendarId?: string
@@ -184,7 +184,7 @@ export interface EmailMessage {
   category: string
   labels: string[]
   externalId?: string
-  provider?: 'microsoft' | 'mock'
+  provider?: 'microsoft' | 'google' | 'mock'
   connectedAccountId?: string
 }
 

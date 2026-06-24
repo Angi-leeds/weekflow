@@ -586,9 +586,24 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 **Next (10b):** Gmail + Google Calendar read sync into merged mail/calendar views (mirror 9b multi-account pattern).
 
-#### Phase 10b+ — remaining Phase 10 (deferred)
+#### Phase 10b — Gmail + Google Calendar read sync ✅ (Done)
 
-- Google Gmail/Calendar/Drive fetch + merged UI — same account picker / defaults UX as 9b
+**Goal:** Fetch real Gmail inbox and Google Calendar events for all connected Google accounts; merge into existing mail/calendar views alongside Outlook.
+
+**Done:**
+1. `server/services/google-api-service.ts` — token refresh, Gmail labels/messages, Calendar list/events
+2. Routes: `GET /api/google/mail/folders`, `/mail`, `/calendar`
+3. Client fetch helpers + multi-account batch in `refreshGoogle()`
+4. `connectedAccounts.ts` — Gmail accounts in merged email/calendar account lists; mock data hidden when Google connected
+5. Folder lazy-load supports Google label ids
+
+**Acceptance criteria:** ✅ Connect Google → inbox mail and calendar events appear in merged views with account badges.
+
+**Next (10c+):** Google send/reply, Drive picker, account defaults pickers — mirror 9c where applicable.
+
+#### Phase 10c+ — remaining Phase 10 (deferred)
+
+- Google mail send/reply, Drive folder tagging
 - Apple iCloud (limited APIs — hyperlink fallbacks in notes — **d50**)
 - Native iOS/Android wrapper or Capacitor — **d61**
 - Voice recording + push notifications — **d37** full
@@ -779,10 +794,10 @@ curl http://localhost:5000/api/status
 
 ## 12. Agent instructions
 
-**Recommended phase order before marketing:** 10b (Google sync) or polish/hardening.
+**Recommended phase order before marketing:** 10c (Google polish) or Apple/native apps.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10b** unless owner specifies otherwise (Phases 0–9c, 10a, and 11 complete).
+2. **Start at Phase 10c** unless owner specifies otherwise (Phases 0–9c, 10a–10b, and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

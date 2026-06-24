@@ -43,9 +43,9 @@ export function GoogleConnectPanel({
             {phase === "not-configured" &&
               "OAuth is not set up on this server yet. Add Google Cloud credentials to enable sign-in."}
             {phase === "ready" &&
-              "Sign in with Google to connect Gmail and Calendar. Mail and event sync arrive in the next slice."}
+              "Sign in with Google to sync Gmail inbox and Google Calendar events."}
             {phase === "connected" &&
-              "Google account connected. Gmail and Calendar sync will use the accounts below."}
+              "Mail and calendar sync from all connected Google accounts below."}
             {phase === "loading" && "Checking connection status…"}
           </p>
         </div>

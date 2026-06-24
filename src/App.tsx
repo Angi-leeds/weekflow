@@ -57,7 +57,12 @@ import {
   syncCalendarToMicrosoft,
   updateMicrosoftNote,
 } from './lib/microsoft'
-import { fetchGoogleStatus } from './lib/google'
+import {
+  fetchAllGoogleCalendar,
+  fetchAllGoogleMail,
+  fetchGoogleMail,
+  fetchGoogleStatus,
+} from './lib/google'
 import { mergeGraphContacts } from './lib/mergeContacts'
 import {
   resolveConnectedAccountId,
@@ -80,6 +85,7 @@ import {
   resolveCalendarAccounts,
   resolveEmailAccounts,
   resolveEmailFolders,
+  useRealGoogleData,
   useRealMicrosoftData,
 } from './lib/connectedAccounts'
 import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
@@ -189,13 +195,15 @@ export default function App() {
   const [loadingEmailFolders, setLoadingEmailFolders] = useState<Set<string>>(() => new Set())
 
   const usingRealMicrosoft = useRealMicrosoftData(microsoftStatus, microsoftLoading)
+  const usingRealGoogle = useRealGoogleData(googleStatus, googleLoading)
+  const usingRealIntegrations = usingRealMicrosoft || usingRealGoogle
   const emailAccounts = useMemo(
-    () => resolveEmailAccounts(microsoftStatus),
-    [microsoftStatus],
+    () => resolveEmailAccounts(microsoftStatus, googleStatus),
+    [microsoftStatus, googleStatus],
   )
   const calendarAccounts = useMemo(
-    () => resolveCalendarAccounts(microsoftStatus),
-    [microsoftStatus],
+    () => resolveCalendarAccounts(microsoftStatus, googleStatus),
+    [microsoftStatus, googleStatus],
   )
   const emailFolders = useMemo(
     () => resolveEmailFolders(emailAccounts, graphEmailFolders),
@@ -220,17 +228,26 @@ export default function App() {
           fetchAllMicrosoftCalendarsList(accounts),
           fetchAllMicrosoftTodoLists(accounts),
         ])
-        setGraphEmailFolders(mailBundle.folders)
-        setGraphEmails(mailBundle.mail)
-        setGraphCalendarItems(calendar)
+        setGraphEmailFolders((prev) => {
+          const googleOnly = prev.filter((folder) => folder.accountId.startsWith('google-'))
+          return [...mailBundle.folders, ...googleOnly]
+        })
+        setGraphEmails((prev) => {
+          const googleOnly = prev.filter((email) => email.provider === 'google')
+          return mergeGraphMail([], [...mailBundle.mail, ...googleOnly])
+        })
+        setGraphCalendarItems((prev) => {
+          const googleOnly = prev.filter((item) => item.provider === 'google')
+          return mergeGraphCalendar([], [...calendar, ...googleOnly])
+        })
         setGraphNotes(outlookNotes)
         setGraphContacts(outlookContacts)
         setGraphCalendars(calendars)
         setGraphTodoLists(todoLists)
       } else {
-        setGraphEmailFolders([])
-        setGraphEmails([])
-        setGraphCalendarItems([])
+        setGraphEmailFolders((prev) => prev.filter((folder) => folder.accountId.startsWith('google-')))
+        setGraphEmails((prev) => prev.filter((email) => email.provider === 'google'))
+        setGraphCalendarItems((prev) => prev.filter((item) => item.provider === 'google'))
         setGraphNotes([])
         setGraphContacts([])
         setGraphCalendars([])
@@ -248,6 +265,28 @@ export default function App() {
     try {
       const status = await fetchGoogleStatus()
       setGoogleStatus(status)
+      if (status.accounts.length > 0) {
+        const [mailBundle, calendar] = await Promise.all([
+          fetchAllGoogleMail(status.accounts),
+          fetchAllGoogleCalendar(status.accounts),
+        ])
+        setGraphEmailFolders((prev) => {
+          const microsoftOnly = prev.filter((folder) => !folder.accountId.startsWith('google-'))
+          return [...microsoftOnly, ...mailBundle.folders]
+        })
+        setGraphEmails((prev) => {
+          const microsoftOnly = prev.filter((email) => email.provider !== 'google')
+          return mergeGraphMail([], [...microsoftOnly, ...mailBundle.mail])
+        })
+        setGraphCalendarItems((prev) => {
+          const microsoftOnly = prev.filter((item) => item.provider !== 'google')
+          return mergeGraphCalendar([], [...microsoftOnly, ...calendar])
+        })
+      } else {
+        setGraphEmailFolders((prev) => prev.filter((folder) => !folder.accountId.startsWith('google-')))
+        setGraphEmails((prev) => prev.filter((email) => email.provider !== 'google'))
+        setGraphCalendarItems((prev) => prev.filter((item) => item.provider !== 'google'))
+      }
     } catch (error) {
       console.error(error)
     } finally {
@@ -262,10 +301,10 @@ export default function App() {
 
       setLoadingEmailFolders((prev) => new Set(prev).add(folder.id))
       try {
-        const messages = await fetchMicrosoftMail(
-          folder.connectedAccountId,
-          folder.graphFolderId,
-        )
+        const isGoogle = folder.accountId.startsWith('google-')
+        const messages = isGoogle
+          ? await fetchGoogleMail(folder.connectedAccountId, folder.graphFolderId)
+          : await fetchMicrosoftMail(folder.connectedAccountId, folder.graphFolderId)
         setGraphEmails((prev) => [
           ...prev.filter((email) => email.folderId !== folder.id),
           ...messages,
@@ -326,14 +365,14 @@ export default function App() {
   }, [displayCalendarItems, calendarFilter])
 
   useEffect(() => {
-    if (microsoftLoading) return
-    if (!usingRealMicrosoft) return
+    if (microsoftLoading && googleLoading) return
+    if (!usingRealIntegrations) return
 
     setEmails((prev) => prev.filter((email) => !isMockEmail(email)))
     setItems((prev) => prev.filter((item) => !isMockCalendarItem(item)))
     setNotes((prev) => prev.filter((note) => !isMockNote(note)))
     setContacts((prev) => prev.filter((contact) => contact.source !== "mock"))
-  }, [microsoftLoading, usingRealMicrosoft])
+  }, [microsoftLoading, googleLoading, usingRealIntegrations])
 
   const unreadCount = useMemo(() => displayEmails.filter((e) => e.unread).length, [displayEmails])
 

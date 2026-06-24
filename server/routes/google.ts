@@ -10,6 +10,11 @@ import {
   isGoogleOAuthConfigured,
   listGoogleConnectedAccounts,
 } from "../services/connected-account-service";
+import {
+  fetchGoogleCalendarEvents,
+  fetchGoogleMailFolders,
+  fetchGoogleMessages,
+} from "../services/google-api-service";
 import { getAppBaseUrl } from "../services/microsoft-auth-service";
 
 function redirectWithMessage(res: Response, req: Request, params: Record<string, string>): void {
@@ -83,6 +88,60 @@ export function registerGoogleRoutes(app: Express): void {
     } catch (error) {
       console.error("DELETE /api/google/accounts/:id failed:", error);
       res.status(500).json({ message: "Failed to disconnect Google account" });
+    }
+  });
+
+  app.get("/api/google/mail/folders", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const folders = await fetchGoogleMailFolders(accountId);
+      res.json(folders);
+    } catch (error) {
+      console.error("GET /api/google/mail/folders failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch Gmail labels";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/google/mail", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const labelId = typeof req.query.labelId === "string" ? req.query.labelId : "INBOX";
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const messages = await fetchGoogleMessages(accountId, 50, labelId);
+      res.json(messages);
+    } catch (error) {
+      console.error("GET /api/google/mail failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch Gmail messages";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/google/calendar", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const calendarId =
+      typeof req.query.calendarId === "string" ? req.query.calendarId : undefined;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const events = await fetchGoogleCalendarEvents(accountId, undefined, undefined, calendarId);
+      res.json(events);
+    } catch (error) {
+      console.error("GET /api/google/calendar failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch Google Calendar";
+      res.status(500).json({ message });
     }
   });
 }

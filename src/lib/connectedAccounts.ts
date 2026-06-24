@@ -1,17 +1,20 @@
+import type { GoogleIntegrationStatus } from "../../shared/googleApi";
 import type { ConnectedAccountPublic, MicrosoftIntegrationStatus } from "../../shared/microsoftGraph";
 import { MOCK_CALENDAR_ACCOUNTS, MOCK_EMAIL_ACCOUNTS, MOCK_EMAIL_FOLDERS } from "../mockData";
 import type { EmailAccount, EmailFolder } from "../types";
+import { googleAccountKey } from "./google";
 import { microsoftAccountKey } from "./microsoft";
 
 export const MICROSOFT_PROVIDER_COLOUR = "#0078d4";
+export const GOOGLE_PROVIDER_COLOUR = "#4285f4";
 
 export function isMockEmail(email: { provider?: string; externalId?: string }): boolean {
-  return email.provider !== "microsoft" && !email.externalId;
+  return email.provider !== "microsoft" && email.provider !== "google" && !email.externalId;
 }
 
 export function isMockCalendarItem(item: { provider?: string; externalId?: string; id?: string }): boolean {
-  if (item.provider === "microsoft" || item.externalId) return false;
-  if (item.id?.startsWith("graph-")) return false;
+  if (item.provider === "microsoft" || item.provider === "google" || item.externalId) return false;
+  if (item.id?.startsWith("graph-") || item.id?.startsWith("gcal-")) return false;
   return true;
 }
 
@@ -32,6 +35,19 @@ export function microsoftEmailAccount(account: ConnectedAccountPublic): EmailAcc
   };
 }
 
+export function googleEmailAccount(
+  account: GoogleIntegrationStatus["accounts"][number],
+): EmailAccount {
+  const key = googleAccountKey(account.id);
+  return {
+    id: key,
+    label: account.displayName || "Gmail",
+    email: account.email,
+    provider: "Gmail",
+    colour: GOOGLE_PROVIDER_COLOUR,
+  };
+}
+
 export function microsoftCalendarAccount(account: ConnectedAccountPublic): EmailAccount {
   const emailAccount = microsoftEmailAccount(account);
   return {
@@ -40,15 +56,35 @@ export function microsoftCalendarAccount(account: ConnectedAccountPublic): Email
   };
 }
 
-export function resolveEmailAccounts(status: MicrosoftIntegrationStatus | null): EmailAccount[] {
-  const microsoftAccounts = (status?.accounts ?? []).map(microsoftEmailAccount);
-  if (microsoftAccounts.length > 0) return microsoftAccounts;
+export function googleCalendarAccount(
+  account: GoogleIntegrationStatus["accounts"][number],
+): EmailAccount {
+  const emailAccount = googleEmailAccount(account);
+  return {
+    ...emailAccount,
+    label: `${emailAccount.label} calendar`,
+  };
+}
+
+export function resolveEmailAccounts(
+  microsoftStatus: MicrosoftIntegrationStatus | null,
+  googleStatus: GoogleIntegrationStatus | null = null,
+): EmailAccount[] {
+  const microsoftAccounts = (microsoftStatus?.accounts ?? []).map(microsoftEmailAccount);
+  const googleAccounts = (googleStatus?.accounts ?? []).map(googleEmailAccount);
+  const connected = [...microsoftAccounts, ...googleAccounts];
+  if (connected.length > 0) return connected;
   return [...MOCK_EMAIL_ACCOUNTS];
 }
 
-export function resolveCalendarAccounts(status: MicrosoftIntegrationStatus | null): EmailAccount[] {
-  const microsoftAccounts = (status?.accounts ?? []).map(microsoftCalendarAccount);
-  if (microsoftAccounts.length > 0) return microsoftAccounts;
+export function resolveCalendarAccounts(
+  microsoftStatus: MicrosoftIntegrationStatus | null,
+  googleStatus: GoogleIntegrationStatus | null = null,
+): EmailAccount[] {
+  const microsoftAccounts = (microsoftStatus?.accounts ?? []).map(microsoftCalendarAccount);
+  const googleAccounts = (googleStatus?.accounts ?? []).map(googleCalendarAccount);
+  const connected = [...microsoftAccounts, ...googleAccounts];
+  if (connected.length > 0) return connected;
   return [...MOCK_CALENDAR_ACCOUNTS];
 }
 
@@ -56,11 +92,13 @@ export function resolveEmailFolders(
   accounts: EmailAccount[],
   graphFolders: EmailFolder[] = [],
 ): EmailFolder[] {
-  const microsoftAccounts = accounts.filter((account) => account.id.startsWith("ms-"));
-  if (microsoftAccounts.length === 0) return [...MOCK_EMAIL_FOLDERS];
+  const connectedAccounts = accounts.filter(
+    (account) => account.id.startsWith("ms-") || account.id.startsWith("google-"),
+  );
+  if (connectedAccounts.length === 0) return [...MOCK_EMAIL_FOLDERS];
   if (graphFolders.length > 0) return graphFolders;
 
-  return microsoftAccounts.flatMap((account) => [
+  return connectedAccounts.flatMap((account) => [
     {
       id: `${account.id}-inbox`,
       label: "Inbox",
@@ -70,6 +108,16 @@ export function resolveEmailFolders(
   ]);
 }
 
-export function useRealMicrosoftData(status: MicrosoftIntegrationStatus | null, loading: boolean): boolean {
+export function useRealMicrosoftData(
+  status: MicrosoftIntegrationStatus | null,
+  loading: boolean,
+): boolean {
+  return !loading && Boolean(status?.connected);
+}
+
+export function useRealGoogleData(
+  status: GoogleIntegrationStatus | null,
+  loading: boolean,
+): boolean {
   return !loading && Boolean(status?.connected);
 }
