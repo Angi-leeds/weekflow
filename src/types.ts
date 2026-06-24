@@ -107,6 +107,17 @@ export const DEFAULT_INTEGRATION_PREFERENCES: IntegrationPreferences = {
   notificationsEnabled: false,
 }
 
+export interface IntegrationAccountDefaults {
+  defaultMicrosoftAccountId?: string
+  email?: { defaultAccountId?: string; defaultFolderId?: string }
+  calendar?: { defaultAccountId?: string; defaultCalendarId?: string }
+  notes?: { defaultAccountId?: string }
+  tasks?: { defaultAccountId?: string; defaultTodoListId?: string }
+  contacts?: { defaultAccountId?: string }
+}
+
+export const DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS: IntegrationAccountDefaults = {}
+
 export interface CalendarItem {
   id: string
   title: string
@@ -127,6 +138,11 @@ export interface CalendarItem {
   externalId?: string
   provider?: 'microsoft' | 'local'
   connectedAccountId?: string
+  /** Target Outlook calendar when creating/syncing events. */
+  calendarId?: string
+  calendarName?: string
+  /** Target Microsoft To Do list when creating tasks. */
+  todoListId?: string
 }
 
 export interface EmailAccount {
@@ -141,6 +157,9 @@ export interface EmailFolder {
   id: string
   label: string
   accountId: string
+  graphFolderId?: string
+  connectedAccountId?: string
+  wellKnown?: 'inbox' | 'sentitems' | 'drafts' | 'deleteditems'
 }
 
 export type EmailInboxMode = 'merged' | 'account' | 'folder'
@@ -214,4 +233,6 @@ export interface Contact {
   household?: boolean
   source?: ContactSource
   externalId?: string
+  accountId?: string
+  connectedAccountId?: string
 }

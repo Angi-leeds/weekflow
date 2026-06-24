@@ -60,7 +60,7 @@ Read this fully before writing code. All product decisions below are **locked** 
 | Categories + interactive Settings | ✅ | `SettingsView.tsx`, `appSettings.ts` |
 | Email (merged / account / folder UI) | ✅ UI; real mail when OAuth | `EmailView.tsx` |
 | Contacts hub (local + mock; Outlook fields) | ✅ | `ContactsView.tsx`, `contacts.ts` |
-| Notes hub (Outlook sticky notes sync) | ✅ single account | `NotesView.tsx`, `microsoft-graph-service.ts` |
+| Notes hub (local-only; OneNote API deferred) | ✅ | `NotesView.tsx` |
 | Planner / tasks | ✅ mock + Graph To Do create | `PlannerView.tsx` |
 | Family board + kiosk + kanban + voice mock | ✅ | `FamilyBoardView.tsx`, `BoardSplitView.tsx` |
 | Link graph + share to board | ✅ | `links.ts`, `itemShares.ts`, `ShareToBoardFields.tsx` |
@@ -68,14 +68,14 @@ Read this fully before writing code. All product decisions below are **locked** 
 | Attachments API | ✅ | `attachments.ts`, object storage or local |
 | Household permissions matrix | ✅ | `HouseholdPermissionsView.tsx` |
 | **Microsoft Graph Phase 9a** | ✅ **single account** | `microsoft.ts`, `connected-account-service.ts` |
-| **Microsoft Graph Phase 9b** | ❌ **NEXT** | multi-account fetch, pickers, defaults — see §7 Phase 9b |
-| **Auth gateway + super admin** | ❌ **Phase 11** | custom domain currently **open** — see §7 Phase 11 |
+| **Microsoft Graph Phase 9b** | ✅ **multi-account** | all connected accounts, folders, pickers, contacts |
+| **Auth gateway + super admin** | ✅ **Phase 11** | login, closed signup, super admin console |
 
-### 2.5 Security note (custom domain — interim)
+### 2.5 Security note (custom domain)
 
-MyAxis may be live on a **custom domain** before Phase 11. There is **no login wall** yet — anyone with the URL can use the app. Household/kiosk PIN is **not** app authentication.
+MyAxis on a **custom domain** is protected when Phase 11 auth env vars are set (`SESSION_SECRET`, `SUPER_ADMIN_EMAIL`, `SIGNUP_MODE=closed`). Household/kiosk PIN is **not** app authentication — it gates board/kiosk mode only.
 
-**Until Phase 11 ships:** owner may use Replit deployment access control, Cloudflare Access, or similar at the edge. **Do not** share the public URL widely. Phase 11 is **required before general availability**.
+**Before general availability:** confirm closed signup, super admin access, and Microsoft OAuth redirect URIs match the live domain.
 
 ### 2.6 Data today
 
@@ -464,13 +464,13 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 5. Contacts UI (local/mock), Notes UI, interactive Settings, share to family board (incl. notes)
 6. UI patterns for merged / per-account email and calendar filters (ready for 9b data)
 
-**Known limitation (intentional until 9b):** `refreshMicrosoft()` uses `status.accounts[0]` only; "Add another account" stores extra accounts but does not sync them.
+**Known limitation (resolved in 9b):** `refreshMicrosoft()` loops all connected Microsoft accounts; merged mail/calendar/contacts include every account.
 
 **Acceptance criteria:** ✅ Connect one Outlook account on Replit → real mail, calendar, notes in app.
 
 ---
 
-#### Phase 9b — Multi-account & account-aware sync ⬅ **NEXT**
+#### Phase 9b — Multi-account & account-aware sync ✅
 
 **Goal:** Multiple Outlook accounts + every item tied to the right account and sub-container, like Outlook. **d57–d59, d64–d68**
 
@@ -761,10 +761,10 @@ curl http://localhost:5000/api/status
 
 ## 12. Agent instructions
 
-**Recommended phase order before marketing:** 9b → 9c → **11** → 10 (Google/Apple can wait; auth cannot).
+**Recommended phase order before marketing:** 9c → 10 (Google/Apple can wait).
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 9b** unless owner specifies otherwise (Phases 0–9a complete).
+2. **Start at Phase 9c** unless owner specifies otherwise (Phases 0–9b and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

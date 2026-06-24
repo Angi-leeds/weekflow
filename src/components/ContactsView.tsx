@@ -12,6 +12,16 @@ import { ContactFormModal } from "./ContactFormModal";
 
 type ContactFilter = "all" | "starred" | "household";
 
+function contactAccountLabel(contact: Contact, accounts: EmailAccount[]): string | undefined {
+  if (contact.source !== "microsoft") return undefined;
+  const accountId =
+    contact.accountId ??
+    (contact.connectedAccountId ? `ms-${contact.connectedAccountId}` : undefined);
+  if (!accountId) return undefined;
+  const account = accounts.find((entry) => entry.id === accountId);
+  return account?.email ?? account?.label;
+}
+
 interface ContactsViewProps {
   contacts: Contact[];
   emails: EmailMessage[];
@@ -38,12 +48,26 @@ export function ContactsView({
   const [selectedId, setSelectedId] = useState<string | null>(contacts[0]?.id ?? null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [accountFilter, setAccountFilter] = useState<string>("all");
   const isWide = useIsWide();
+
+  const outlookAccountFilters = useMemo(() => {
+    const ids = new Set<string>();
+    for (const contact of contacts) {
+      if (contact.source === "microsoft" && contact.accountId) {
+        ids.add(contact.accountId);
+      }
+    }
+    return emailAccounts.filter((account) => ids.has(account.id));
+  }, [contacts, emailAccounts]);
 
   const filtered = useMemo(() => {
     let list = contacts;
     if (filter === "starred") list = list.filter((contact) => contact.starred);
     if (filter === "household") list = list.filter((contact) => contact.household);
+    if (accountFilter !== "all") {
+      list = list.filter((contact) => contact.accountId === accountFilter);
+    }
     if (search.trim()) {
       const query = search.toLowerCase();
       list = list.filter(
@@ -60,7 +84,7 @@ export function ContactsView({
       );
     }
     return [...list].sort((a, b) => a.name.localeCompare(b.name));
-  }, [contacts, filter, search]);
+  }, [contacts, filter, accountFilter, search]);
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -139,6 +163,36 @@ export function ContactsView({
             </button>
           ))}
         </div>
+
+        {outlookAccountFilters.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <button
+              type="button"
+              onClick={() => setAccountFilter("all")}
+              className={`inline-flex shrink-0 rounded-full px-3 py-1 text-caption font-semibold transition-colors ${
+                accountFilter === "all"
+                  ? "bg-[#0078d4] text-white"
+                  : "bg-wf-surface text-wf-text-secondary shadow-[var(--shadow-card)]"
+              }`}
+            >
+              All accounts
+            </button>
+            {outlookAccountFilters.map((account) => (
+              <button
+                key={account.id}
+                type="button"
+                onClick={() => setAccountFilter(account.id)}
+                className={`inline-flex shrink-0 rounded-full px-3 py-1 text-caption font-semibold transition-colors ${
+                  accountFilter === account.id
+                    ? "bg-[#0078d4] text-white"
+                    : "bg-wf-surface text-wf-text-secondary shadow-[var(--shadow-card)]"
+                }`}
+              >
+                {account.email}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -156,6 +210,7 @@ export function ContactsView({
                 contact={contact}
                 selected={selected?.id === contact.id}
                 emailCount={countEmailsFromContact(contact, emails)}
+                accountLabel={contactAccountLabel(contact, emailAccounts)}
                 onSelect={() => setSelectedId(contact.id)}
                 onToggleStar={() => onToggleStar(contact.id)}
               />
@@ -194,12 +249,14 @@ function ContactRow({
   contact,
   selected,
   emailCount,
+  accountLabel,
   onSelect,
   onToggleStar,
 }: {
   contact: Contact;
   selected: boolean;
   emailCount: number;
+  accountLabel?: string;
   onSelect: () => void;
   onToggleStar: () => void;
 }) {
@@ -216,7 +273,7 @@ function ContactRow({
           <p className="truncate text-caption text-wf-text-tertiary">
             {contact.jobTitle && contact.company
               ? `${contact.jobTitle} · ${contact.company}`
-              : contact.email ?? contact.company ?? contact.phone ?? contact.mobilePhone ?? "No details"}
+              : accountLabel ?? contact.email ?? contact.company ?? contact.phone ?? contact.mobilePhone ?? "No details"}
           </p>
         </div>
       </button>
@@ -332,7 +389,7 @@ function ContactDetail({
               )}
               {contact.source === "microsoft" && (
                 <span className="rounded-full bg-[#0078d4]/15 px-2 py-0.5 text-[11px] font-semibold text-[#0078d4]">
-                  Outlook
+                  {contactAccountLabel(contact, emailAccounts) ?? "Outlook"}
                 </span>
               )}
               {(contact.categories ?? []).map((category) => (

@@ -5,7 +5,7 @@ export const MICROSOFT_GRAPH_SCOPES = [
   "Mail.Send",
   "Calendars.ReadWrite",
   "Tasks.ReadWrite",
-  "Notes.ReadWrite",
+  "Contacts.Read",
   "Files.Read.All",
 ] as const;
 
@@ -44,4 +44,31 @@ export interface ProviderItemMapping {
 export interface GraphCalendarEventResult {
   externalId: string;
   webLink?: string;
+}
+
+export interface GraphMailFolderDto {
+  id: string;
+  graphFolderId: string;
+  label: string;
+  accountId: string;
+  connectedAccountId: string;
+  wellKnown?: "inbox" | "sentitems" | "drafts" | "deleteditems";
+}
+
+export interface GraphCalendarDto {
+  id: string;
+  graphCalendarId: string;
+  name: string;
+  accountId: string;
+  connectedAccountId: string;
+  isDefault?: boolean;
+}
+
+export interface GraphTodoListDto {
+  id: string;
+  graphListId: string;
+  name: string;
+  accountId: string;
+  connectedAccountId: string;
+  isDefault?: boolean;
 }

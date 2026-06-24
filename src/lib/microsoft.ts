@@ -1,5 +1,10 @@
-import type { MicrosoftIntegrationStatus } from "../../shared/microsoftGraph";
-import type { CalendarItem, EmailMessage, Note } from "../types";
+import type {
+  GraphCalendarDto,
+  GraphMailFolderDto,
+  GraphTodoListDto,
+  MicrosoftIntegrationStatus,
+} from "../../shared/microsoftGraph";
+import type { CalendarItem, Contact, EmailMessage, EmailFolder, Note } from "../types";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -31,12 +36,130 @@ export async function disconnectMicrosoftAccount(accountId: string): Promise<voi
   await apiFetch<void>(`/api/microsoft/accounts/${accountId}`, { method: "DELETE" });
 }
 
-export async function fetchMicrosoftMail(accountId: string): Promise<EmailMessage[]> {
-  return apiFetch<EmailMessage[]>(`/api/microsoft/mail?accountId=${encodeURIComponent(accountId)}`);
+export async function fetchMicrosoftMail(
+  accountId: string,
+  folderGraphId?: string,
+): Promise<EmailMessage[]> {
+  const params = new URLSearchParams({ accountId });
+  if (folderGraphId) params.set("folderId", folderGraphId);
+  return apiFetch<EmailMessage[]>(`/api/microsoft/mail?${params.toString()}`);
+}
+
+export async function fetchMicrosoftMailFolders(accountId: string): Promise<EmailFolder[]> {
+  return apiFetch<EmailFolder[]>(
+    `/api/microsoft/mail/folders?accountId=${encodeURIComponent(accountId)}`,
+  );
 }
 
 export async function fetchMicrosoftCalendar(accountId: string): Promise<CalendarItem[]> {
   return apiFetch<CalendarItem[]>(`/api/microsoft/calendar?accountId=${encodeURIComponent(accountId)}`);
+}
+
+export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphCalendarDto[]> {
+  return apiFetch<GraphCalendarDto[]>(
+    `/api/microsoft/calendars?accountId=${encodeURIComponent(accountId)}`,
+  );
+}
+
+export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {
+  return apiFetch<GraphTodoListDto[]>(
+    `/api/microsoft/todo/lists?accountId=${encodeURIComponent(accountId)}`,
+  );
+}
+
+export async function fetchMicrosoftContacts(accountId: string): Promise<Contact[]> {
+  const contacts = await apiFetch<
+    Array<{
+      id: string;
+      name: string;
+      email?: string;
+      phone?: string;
+      mobilePhone?: string;
+      company?: string;
+      jobTitle?: string;
+      accountId: string;
+      connectedAccountId: string;
+      externalId: string;
+      provider: "microsoft";
+    }>
+  >(`/api/microsoft/contacts?accountId=${encodeURIComponent(accountId)}`);
+
+  return contacts.map((contact) => ({
+    id: contact.id,
+    name: contact.name,
+    email: contact.email,
+    phone: contact.phone,
+    mobilePhone: contact.mobilePhone,
+    company: contact.company,
+    jobTitle: contact.jobTitle,
+    source: "microsoft" as const,
+    externalId: contact.externalId,
+    accountId: contact.accountId,
+    connectedAccountId: contact.connectedAccountId,
+    categories: ["Outlook"],
+  }));
+}
+
+export async function fetchAllMicrosoftMail(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<{ mail: EmailMessage[]; folders: EmailFolder[] }> {
+  if (accounts.length === 0) return { mail: [], folders: [] };
+
+  const batches = await Promise.all(
+    accounts.map(async (account) => {
+      const folders = await fetchMicrosoftMailFolders(account.id);
+      const inbox = folders.find((folder) => folder.wellKnown === "inbox") ?? folders[0];
+      const mail = inbox
+        ? await fetchMicrosoftMail(account.id, inbox.graphFolderId)
+        : await fetchMicrosoftMail(account.id);
+      return { folders, mail };
+    }),
+  );
+
+  return {
+    folders: batches.flatMap((batch) => batch.folders),
+    mail: batches.flatMap((batch) => batch.mail),
+  };
+}
+
+export async function fetchAllMicrosoftCalendar(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<CalendarItem[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(
+    accounts.map((account) => fetchMicrosoftCalendar(account.id)),
+  );
+  return batches.flat();
+}
+
+export async function fetchAllMicrosoftContacts(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<Contact[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(
+    accounts.map((account) => fetchMicrosoftContacts(account.id)),
+  );
+  return batches.flat();
+}
+
+export async function fetchAllMicrosoftCalendarsList(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<GraphCalendarDto[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(
+    accounts.map((account) => fetchMicrosoftCalendars(account.id)),
+  );
+  return batches.flat();
+}
+
+export async function fetchAllMicrosoftTodoLists(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<GraphTodoListDto[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(
+    accounts.map((account) => fetchMicrosoftTodoLists(account.id)),
+  );
+  return batches.flat();
 }
 
 export async function fetchMicrosoftNotes(accountId: string): Promise<Note[]> {
@@ -75,6 +198,7 @@ export async function syncCalendarToMicrosoft(
   accountId: string,
   item: CalendarItem,
   photo?: { storageKey: string; mimeType: string; filename: string },
+  calendarId?: string,
 ): Promise<{ externalId: string; webLink?: string }> {
   return apiFetch("/api/microsoft/calendar/sync", {
     method: "POST",
@@ -89,6 +213,7 @@ export async function syncCalendarToMicrosoft(
         endTime: item.endTime,
         allDay: item.allDay,
         notes: item.notes,
+        calendarId,
         photoStorageKey: photo?.storageKey,
         photoMimeType: photo?.mimeType,
         photoFilename: photo?.filename,
@@ -99,7 +224,7 @@ export async function syncCalendarToMicrosoft(
 
 export async function createMicrosoftTodo(
   accountId: string,
-  input: { title: string; dueDate?: string; notes?: string },
+  input: { title: string; dueDate?: string; notes?: string; todoListId?: string },
 ): Promise<{ externalId: string }> {
   return apiFetch("/api/microsoft/todo", {
     method: "POST",

@@ -12,8 +12,12 @@ import {
   createMicrosoftTodoTask,
   deleteMicrosoftNote,
   fetchMicrosoftCalendarEvents,
+  fetchMicrosoftCalendars,
+  fetchMicrosoftContacts,
+  fetchMicrosoftMailFolders,
   fetchMicrosoftMessages,
   fetchMicrosoftNotes,
+  fetchMicrosoftTodoLists,
   syncCalendarItemToMicrosoft,
   updateMicrosoftNote,
 } from "../services/microsoft-graph-service";
@@ -99,17 +103,35 @@ export function registerMicrosoftRoutes(app: Express): void {
 
   app.get("/api/microsoft/mail", async (req, res) => {
     const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const folderId = typeof req.query.folderId === "string" ? req.query.folderId : undefined;
     if (!accountId) {
       res.status(400).json({ message: "accountId is required" });
       return;
     }
 
     try {
-      const messages = await fetchMicrosoftMessages(accountId);
+      const messages = await fetchMicrosoftMessages(accountId, 50, folderId);
       res.json(messages);
     } catch (error) {
       console.error("GET /api/microsoft/mail failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch Outlook mail";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/mail/folders", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const folders = await fetchMicrosoftMailFolders(accountId);
+      res.json(folders);
+    } catch (error) {
+      console.error("GET /api/microsoft/mail/folders failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch mail folders";
       res.status(500).json({ message });
     }
   });
@@ -123,13 +145,36 @@ export function registerMicrosoftRoutes(app: Express): void {
 
     const startDate = typeof req.query.startDate === "string" ? req.query.startDate : undefined;
     const endDate = typeof req.query.endDate === "string" ? req.query.endDate : undefined;
+    const calendarId = typeof req.query.calendarId === "string" ? req.query.calendarId : undefined;
 
     try {
-      const events = await fetchMicrosoftCalendarEvents(accountId, startDate, endDate);
+      const events = await fetchMicrosoftCalendarEvents(
+        accountId,
+        startDate,
+        endDate,
+        calendarId,
+      );
       res.json(events);
     } catch (error) {
       console.error("GET /api/microsoft/calendar failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch Outlook calendar";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/calendars", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const calendars = await fetchMicrosoftCalendars(accountId);
+      res.json(calendars);
+    } catch (error) {
+      console.error("GET /api/microsoft/calendars failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch calendars";
       res.status(500).json({ message });
     }
   });
@@ -156,6 +201,8 @@ export function registerMicrosoftRoutes(app: Express): void {
   app.post("/api/microsoft/todo", async (req, res) => {
     const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
     const title = typeof req.body?.title === "string" ? req.body.title : null;
+    const todoListId =
+      typeof req.body?.todoListId === "string" ? req.body.todoListId : undefined;
 
     if (!accountId || !title) {
       res.status(400).json({ message: "Invalid To Do payload" });
@@ -167,11 +214,46 @@ export function registerMicrosoftRoutes(app: Express): void {
         title,
         dueDate: typeof req.body?.dueDate === "string" ? req.body.dueDate : undefined,
         notes: typeof req.body?.notes === "string" ? req.body.notes : undefined,
+        todoListId,
       });
       res.status(201).json(result);
     } catch (error) {
       console.error("POST /api/microsoft/todo failed:", error);
       const message = error instanceof Error ? error.message : "Failed to create To Do task";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/todo/lists", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const lists = await fetchMicrosoftTodoLists(accountId);
+      res.json(lists);
+    } catch (error) {
+      console.error("GET /api/microsoft/todo/lists failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch To Do lists";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/contacts", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const contacts = await fetchMicrosoftContacts(accountId);
+      res.json(contacts);
+    } catch (error) {
+      console.error("GET /api/microsoft/contacts failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch Outlook contacts";
       res.status(500).json({ message });
     }
   });

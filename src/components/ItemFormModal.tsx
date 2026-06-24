@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import type { Attachment } from '../../shared/attachments'
 import type { EntityType, ItemLink } from '../../shared/links'
-import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
-import type { CalendarItem, Category, EmailMessage } from '../types'
-import { resolveItemColour } from '../categories'
+import type { ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
+import type { GraphCalendarDto, GraphTodoListDto } from '../../shared/microsoftGraph'
+import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults } from '../types'
+import { isTaskCategory, resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
 import { getPhotoUrlForItem, uploadAttachment } from '../lib/attachments'
@@ -30,7 +31,13 @@ interface ItemFormModalProps {
   onNavigateLink: (type: EntityType, id: string) => void
   onLinkExisting?: () => void
   onRemoveLink?: (linkId: string) => void
+  usingRealMicrosoft?: boolean
+  microsoftCalendars?: GraphCalendarDto[]
+  microsoftTodoLists?: GraphTodoListDto[]
+  integrationAccountDefaults?: IntegrationAccountDefaults
+  outlookAccountEmails?: Record<string, string>
 }
+
 const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
   const defaultCat = categories.find((c) => c.id === 'appointment') ?? categories[0]
   return {
@@ -42,6 +49,61 @@ const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
     colour: defaultCat.colour,
     notes: '',
     completed: false,
+  }
+}
+
+function applyOutlookDefaults(
+  base: CalendarItem,
+  categories: Category[],
+  usingRealMicrosoft: boolean,
+  microsoftCalendars: GraphCalendarDto[],
+  microsoftTodoLists: GraphTodoListDto[],
+  integrationAccountDefaults?: IntegrationAccountDefaults,
+): CalendarItem {
+  if (!usingRealMicrosoft) return base
+
+  const defaultAccountId =
+    integrationAccountDefaults?.defaultMicrosoftAccountId ??
+    microsoftCalendars[0]?.connectedAccountId ??
+    microsoftTodoLists[0]?.connectedAccountId
+
+  if (isTaskCategory(categories, base.categoryId)) {
+    const preferredList =
+      microsoftTodoLists.find(
+        (list) =>
+          list.graphListId === integrationAccountDefaults?.tasks?.defaultTodoListId &&
+          list.connectedAccountId === defaultAccountId,
+      ) ??
+      microsoftTodoLists.find(
+        (list) => list.connectedAccountId === defaultAccountId && list.isDefault,
+      ) ??
+      microsoftTodoLists.find((list) => list.connectedAccountId === defaultAccountId)
+    if (!preferredList) return base
+    return {
+      ...base,
+      todoListId: preferredList.graphListId,
+      accountId: preferredList.accountId,
+      connectedAccountId: preferredList.connectedAccountId,
+    }
+  }
+
+  const preferredCalendar =
+    microsoftCalendars.find(
+      (calendar) =>
+        calendar.graphCalendarId === integrationAccountDefaults?.calendar?.defaultCalendarId &&
+        calendar.connectedAccountId === defaultAccountId,
+    ) ??
+    microsoftCalendars.find(
+      (calendar) => calendar.connectedAccountId === defaultAccountId && calendar.isDefault,
+    ) ??
+    microsoftCalendars.find((calendar) => calendar.connectedAccountId === defaultAccountId)
+  if (!preferredCalendar) return base
+  return {
+    ...base,
+    calendarId: preferredCalendar.graphCalendarId,
+    calendarName: preferredCalendar.name,
+    accountId: preferredCalendar.accountId,
+    connectedAccountId: preferredCalendar.connectedAccountId,
   }
 }
 
@@ -63,17 +125,69 @@ export function ItemFormModal({
   onNavigateLink,
   onLinkExisting,
   onRemoveLink,
+  usingRealMicrosoft = false,
+  microsoftCalendars = [],
+  microsoftTodoLists = [],
+  integrationAccountDefaults,
+  outlookAccountEmails = {},
 }: ItemFormModalProps) {
   const [form, setForm] = useState<CalendarItem>(() => emptyForm(defaultDate, categories))
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const isEdit = Boolean(item?.id)
 
   useEffect(() => {
-    if (open) {
-      setForm(item?.id ? { ...item } : emptyForm(defaultDate, categories))
+    if (!open) return
+    if (item?.id) {
+      setForm({ ...item })
+      return
     }
-  }, [open, item, defaultDate, categories])
+    const base = emptyForm(defaultDate, categories)
+    setForm(
+      applyOutlookDefaults(
+        base,
+        categories,
+        usingRealMicrosoft,
+        microsoftCalendars,
+        microsoftTodoLists,
+        integrationAccountDefaults,
+      ),
+    )
+  }, [
+    open,
+    item,
+    defaultDate,
+    categories,
+    usingRealMicrosoft,
+    microsoftCalendars,
+    microsoftTodoLists,
+    integrationAccountDefaults,
+  ])
+
+  const isEdit = Boolean(item?.id)
+  const isTask = isTaskCategory(categories, form.categoryId)
+
+  const calendarOptions = useMemo(
+    () =>
+      microsoftCalendars.map((calendar) => ({
+        value: calendar.graphCalendarId,
+        label: `${calendar.name}${calendar.isDefault ? ' (default)' : ''}`,
+        calendar,
+      })),
+    [microsoftCalendars],
+  )
+
+  const todoListOptions = useMemo(
+    () =>
+      microsoftTodoLists.map((list) => ({
+        value: list.graphListId,
+        label: `${list.name}${list.isDefault ? ' (default)' : ''}`,
+        list,
+      })),
+    [microsoftTodoLists],
+  )
+
+  const outlookLabel = (connectedAccountId: string) =>
+    outlookAccountEmails[connectedAccountId] ?? 'Outlook'
 
   if (!open) return null
 
@@ -121,11 +235,24 @@ export function ItemFormModal({
   }
 
   const selectCategory = (categoryId: string) => {
-    setForm({
+    const next = {
       ...form,
       categoryId,
       colour: resolveItemColour(categories, categoryId),
-    })
+      calendarId: undefined,
+      calendarName: undefined,
+      todoListId: undefined,
+    }
+    setForm(
+      applyOutlookDefaults(
+        next,
+        categories,
+        usingRealMicrosoft,
+        microsoftCalendars,
+        microsoftTodoLists,
+        integrationAccountDefaults,
+      ),
+    )
   }
 
   return (
@@ -224,6 +351,61 @@ export function ItemFormModal({
               ))}
             </div>
           </Field>
+
+          {usingRealMicrosoft && isTask && todoListOptions.length > 0 && (
+            <Field label="Save to To Do list">
+              <select
+                value={form.todoListId ?? ''}
+                onChange={(e) => {
+                  const list = microsoftTodoLists.find(
+                    (entry) => entry.graphListId === e.target.value,
+                  )
+                  if (!list) return
+                  setForm({
+                    ...form,
+                    todoListId: list.graphListId,
+                    accountId: list.accountId,
+                    connectedAccountId: list.connectedAccountId,
+                  })
+                }}
+                className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+              >
+                {todoListOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {outlookLabel(option.list.connectedAccountId)} · {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          {usingRealMicrosoft && !isTask && calendarOptions.length > 0 && (
+            <Field label="Save to Outlook calendar">
+              <select
+                value={form.calendarId ?? ''}
+                onChange={(e) => {
+                  const calendar = microsoftCalendars.find(
+                    (entry) => entry.graphCalendarId === e.target.value,
+                  )
+                  if (!calendar) return
+                  setForm({
+                    ...form,
+                    calendarId: calendar.graphCalendarId,
+                    calendarName: calendar.name,
+                    accountId: calendar.accountId,
+                    connectedAccountId: calendar.connectedAccountId,
+                  })
+                }}
+                className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+              >
+                {calendarOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {outlookLabel(option.calendar.connectedAccountId)} · {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           {form.allDay && !form.endDate && (
             <p className="text-caption text-wf-text-tertiary">

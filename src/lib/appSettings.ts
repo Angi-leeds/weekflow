@@ -1,12 +1,14 @@
 import type {
   CalendarPreferences,
   CalendarViewMode,
+  IntegrationAccountDefaults,
   IntegrationPreferences,
   ListDisplayOptions,
   TimeFormat,
 } from "../types";
 import {
   DEFAULT_CALENDAR_PREFERENCES,
+  DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS,
   DEFAULT_INTEGRATION_PREFERENCES,
   DEFAULT_LIST_OPTIONS,
 } from "../types";
@@ -14,6 +16,7 @@ import {
 const CALENDAR_PREFS_KEY = "weekflow-calendar-preferences";
 const LIST_OPTIONS_KEY = "weekflow-list-options";
 const INTEGRATION_PREFS_KEY = "weekflow-integration-preferences";
+const INTEGRATION_DEFAULTS_KEY = "weekflow-integration-account-defaults";
 
 let activeTimeFormat: TimeFormat = DEFAULT_CALENDAR_PREFERENCES.timeFormat;
 
@@ -88,6 +91,29 @@ export function loadIntegrationPreferences(): IntegrationPreferences {
 
 export function saveIntegrationPreferences(prefs: IntegrationPreferences): void {
   localStorage.setItem(INTEGRATION_PREFS_KEY, JSON.stringify(prefs));
+}
+
+export function loadIntegrationAccountDefaults(): IntegrationAccountDefaults {
+  try {
+    const raw = localStorage.getItem(INTEGRATION_DEFAULTS_KEY);
+    if (!raw) return { ...DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS };
+    const parsed = JSON.parse(raw) as IntegrationAccountDefaults;
+    return {
+      ...DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS,
+      ...parsed,
+      email: { ...parsed.email },
+      calendar: { ...parsed.calendar },
+      notes: { ...parsed.notes },
+      tasks: { ...parsed.tasks },
+      contacts: { ...parsed.contacts },
+    };
+  } catch {
+    return { ...DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS };
+  }
+}
+
+export function saveIntegrationAccountDefaults(defaults: IntegrationAccountDefaults): void {
+  localStorage.setItem(INTEGRATION_DEFAULTS_KEY, JSON.stringify(defaults));
 }
 
 function isCalendarViewMode(value: unknown): value is CalendarViewMode {

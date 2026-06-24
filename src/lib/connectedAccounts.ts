@@ -52,15 +52,20 @@ export function resolveCalendarAccounts(status: MicrosoftIntegrationStatus | nul
   return [...MOCK_CALENDAR_ACCOUNTS];
 }
 
-export function resolveEmailFolders(accounts: EmailAccount[]): EmailFolder[] {
+export function resolveEmailFolders(
+  accounts: EmailAccount[],
+  graphFolders: EmailFolder[] = [],
+): EmailFolder[] {
   const microsoftAccounts = accounts.filter((account) => account.id.startsWith("ms-"));
   if (microsoftAccounts.length === 0) return [...MOCK_EMAIL_FOLDERS];
+  if (graphFolders.length > 0) return graphFolders;
 
   return microsoftAccounts.flatMap((account) => [
     {
       id: `${account.id}-inbox`,
       label: "Inbox",
       accountId: account.id,
+      wellKnown: "inbox" as const,
     },
   ]);
 }

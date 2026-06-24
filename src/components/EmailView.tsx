@@ -49,6 +49,8 @@ interface EmailViewProps {
   onLinkExisting: (email: EmailMessage) => void
   onNavigateLink: (type: EntityType, id: string) => void
   onRemoveLink?: (linkId: string) => void
+  onLoadFolderMessages?: (folder: EmailFolder) => void
+  loadingFolderIds?: Set<string>
 }
 
 export function EmailView({
@@ -70,6 +72,8 @@ export function EmailView({
   onLinkExisting,
   onNavigateLink,
   onRemoveLink,
+  onLoadFolderMessages,
+  loadingFolderIds,
 }: EmailViewProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(emails[0]?.id ?? null)
   const selectedId = controlledSelectedId ?? internalSelectedId
@@ -104,6 +108,12 @@ export function EmailView({
         : [],
     [activeAccountId, emailFolders],
   )
+
+  useEffect(() => {
+    if (inboxFilter.mode !== 'folder') return
+    const folder = emailFolders.find((entry) => entry.id === inboxFilter.folderId)
+    if (folder) onLoadFolderMessages?.(folder)
+  }, [emailFolders, inboxFilter, onLoadFolderMessages])
 
   const filtered = useMemo(() => {
     let list = emails

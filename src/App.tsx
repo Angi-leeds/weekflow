@@ -5,7 +5,7 @@ import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
-import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationPreferences, Note } from './types'
+import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder } from './types'
 import { type ListDisplayOptions } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, initialItems, getMockCloudFolder, calendarAccountForCategory } from './mockData'
@@ -19,9 +19,11 @@ import { fetchAllAttachments } from './lib/attachments'
 import { loadCalendarFilter, saveCalendarFilter } from './lib/calendarSettings'
 import {
   loadCalendarPreferences,
+  loadIntegrationAccountDefaults,
   loadIntegrationPreferences,
   loadListOptions,
   saveCalendarPreferences,
+  saveIntegrationAccountDefaults,
   saveIntegrationPreferences,
   saveListOptions,
 } from './lib/appSettings'
@@ -36,7 +38,11 @@ import {
   createMicrosoftNote,
   createMicrosoftTodo,
   deleteMicrosoftNote,
-  fetchMicrosoftCalendar,
+  fetchAllMicrosoftCalendar,
+  fetchAllMicrosoftCalendarsList,
+  fetchAllMicrosoftContacts,
+  fetchAllMicrosoftMail,
+  fetchAllMicrosoftTodoLists,
   fetchMicrosoftMail,
   fetchMicrosoftNotes,
   fetchMicrosoftStatus,
@@ -47,6 +53,10 @@ import {
   syncCalendarToMicrosoft,
   updateMicrosoftNote,
 } from './lib/microsoft'
+import { mergeGraphContacts } from './lib/mergeContacts'
+import {
+  resolveConnectedAccountId,
+} from './lib/integrationDefaults'
 import {
   INITIAL_CONTACTS,
   loadStoredContacts,
@@ -68,6 +78,7 @@ import {
   useRealMicrosoftData,
 } from './lib/connectedAccounts'
 import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
+import type { GraphCalendarDto, GraphTodoListDto } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -130,6 +141,9 @@ export default function App() {
   const [integrationPreferences, setIntegrationPreferences] = useState(() =>
     loadIntegrationPreferences(),
   )
+  const [integrationAccountDefaults, setIntegrationAccountDefaults] = useState(
+    () => loadIntegrationAccountDefaults(),
+  )
   const [links, setLinks] = useState<ItemLink[]>([])
   const [itemShares, setItemShares] = useState<ItemShare[]>([])
   const [boardPins, setBoardPins] = useState<BoardPin[]>([])
@@ -152,8 +166,13 @@ export default function App() {
   const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftIntegrationStatus | null>(null)
   const [microsoftLoading, setMicrosoftLoading] = useState(true)
   const [graphEmails, setGraphEmails] = useState<EmailMessage[]>([])
+  const [graphEmailFolders, setGraphEmailFolders] = useState<EmailFolder[]>([])
   const [graphCalendarItems, setGraphCalendarItems] = useState<CalendarItem[]>([])
   const [graphNotes, setGraphNotes] = useState<Note[]>([])
+  const [graphContacts, setGraphContacts] = useState<Contact[]>([])
+  const [graphCalendars, setGraphCalendars] = useState<GraphCalendarDto[]>([])
+  const [graphTodoLists, setGraphTodoLists] = useState<GraphTodoListDto[]>([])
+  const [loadingEmailFolders, setLoadingEmailFolders] = useState<Set<string>>(() => new Set())
 
   const usingRealMicrosoft = useRealMicrosoftData(microsoftStatus, microsoftLoading)
   const emailAccounts = useMemo(
@@ -164,27 +183,44 @@ export default function App() {
     () => resolveCalendarAccounts(microsoftStatus),
     [microsoftStatus],
   )
-  const emailFolders = useMemo(() => resolveEmailFolders(emailAccounts), [emailAccounts])
+  const emailFolders = useMemo(
+    () => resolveEmailFolders(emailAccounts, graphEmailFolders),
+    [emailAccounts, graphEmailFolders],
+  )
 
   const refreshMicrosoft = useCallback(async () => {
     setMicrosoftLoading(true)
     try {
       const status = await fetchMicrosoftStatus()
       setMicrosoftStatus(status)
-      const account = status.accounts[0]
-      if (account) {
-        const [mail, calendar, outlookNotes] = await Promise.all([
-          fetchMicrosoftMail(account.id),
-          fetchMicrosoftCalendar(account.id),
-          fetchMicrosoftNotes(account.id),
+      const accounts = status.accounts
+      if (accounts.length > 0) {
+        const [mailBundle, calendar, outlookNotes, outlookContacts, calendars, todoLists] =
+          await Promise.all([
+          fetchAllMicrosoftMail(accounts),
+          fetchAllMicrosoftCalendar(accounts),
+          Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
+            batches.flat(),
+          ),
+          fetchAllMicrosoftContacts(accounts),
+          fetchAllMicrosoftCalendarsList(accounts),
+          fetchAllMicrosoftTodoLists(accounts),
         ])
-        setGraphEmails(mail)
+        setGraphEmailFolders(mailBundle.folders)
+        setGraphEmails(mailBundle.mail)
         setGraphCalendarItems(calendar)
         setGraphNotes(outlookNotes)
+        setGraphContacts(outlookContacts)
+        setGraphCalendars(calendars)
+        setGraphTodoLists(todoLists)
       } else {
+        setGraphEmailFolders([])
         setGraphEmails([])
         setGraphCalendarItems([])
         setGraphNotes([])
+        setGraphContacts([])
+        setGraphCalendars([])
+        setGraphTodoLists([])
       }
     } catch (error) {
       console.error(error)
@@ -192,6 +228,37 @@ export default function App() {
       setMicrosoftLoading(false)
     }
   }, [])
+
+  const handleLoadFolderMessages = useCallback(
+    async (folder: EmailFolder) => {
+      if (!folder.connectedAccountId || !folder.graphFolderId) return
+      if (graphEmails.some((email) => email.folderId === folder.id)) return
+
+      setLoadingEmailFolders((prev) => new Set(prev).add(folder.id))
+      try {
+        const messages = await fetchMicrosoftMail(
+          folder.connectedAccountId,
+          folder.graphFolderId,
+        )
+        setGraphEmails((prev) => [
+          ...prev.filter((email) => email.folderId !== folder.id),
+          ...messages,
+        ])
+      } catch (error) {
+        console.error(error)
+        setToastMessage(
+          error instanceof Error ? error.message : `Failed to load ${folder.label}`,
+        )
+      } finally {
+        setLoadingEmailFolders((prev) => {
+          const next = new Set(prev)
+          next.delete(folder.id)
+          return next
+        })
+      }
+    },
+    [graphEmails],
+  )
 
   const displayEmails = useMemo(
     () => mergeGraphMail(emails, graphEmails),
@@ -207,6 +274,19 @@ export default function App() {
     () => mergeGraphNotes(notes, graphNotes),
     [notes, graphNotes],
   )
+
+  const displayContacts = useMemo(
+    () => mergeGraphContacts(contacts, graphContacts),
+    [contacts, graphContacts],
+  )
+
+  const outlookAccountEmails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const account of microsoftStatus?.accounts ?? []) {
+      map[account.id] = account.email
+    }
+    return map
+  }, [microsoftStatus])
 
   const activeMember = useMemo(() => getActiveMember(permissionsConfig), [permissionsConfig])
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
@@ -226,6 +306,7 @@ export default function App() {
     setEmails((prev) => prev.filter((email) => !isMockEmail(email)))
     setItems((prev) => prev.filter((item) => !isMockCalendarItem(item)))
     setNotes((prev) => prev.filter((note) => !isMockNote(note)))
+    setContacts((prev) => prev.filter((contact) => contact.source !== "mock"))
   }, [microsoftLoading, usingRealMicrosoft])
 
   const unreadCount = useMemo(() => displayEmails.filter((e) => e.unread).length, [displayEmails])
@@ -257,6 +338,10 @@ export default function App() {
   useEffect(() => {
     saveIntegrationPreferences(integrationPreferences)
   }, [integrationPreferences])
+
+  useEffect(() => {
+    saveIntegrationAccountDefaults(integrationAccountDefaults)
+  }, [integrationAccountDefaults])
 
   useEffect(() => {
     setWeekStart(startOfWeek(new Date(), calendarPreferences.weekStartsOn))
@@ -478,7 +563,7 @@ export default function App() {
         allDay: true,
         categoryId: taskCategory.id,
         colour: taskCategory.colour,
-        accountId: calendarAccountForCategory(taskCategory.id),
+        accountId: email.accountId || calendarAccountForCategory(taskCategory.id),
         notes: `From: ${email.from} <${email.fromEmail}>\n\n${email.body.slice(0, 500)}`,
         completed: false,
       }
@@ -517,7 +602,7 @@ export default function App() {
           allDay: true,
           categoryId: eventCategory.id,
           colour: eventCategory.colour,
-          accountId: calendarAccountForCategory(eventCategory.id),
+          accountId: email.accountId || calendarAccountForCategory(eventCategory.id),
           notes: `From: ${email.from} <${email.fromEmail}>\n\n${email.body.slice(0, 500)}`,
         }
         setItems((prev) => [...prev, calendarItem!])
@@ -539,7 +624,7 @@ export default function App() {
           allDay: true,
           categoryId: taskCategory.id,
           colour: taskCategory.colour,
-          accountId: calendarAccountForCategory(taskCategory.id),
+          accountId: email.accountId || calendarAccountForCategory(taskCategory.id),
           notes: `Reminder linked to bill email: ${email.subject}`,
           completed: false,
         }
@@ -711,13 +796,12 @@ export default function App() {
 
   const handleSaveItem = useCallback(
     async (item: CalendarItem) => {
+      const accounts = microsoftStatus?.accounts ?? []
+      const fallbackAccountKey =
+        accounts[0] ? microsoftAccountKey(accounts[0].id) : calendarAccountForCategory(item.categoryId)
       const normalized = {
         ...item,
-        accountId:
-          item.accountId ??
-          (microsoftStatus?.accounts[0]
-            ? microsoftAccountKey(microsoftStatus.accounts[0].id)
-            : calendarAccountForCategory(item.categoryId)),
+        accountId: item.accountId ?? fallbackAccountKey,
       }
       setItems((prev) => {
         const idx = prev.findIndex((i) => i.id === normalized.id)
@@ -729,8 +813,12 @@ export default function App() {
         return [...prev, normalized]
       })
 
-      const microsoftAccount = microsoftStatus?.accounts[0]
-      if (!microsoftAccount) return
+      const connectedAccountId = resolveConnectedAccountId(
+        accounts,
+        integrationAccountDefaults,
+        normalized.accountId,
+      )
+      if (!connectedAccountId) return
 
       const category = categories.find((entry) => entry.id === normalized.categoryId)
       const linkType = getItemLinkType(normalized, categories)
@@ -741,19 +829,24 @@ export default function App() {
           entry.kind === 'photo',
       )
 
+      const defaultCalendarId =
+        normalized.calendarId ?? integrationAccountDefaults.calendar?.defaultCalendarId
+      const defaultTodoListId = integrationAccountDefaults.tasks?.defaultTodoListId
+
       try {
         if (category?.kind === 'task') {
-          await createMicrosoftTodo(microsoftAccount.id, {
+          await createMicrosoftTodo(connectedAccountId, {
             title: normalized.title,
             dueDate: normalized.date,
             notes: normalized.notes,
+            todoListId: normalized.todoListId ?? defaultTodoListId,
           })
           setToastMessage('Task synced to Microsoft To Do')
           return
         }
 
         const result = await syncCalendarToMicrosoft(
-          microsoftAccount.id,
+          connectedAccountId,
           normalized,
           photoAttachment
             ? {
@@ -762,6 +855,7 @@ export default function App() {
                 filename: photoAttachment.filename,
               }
             : undefined,
+          defaultCalendarId,
         )
         setItems((prev) =>
           prev.map((entry) =>
@@ -770,7 +864,7 @@ export default function App() {
                   ...entry,
                   externalId: result.externalId,
                   provider: 'microsoft',
-                  connectedAccountId: microsoftAccount.id,
+                  connectedAccountId,
                 }
               : entry,
           ),
@@ -783,7 +877,7 @@ export default function App() {
         )
       }
     },
-    [attachments, categories, microsoftStatus],
+    [attachments, categories, integrationAccountDefaults, microsoftStatus],
   )
 
   const handleDeleteItem = useCallback((id: string) => {
@@ -1113,12 +1207,14 @@ export default function App() {
             itemShares={itemShares}
             onShareUpdate={handleShareUpdate}
             onOpenActionFlow={setEmailActionFlowEmail}
+            onLoadFolderMessages={handleLoadFolderMessages}
+            loadingFolderIds={loadingEmailFolders}
           />
         )}
 
         {section === 'contacts' && (
           <ContactsView
-            contacts={contacts}
+            contacts={displayContacts}
             emails={displayEmails}
             emailAccounts={emailAccounts}
             emailFolders={emailFolders}
@@ -1165,6 +1261,10 @@ export default function App() {
             onCalendarPreferencesChange={handleCalendarPreferencesChange}
             integrationPreferences={integrationPreferences}
             onIntegrationPreferencesChange={setIntegrationPreferences}
+            integrationAccountDefaults={integrationAccountDefaults}
+            onIntegrationAccountDefaultsChange={setIntegrationAccountDefaults}
+            graphCalendars={graphCalendars}
+            graphTodoLists={graphTodoLists}
             onSaveCategory={handleSaveCategory}
             onDeleteCategory={handleDeleteCategory}
             permissionsConfig={permissionsConfig}
@@ -1221,6 +1321,11 @@ export default function App() {
         items={displayCalendarItems}
         attachments={attachments}
         onAttachmentUploaded={handleAttachmentUploaded}
+        usingRealMicrosoft={usingRealMicrosoft}
+        microsoftCalendars={graphCalendars}
+        microsoftTodoLists={graphTodoLists}
+        integrationAccountDefaults={integrationAccountDefaults}
+        outlookAccountEmails={outlookAccountEmails}
         itemShare={
           editingItem
             ? getShareForEntity(

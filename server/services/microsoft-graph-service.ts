@@ -1,6 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
-import type { GraphCalendarEventResult } from "../../shared/microsoftGraph";
+import type {
+  GraphCalendarDto,
+  GraphCalendarEventResult,
+  GraphMailFolderDto,
+  GraphTodoListDto,
+} from "../../shared/microsoftGraph";
 import { normalizeEmailBody } from "../../shared/emailBody";
 import { MICROSOFT_GRAPH_BASE } from "../../shared/microsoftGraph";
 import {
@@ -97,6 +102,8 @@ export interface GraphCalendarItemDto {
   externalId: string;
   provider: "microsoft";
   connectedAccountId: string;
+  calendarId?: string;
+  calendarName?: string;
 }
 
 export interface CalendarSyncInput {
@@ -111,6 +118,29 @@ export interface CalendarSyncInput {
   photoStorageKey?: string;
   photoMimeType?: string;
   photoFilename?: string;
+  calendarId?: string;
+}
+
+export interface GraphContactDto {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  mobilePhone?: string;
+  company?: string;
+  jobTitle?: string;
+  accountId: string;
+  connectedAccountId: string;
+  externalId: string;
+  provider: "microsoft";
+}
+
+function accountKeyFromRecord(account: ConnectedAccountRecord): string {
+  return `ms-${account.id}`;
+}
+
+function folderCompositeId(accountKey: string, graphFolderId: string): string {
+  return `${accountKey}-${graphFolderId}`;
 }
 
 async function getValidAccessToken(accountId: string): Promise<string> {
@@ -164,8 +194,12 @@ function subtractOneDayIso(date: string): string {
   return value.toISOString().slice(0, 10);
 }
 
-function mapGraphEventToDto(event: GraphEvent, account: ConnectedAccountRecord): GraphCalendarItemDto {
-  const accountKey = `ms-${account.id}`;
+function mapGraphEventToDto(
+  event: GraphEvent,
+  account: ConnectedAccountRecord,
+  calendar?: { id: string; name: string },
+): GraphCalendarItemDto {
+  const accountKey = accountKeyFromRecord(account);
   const allDay = Boolean(event.isAllDay);
   const start = parseGraphEventDateTime(event.start?.dateTime);
   const end = parseGraphEventDateTime(event.end?.dateTime);
@@ -192,13 +226,39 @@ function mapGraphEventToDto(event: GraphEvent, account: ConnectedAccountRecord):
     externalId: event.id,
     provider: "microsoft",
     connectedAccountId: account.id,
+    calendarId: calendar?.id,
+    calendarName: calendar?.name,
   };
+}
+
+export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphCalendarDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const response = await graphFetch(
+    accountId,
+    "/me/calendars?$select=id,name,isDefaultCalendar&$top=50",
+  );
+  const payload = (await response.json()) as {
+    value?: Array<{ id: string; name?: string; isDefaultCalendar?: boolean }>;
+  };
+  const accountKey = accountKeyFromRecord(account);
+
+  return (payload.value ?? []).map((calendar) => ({
+    id: `${accountKey}-cal-${calendar.id}`,
+    graphCalendarId: calendar.id,
+    name: calendar.name ?? "Calendar",
+    accountId: accountKey,
+    connectedAccountId: account.id,
+    isDefault: calendar.isDefaultCalendar,
+  }));
 }
 
 export async function fetchMicrosoftCalendarEvents(
   accountId: string,
   startDate?: string,
   endDate?: string,
+  calendarGraphId?: string,
 ): Promise<GraphCalendarItemDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
@@ -214,34 +274,107 @@ export async function fetchMicrosoftCalendarEvents(
     $select: "id,subject,bodyPreview,start,end,isAllDay,webLink",
   });
 
-  const response = await graphFetch(accountId, `/me/calendarView?${params.toString()}`);
-  const payload = (await response.json()) as { value?: GraphEvent[] };
+  if (calendarGraphId) {
+    const calendars = await fetchMicrosoftCalendars(accountId);
+    const calendar = calendars.find((entry) => entry.graphCalendarId === calendarGraphId);
+    const response = await graphFetch(
+      accountId,
+      `/me/calendars/${calendarGraphId}/calendarView?${params.toString()}`,
+    );
+    const payload = (await response.json()) as { value?: GraphEvent[] };
+    return (payload.value ?? []).map((event) =>
+      mapGraphEventToDto(event, account, {
+        id: calendarGraphId,
+        name: calendar?.name ?? "Calendar",
+      }),
+    );
+  }
 
-  return (payload.value ?? []).map((event) => mapGraphEventToDto(event, account));
+  const calendars = await fetchMicrosoftCalendars(accountId);
+  if (calendars.length === 0) {
+    const response = await graphFetch(accountId, `/me/calendarView?${params.toString()}`);
+    const payload = (await response.json()) as { value?: GraphEvent[] };
+    return (payload.value ?? []).map((event) => mapGraphEventToDto(event, account));
+  }
+
+  const batches = await Promise.all(
+    calendars.map(async (calendar) => {
+      const response = await graphFetch(
+        accountId,
+        `/me/calendars/${calendar.graphCalendarId}/calendarView?${params.toString()}`,
+      );
+      const payload = (await response.json()) as { value?: GraphEvent[] };
+      return (payload.value ?? []).map((event) =>
+        mapGraphEventToDto(event, account, {
+          id: calendar.graphCalendarId,
+          name: calendar.name,
+        }),
+      );
+    }),
+  );
+
+  const merged = batches.flat();
+  const seen = new Set<string>();
+  return merged.filter((event) => {
+    const key = `${event.connectedAccountId}:${event.externalId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
-export async function fetchMicrosoftMessages(
-  accountId: string,
-  top = 50,
-): Promise<GraphEmailDto[]> {
+const WELL_KNOWN_FOLDERS: Array<{
+  path: GraphMailFolderDto["wellKnown"];
+  label: string;
+}> = [
+  { path: "inbox", label: "Inbox" },
+  { path: "sentitems", label: "Sent Items" },
+  { path: "drafts", label: "Drafts" },
+  { path: "deleteditems", label: "Deleted Items" },
+];
+
+export async function fetchMicrosoftMailFolders(accountId: string): Promise<GraphMailFolderDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
-  const params = new URLSearchParams({
-    $top: String(top),
-    $orderby: "receivedDateTime desc",
-    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,flag",
-  });
+  const accountKey = accountKeyFromRecord(account);
+  const folders: GraphMailFolderDto[] = [];
 
-  const response = await graphFetch(accountId, `/me/messages?${params.toString()}`);
-  const payload = (await response.json()) as { value?: GraphMessage[] };
-  const accountKey = `ms-${account.id}`;
+  for (const wellKnown of WELL_KNOWN_FOLDERS) {
+    if (!wellKnown.path) continue;
+    try {
+      const response = await graphFetch(
+        accountId,
+        `/me/mailFolders/${wellKnown.path}?$select=id,displayName`,
+      );
+      const payload = (await response.json()) as { id: string; displayName?: string };
+      folders.push({
+        id: folderCompositeId(accountKey, payload.id),
+        graphFolderId: payload.id,
+        label: payload.displayName ?? wellKnown.label,
+        accountId: accountKey,
+        connectedAccountId: account.id,
+        wellKnown: wellKnown.path,
+      });
+    } catch (error) {
+      console.warn(`Failed to load ${wellKnown.path} folder for ${accountId}:`, error);
+    }
+  }
 
-  return (payload.value ?? []).map((message) => ({
+  return folders;
+}
+
+function mapGraphMessageToDto(
+  message: GraphMessage,
+  account: ConnectedAccountRecord,
+  folder: Pick<GraphMailFolderDto, "id" | "graphFolderId">,
+): GraphEmailDto {
+  const accountKey = accountKeyFromRecord(account);
+  return {
     id: `graph-${message.id}`,
     accountId: accountKey,
     connectedAccountId: account.id,
-    folderId: `${accountKey}-inbox`,
+    folderId: folder.id,
     from: message.from?.emailAddress?.name ?? "Unknown",
     fromEmail: message.from?.emailAddress?.address ?? "",
     subject: message.subject ?? "(No subject)",
@@ -258,7 +391,38 @@ export async function fetchMicrosoftMessages(
     labels: ["Outlook"],
     externalId: message.id,
     provider: "microsoft",
-  }));
+  };
+}
+
+export async function fetchMicrosoftMessages(
+  accountId: string,
+  top = 50,
+  folderGraphId?: string,
+): Promise<GraphEmailDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const folders = await fetchMicrosoftMailFolders(accountId);
+  const folder =
+    folders.find((entry) => entry.graphFolderId === folderGraphId) ??
+    folders.find((entry) => entry.wellKnown === "inbox") ??
+    folders[0];
+  if (!folder) return [];
+
+  const folderPath = folderGraphId ?? folder.graphFolderId;
+  const params = new URLSearchParams({
+    $top: String(top),
+    $orderby: "receivedDateTime desc",
+    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,flag",
+  });
+
+  const response = await graphFetch(
+    accountId,
+    `/me/mailFolders/${folderPath}/messages?${params.toString()}`,
+  );
+  const payload = (await response.json()) as { value?: GraphMessage[] };
+
+  return (payload.value ?? []).map((message) => mapGraphMessageToDto(message, account, folder));
 }
 
 const OUTLOOK_NOTE_COLOUR = "#FFF4B8";
@@ -391,9 +555,17 @@ export async function syncCalendarItemToMicrosoft(
 ): Promise<GraphCalendarEventResult> {
   const mapping = await getProviderMapping("calendar", input.localItemId);
   const payload = buildEventPayload(input);
+  const calendars = await fetchMicrosoftCalendars(accountId);
+  const targetCalendar =
+    calendars.find((entry) => entry.graphCalendarId === input.calendarId) ??
+    calendars.find((entry) => entry.isDefault) ??
+    calendars[0];
+  const calendarBase = targetCalendar
+    ? `/me/calendars/${targetCalendar.graphCalendarId}`
+    : "/me/calendar";
 
   if (mapping && mapping.connectedAccountId === accountId) {
-    const response = await graphFetch(accountId, `/me/events/${mapping.externalId}`, {
+    const response = await graphFetch(accountId, `${calendarBase}/events/${mapping.externalId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
@@ -402,7 +574,7 @@ export async function syncCalendarItemToMicrosoft(
     return { externalId: event.id, webLink: event.webLink };
   }
 
-  const response = await graphFetch(accountId, "/me/events", {
+  const response = await graphFetch(accountId, `${calendarBase}/events`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -419,18 +591,36 @@ export async function syncCalendarItemToMicrosoft(
   return { externalId: event.id, webLink: event.webLink };
 }
 
+export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const response = await graphFetch(accountId, "/me/todo/lists?$select=id,displayName,wellknownListName");
+  const payload = (await response.json()) as {
+    value?: Array<{ id: string; displayName?: string; wellknownListName?: string }>;
+  };
+  const accountKey = accountKeyFromRecord(account);
+
+  return (payload.value ?? []).map((list) => ({
+    id: `${accountKey}-todo-${list.id}`,
+    graphListId: list.id,
+    name: list.displayName ?? "Tasks",
+    accountId: accountKey,
+    connectedAccountId: account.id,
+    isDefault: list.wellknownListName === "defaultList",
+  }));
+}
+
 export async function createMicrosoftTodoTask(
   accountId: string,
-  input: { title: string; dueDate?: string; notes?: string },
+  input: { title: string; dueDate?: string; notes?: string; todoListId?: string },
 ): Promise<{ externalId: string }> {
-  const listsResponse = await graphFetch(accountId, "/me/todo/lists");
-  const listsPayload = (await listsResponse.json()) as {
-    value?: Array<{ id: string; wellknownListName?: string }>;
-  };
-  const defaultList =
-    listsPayload.value?.find((list) => list.wellknownListName === "defaultList") ??
-    listsPayload.value?.[0];
-  if (!defaultList) throw new Error("No Microsoft To Do list found");
+  const lists = await fetchMicrosoftTodoLists(accountId);
+  const targetList =
+    lists.find((list) => list.graphListId === input.todoListId) ??
+    lists.find((list) => list.isDefault) ??
+    lists[0];
+  if (!targetList) throw new Error("No Microsoft To Do list found");
 
   const body: Record<string, unknown> = {
     title: input.title,
@@ -447,10 +637,70 @@ export async function createMicrosoftTodoTask(
     };
   }
 
-  const response = await graphFetch(accountId, `/me/todo/lists/${defaultList.id}/tasks`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const response = await graphFetch(
+    accountId,
+    `/me/todo/lists/${targetList.graphListId}/tasks`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
   const task = (await response.json()) as { id: string };
   return { externalId: task.id };
+}
+
+interface GraphContact {
+  id: string;
+  displayName?: string;
+  givenName?: string;
+  surname?: string;
+  companyName?: string;
+  jobTitle?: string;
+  emailAddresses?: Array<{ address?: string; name?: string }>;
+  businessPhones?: string[];
+  mobilePhone?: string;
+}
+
+export async function fetchMicrosoftContacts(accountId: string, top = 100): Promise<GraphContactDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const params = new URLSearchParams({
+    $top: String(top),
+    $orderby: "displayName",
+    $select:
+      "id,displayName,givenName,surname,companyName,jobTitle,emailAddresses,businessPhones,mobilePhone",
+  });
+
+  let response: Response;
+  try {
+    response = await graphFetch(accountId, `/me/contacts?${params.toString()}`);
+  } catch (error) {
+    console.warn(`Contacts fetch failed for ${accountId} — reconnect may need Contacts.Read scope:`, error);
+    return [];
+  }
+
+  const payload = (await response.json()) as { value?: GraphContact[] };
+  const accountKey = accountKeyFromRecord(account);
+
+  return (payload.value ?? []).map((contact) => {
+    const name =
+      contact.displayName?.trim() ||
+      [contact.givenName, contact.surname].filter(Boolean).join(" ").trim() ||
+      contact.emailAddresses?.[0]?.name ||
+      "Unknown contact";
+    return {
+      id: `graph-contact-${contact.id}`,
+      name,
+      email: contact.emailAddresses?.[0]?.address,
+      phone: contact.businessPhones?.[0],
+      mobilePhone: contact.mobilePhone,
+      company: contact.companyName,
+      jobTitle: contact.jobTitle,
+      accountId: accountKey,
+      connectedAccountId: account.id,
+      externalId: contact.id,
+      provider: "microsoft" as const,
+    };
+  });
 }

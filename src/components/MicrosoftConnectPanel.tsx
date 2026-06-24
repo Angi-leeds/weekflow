@@ -48,7 +48,7 @@ export function MicrosoftConnectPanel({
             {phase === "ready" &&
               "Sign in with your Microsoft account to import mail, calendar, and sticky notes."}
             {phase === "connected" &&
-              "Mail, calendar, and Outlook Notes sync from the account below."}
+              "Mail and calendar sync from all connected accounts below."}
             {phase === "loading" && "Checking connection status…"}
           </p>
         </div>
@@ -107,7 +107,7 @@ export function MicrosoftConnectPanel({
           onClick={startMicrosoftConnect}
           className="mt-3 w-full rounded-xl border border-dashed border-wf-border py-2.5 text-caption font-semibold text-wf-accent"
         >
-          Add another account (uses first account for now)
+          Add another Outlook account
         </button>
       )}
     </div>

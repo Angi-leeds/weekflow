@@ -144,8 +144,8 @@ export function NotesView({
 
         {usingRealMicrosoft && (
           <p className="mb-3 rounded-xl bg-wf-accent-soft px-3 py-2 text-caption text-wf-text-secondary">
-            Outlook notes sync read/write. Reconnect in Settings if notes fail to load (new{" "}
-            <span className="font-medium">Notes.ReadWrite</span> permission).
+            Notes are stored locally on this device. Outlook mail and calendar sync from all
+            connected accounts.
           </p>
         )}
 

@@ -4,6 +4,7 @@ import type {
   CalendarPreferences,
   Category,
   EmailAccount,
+  IntegrationAccountDefaults,
   IntegrationPreferences,
   ListDisplayOptions,
   ListGroupBy,
@@ -22,7 +23,11 @@ import type { AuthUser } from '../../shared/auth'
 import { APP_NAME } from '../branding'
 import { MOCK_HOUSEHOLD_MEMBERS } from '../../shared/householdPermissions'
 import type { HouseholdPermissionsConfig } from '../lib/householdPermissions'
-import type { MicrosoftIntegrationStatus } from '../../shared/microsoftGraph'
+import type {
+  GraphCalendarDto,
+  GraphTodoListDto,
+  MicrosoftIntegrationStatus,
+} from '../../shared/microsoftGraph'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SyncHelpView } from './SyncHelpView'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
@@ -47,6 +52,10 @@ interface SettingsViewProps {
   onCalendarPreferencesChange: (prefs: CalendarPreferences) => void
   integrationPreferences: IntegrationPreferences
   onIntegrationPreferencesChange: (prefs: IntegrationPreferences) => void
+  integrationAccountDefaults: IntegrationAccountDefaults
+  onIntegrationAccountDefaultsChange: (defaults: IntegrationAccountDefaults) => void
+  graphCalendars: GraphCalendarDto[]
+  graphTodoLists: GraphTodoListDto[]
   onSaveCategory: (category: Category) => void
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
@@ -80,6 +89,10 @@ export function SettingsView({
   onCalendarPreferencesChange,
   integrationPreferences,
   onIntegrationPreferencesChange,
+  integrationAccountDefaults,
+  onIntegrationAccountDefaultsChange,
+  graphCalendars,
+  graphTodoLists,
   onSaveCategory,
   onDeleteCategory,
   permissionsConfig,
@@ -104,6 +117,20 @@ export function SettingsView({
   const [showSyncHelp, setShowSyncHelp] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
   const outlookPanelRef = useRef<HTMLDivElement>(null)
+  const defaultMicrosoftAccountId =
+    integrationAccountDefaults.defaultMicrosoftAccountId ??
+    microsoftStatus?.accounts[0]?.id ??
+    ''
+
+  const calendarsForDefaultAccount = useMemo(
+    () => graphCalendars.filter((calendar) => calendar.connectedAccountId === defaultMicrosoftAccountId),
+    [graphCalendars, defaultMicrosoftAccountId],
+  )
+
+  const todoListsForDefaultAccount = useMemo(
+    () => graphTodoLists.filter((list) => list.connectedAccountId === defaultMicrosoftAccountId),
+    [graphTodoLists, defaultMicrosoftAccountId],
+  )
 
   const itemCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -335,6 +362,76 @@ export function SettingsView({
           />
         </div>
 
+        {usingRealMicrosoft && (microsoftStatus?.accounts.length ?? 0) > 0 && (
+          <>
+            <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+              Defaults for new calendar events, tasks, and contacts when an item does not already
+              specify an account.
+            </p>
+            <SettingsSelectRow
+              label="Default Outlook account"
+              value={
+                integrationAccountDefaults.defaultMicrosoftAccountId ??
+                microsoftStatus?.accounts[0]?.id ??
+                ''
+              }
+              options={(microsoftStatus?.accounts ?? []).map((account) => ({
+                value: account.id,
+                label: account.email,
+              }))}
+              onChange={(defaultMicrosoftAccountId) =>
+                onIntegrationAccountDefaultsChange({
+                  ...integrationAccountDefaults,
+                  defaultMicrosoftAccountId,
+                })
+              }
+            />
+            {calendarsForDefaultAccount.length > 0 && (
+              <SettingsSelectRow
+                label="Default calendar"
+                value={integrationAccountDefaults.calendar?.defaultCalendarId ?? ''}
+                options={calendarsForDefaultAccount.map((calendar) => ({
+                  value: calendar.graphCalendarId,
+                  label: `${calendar.name}${calendar.isDefault ? ' (Outlook default)' : ''}`,
+                }))}
+                onChange={(defaultCalendarId) =>
+                  onIntegrationAccountDefaultsChange({
+                    ...integrationAccountDefaults,
+                    calendar: {
+                      ...integrationAccountDefaults.calendar,
+                      defaultAccountId: defaultMicrosoftAccountId,
+                      defaultCalendarId,
+                    },
+                  })
+                }
+              />
+            )}
+            {todoListsForDefaultAccount.length > 0 && (
+              <SettingsSelectRow
+                label="Default To Do list"
+                value={integrationAccountDefaults.tasks?.defaultTodoListId ?? ''}
+                options={todoListsForDefaultAccount.map((list) => ({
+                  value: list.graphListId,
+                  label: `${list.name}${list.isDefault ? ' (Outlook default)' : ''}`,
+                }))}
+                onChange={(defaultTodoListId) =>
+                  onIntegrationAccountDefaultsChange({
+                    ...integrationAccountDefaults,
+                    tasks: {
+                      ...integrationAccountDefaults.tasks,
+                      defaultAccountId: defaultMicrosoftAccountId,
+                      defaultTodoListId,
+                    },
+                  })
+                }
+              />
+            )}
+            <p className="px-4 pb-3 text-caption text-wf-text-tertiary">
+              Reconnect Outlook after scope updates (e.g. Contacts) so new permissions apply.
+            </p>
+          </>
+        )}
+
         {!usingRealMicrosoft && !microsoftStatus?.configured && (
           <>
             <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
@@ -375,7 +472,7 @@ export function SettingsView({
 
       <SettingsGroup title="Integrations">
         <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          Outlook sticky notes sync when connected (Notes tab). Contacts import is a future Graph update.
+          Outlook contacts import when connected (Contacts tab). Notes stay local until OneNote API.
         </p>
         <SettingsIntegrationRow
           label="Google Calendar"
