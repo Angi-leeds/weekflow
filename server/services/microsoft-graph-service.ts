@@ -701,6 +701,42 @@ async function attachPhotoToEvent(
   return true;
 }
 
+const MYAXIS_CALENDAR_EXTENSION = "com.myaxis.calendarItem";
+
+async function syncMyAxisCalendarExtension(
+  accountId: string,
+  eventId: string,
+  localItemId: string,
+): Promise<void> {
+  const body = {
+    "@odata.type": "microsoft.graph.openTypeExtension",
+    extensionName: MYAXIS_CALENDAR_EXTENSION,
+    myaxisLocalItemId: localItemId,
+  };
+
+  try {
+    await graphFetch(accountId, `/me/events/${encodeURIComponent(eventId)}/extensions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("409") && !message.includes("400")) {
+      console.warn("MyAxis calendar extension POST failed:", error);
+      return;
+    }
+    try {
+      await graphFetch(
+        accountId,
+        `/me/events/${encodeURIComponent(eventId)}/extensions/${MYAXIS_CALENDAR_EXTENSION}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+    } catch (patchError) {
+      console.warn("MyAxis calendar extension PATCH failed:", patchError);
+    }
+  }
+}
+
 export async function syncCalendarItemToMicrosoft(
   accountId: string,
   input: CalendarSyncInput,
@@ -726,6 +762,7 @@ export async function syncCalendarItemToMicrosoft(
     if (input.photoStorageKey) {
       photoAttached = await attachPhotoToEvent(accountId, event.id, input);
     }
+    await syncMyAxisCalendarExtension(accountId, event.id, input.localItemId);
     return { externalId: event.id, webLink: event.webLink, photoAttached };
   }
 
@@ -746,6 +783,7 @@ export async function syncCalendarItemToMicrosoft(
   if (input.photoStorageKey) {
     photoAttached = await attachPhotoToEvent(accountId, event.id, input);
   }
+  await syncMyAxisCalendarExtension(accountId, event.id, input.localItemId);
   return { externalId: event.id, webLink: event.webLink, photoAttached };
 }
 

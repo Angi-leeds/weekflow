@@ -548,14 +548,14 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 ---
 
-#### Phase 9c — Graph polish (remaining Phase 9) ⬅ **IN PROGRESS**
+#### Phase 9c — Graph polish (remaining Phase 9) ✅
 
 **Goal:** Complete Microsoft parity for power features. **d41, d42, d46, d48–d56**
 
 **Tasks:**
 1. Mail **send** + reply from MyAxis — **d57** ✅ compose, reply, reply-all, delete via Graph
 2. OneDrive folder picker + auto-copy in email action flow — **d48–d56** ✅ browse + upload via Graph
-3. Extended properties / open extensions for link graph on Exchange items — **d46**
+3. Extended properties / open extensions for link graph on Exchange items — **d46** ✅ calendar `myaxisLocalItemId` open extension
 4. Calendar attachment sync polish (photos → Exchange) ✅ local + Replit object storage
 5. Outlook **category** sync — **deferred (d3)** unless owner prioritises
 
@@ -761,10 +761,10 @@ curl http://localhost:5000/api/status
 
 ## 12. Agent instructions
 
-**Recommended phase order before marketing:** 9c → 10 (Google/Apple can wait).
+**Recommended phase order before marketing:** 10 (Google/Apple) or polish/hardening.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 9c** unless owner specifies otherwise (Phases 0–9b and 11 complete).
+2. **Start at Phase 10** unless owner specifies otherwise (Phases 0–9c and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.
