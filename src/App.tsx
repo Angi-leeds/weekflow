@@ -50,6 +50,9 @@ import {
   mergeGraphMail,
   mergeGraphNotes,
   microsoftAccountKey,
+  replyMicrosoftMail,
+  sendMicrosoftMail,
+  deleteMicrosoftMail,
   syncCalendarToMicrosoft,
   updateMicrosoftNote,
 } from './lib/microsoft'
@@ -97,6 +100,7 @@ import { AgendaView } from './components/AgendaView'
 import { YearView } from './components/YearView'
 import { ItemFormModal } from './components/ItemFormModal'
 import { EmailView } from './components/EmailView'
+import { EmailComposeModal, type EmailComposeMode } from './components/EmailComposeModal'
 import { LinkExistingModal } from './components/LinkExistingModal'
 import { PlannerView } from './components/PlannerView'
 import { ContactsView } from './components/ContactsView'
@@ -158,6 +162,11 @@ export default function App() {
     sourceLabel: string
   } | null>(null)
   const [emailActionFlowEmail, setEmailActionFlowEmail] = useState<EmailMessage | null>(null)
+  const [emailCompose, setEmailCompose] = useState<{
+    mode: EmailComposeMode
+    replyTo?: EmailMessage
+  } | null>(null)
+  const [emailSending, setEmailSending] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>(() => loadCalendarFilter())
   const [permissionsConfig, setPermissionsConfig] = useState<HouseholdPermissionsConfig>(() =>
@@ -930,6 +939,74 @@ export default function App() {
     setSection('email')
   }, [])
 
+  const resolveEmailConnectedAccountId = useCallback(
+    (email: EmailMessage): string | undefined => {
+      if (email.connectedAccountId) return email.connectedAccountId
+      if (email.accountId?.startsWith('ms-')) return email.accountId.slice(3)
+      return resolveConnectedAccountId(
+        microsoftStatus?.accounts ?? [],
+        integrationAccountDefaults,
+        email.accountId,
+      )
+    },
+    [integrationAccountDefaults, microsoftStatus],
+  )
+
+  const handleEmailComposeSend = useCallback(
+    async (payload: {
+      connectedAccountId: string
+      to?: string
+      subject?: string
+      body: string
+      replyToExternalId?: string
+      replyAll?: boolean
+    }) => {
+      setEmailSending(true)
+      try {
+        if (payload.replyToExternalId) {
+          await replyMicrosoftMail(payload.connectedAccountId, payload.replyToExternalId, {
+            comment: payload.body,
+            replyAll: payload.replyAll,
+          })
+        } else {
+          await sendMicrosoftMail(payload.connectedAccountId, {
+            to: payload.to ?? '',
+            subject: payload.subject ?? '',
+            body: payload.body,
+          })
+        }
+        setEmailCompose(null)
+        setToastMessage('Email sent')
+        await refreshMicrosoft()
+      } catch (error) {
+        console.error(error)
+        setToastMessage(error instanceof Error ? error.message : 'Failed to send email')
+      } finally {
+        setEmailSending(false)
+      }
+    },
+    [refreshMicrosoft],
+  )
+
+  const handleDeleteEmail = useCallback(
+    async (email: EmailMessage) => {
+      const connectedAccountId = resolveEmailConnectedAccountId(email)
+      if (!email.externalId || !connectedAccountId) return
+      if (!window.confirm('Move this message to Deleted Items in Outlook?')) return
+
+      try {
+        await deleteMicrosoftMail(connectedAccountId, email.externalId)
+        setGraphEmails((prev) => prev.filter((entry) => entry.id !== email.id))
+        setEmailSelectedId((current) => (current === email.id ? null : current))
+        setToastMessage('Message deleted')
+      } catch (error) {
+        console.error(error)
+        setToastMessage(error instanceof Error ? error.message : 'Failed to delete message')
+      }
+    },
+    [resolveEmailConnectedAccountId],
+  )
+
   const handleSaveNote = useCallback(
     async (input: {
       note: Note | null
@@ -1209,6 +1286,11 @@ export default function App() {
             onOpenActionFlow={setEmailActionFlowEmail}
             onLoadFolderMessages={handleLoadFolderMessages}
             loadingFolderIds={loadingEmailFolders}
+            usingRealMicrosoft={usingRealMicrosoft}
+            onCompose={() => setEmailCompose({ mode: 'compose' })}
+            onReply={(email) => setEmailCompose({ mode: 'reply', replyTo: email })}
+            onReplyAll={(email) => setEmailCompose({ mode: 'replyAll', replyTo: email })}
+            onDelete={handleDeleteEmail}
           />
         )}
 
@@ -1363,6 +1445,17 @@ export default function App() {
         defaultDueDate="2026-06-30"
         onClose={() => setEmailActionFlowEmail(null)}
         onSubmit={handleEmailActionFlow}
+      />
+
+      <EmailComposeModal
+        open={emailCompose !== null}
+        mode={emailCompose?.mode ?? 'compose'}
+        replyTo={emailCompose?.replyTo}
+        accounts={emailAccounts}
+        defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
+        sending={emailSending}
+        onClose={() => setEmailCompose(null)}
+        onSend={handleEmailComposeSend}
       />
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />

@@ -7,8 +7,10 @@ import {
   Flag,
   Link2,
   PenLine,
+  Reply,
   Search,
   Star,
+  Trash2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
@@ -51,6 +53,11 @@ interface EmailViewProps {
   onRemoveLink?: (linkId: string) => void
   onLoadFolderMessages?: (folder: EmailFolder) => void
   loadingFolderIds?: Set<string>
+  usingRealMicrosoft?: boolean
+  onCompose?: () => void
+  onReply?: (email: EmailMessage) => void
+  onReplyAll?: (email: EmailMessage) => void
+  onDelete?: (email: EmailMessage) => void
 }
 
 export function EmailView({
@@ -74,6 +81,11 @@ export function EmailView({
   onRemoveLink,
   onLoadFolderMessages,
   loadingFolderIds,
+  usingRealMicrosoft = false,
+  onCompose,
+  onReply,
+  onReplyAll,
+  onDelete,
 }: EmailViewProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(emails[0]?.id ?? null)
   const selectedId = controlledSelectedId ?? internalSelectedId
@@ -158,7 +170,9 @@ export function EmailView({
           </div>
           <button
             type="button"
-            className="flex h-10 items-center gap-2 rounded-full bg-wf-accent px-4 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-95"
+            onClick={onCompose}
+            disabled={!usingRealMicrosoft || !onCompose}
+            className="flex h-10 items-center gap-2 rounded-full bg-wf-accent px-4 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-95 disabled:opacity-50"
           >
             <PenLine size={16} strokeWidth={2} />
             Compose
@@ -267,6 +281,7 @@ export function EmailView({
             links={links}
             items={items}
             emails={emails}
+            usingRealMicrosoft={usingRealMicrosoft}
             onClose={isWide ? undefined : () => setSelectedId(null)}
             onToggleStar={selected ? () => onToggleStar(selected.id) : undefined}
             onCreateTask={onCreateTask}
@@ -278,6 +293,9 @@ export function EmailView({
             onOpenActionFlow={() => {
               if (selected) onOpenActionFlow(selected)
             }}
+            onReply={onReply}
+            onReplyAll={onReplyAll}
+            onDelete={onDelete}
           />
         )}
       </div>
@@ -433,6 +451,7 @@ function MessagePreview({
   links,
   items,
   emails,
+  usingRealMicrosoft = false,
   onClose,
   onToggleStar,
   onCreateTask,
@@ -442,11 +461,15 @@ function MessagePreview({
   shareState,
   onShareUpdate,
   onOpenActionFlow,
+  onReply,
+  onReplyAll,
+  onDelete,
 }: {
   email: EmailMessage | null
   links: ItemLink[]
   items: CalendarItem[]
   emails: EmailMessage[]
+  usingRealMicrosoft?: boolean
   onClose?: () => void
   onToggleStar?: () => void
   onCreateTask: (email: EmailMessage) => void
@@ -456,6 +479,9 @@ function MessagePreview({
   shareState: { sharedToBoard: boolean; boardDisplay: BoardDisplay }
   onShareUpdate: (input: UpsertItemShareInput) => void
   onOpenActionFlow: () => void
+  onReply?: (email: EmailMessage) => void
+  onReplyAll?: (email: EmailMessage) => void
+  onDelete?: (email: EmailMessage) => void
 }) {
   if (!email) {
     return (
@@ -482,6 +508,12 @@ function MessagePreview({
             <span />
           )}
           <div className="flex gap-1.5">
+            {usingRealMicrosoft && email.externalId && (
+              <>
+                <ActionChip icon={Reply} label="Reply" onClick={() => onReply?.(email)} />
+                <ActionChip icon={Reply} label="Reply all" onClick={() => onReplyAll?.(email)} />
+              </>
+            )}
             <ActionChip
               icon={ClipboardList}
               label="Task"
@@ -557,6 +589,16 @@ function MessagePreview({
         <p className="mb-2 mt-4 text-caption font-semibold text-wf-text-secondary">
           Email actions
         </p>
+        {usingRealMicrosoft && email.externalId && onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(email)}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-wf-red/30 py-2.5 text-subhead font-semibold text-wf-red"
+          >
+            <Trash2 size={16} strokeWidth={1.75} />
+            Delete message
+          </button>
+        )}
         <button
           type="button"
           onClick={onOpenActionFlow}
@@ -579,7 +621,9 @@ function MessagePreview({
           />
         </div>
         <p className="mt-3 text-caption text-wf-text-tertiary">
-          Future integrations: Gmail · Outlook · Apple Mail
+          {usingRealMicrosoft
+            ? 'Sent via connected Outlook account.'
+            : 'Future integrations: Gmail · Outlook · Apple Mail'}
         </p>
       </div>
     </div>

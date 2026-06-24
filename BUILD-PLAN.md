@@ -548,12 +548,12 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 ---
 
-#### Phase 9c — Graph polish (remaining Phase 9)
+#### Phase 9c — Graph polish (remaining Phase 9) ⬅ **IN PROGRESS**
 
 **Goal:** Complete Microsoft parity for power features. **d41, d42, d46, d48–d56**
 
 **Tasks:**
-1. Mail **send** + reply from MyAxis — **d57**
+1. Mail **send** + reply from MyAxis — **d57** ✅ compose, reply, reply-all, delete via Graph
 2. OneDrive folder picker + auto-copy in email action flow — **d48–d56**
 3. Extended properties / open extensions for link graph on Exchange items — **d46**
 4. Calendar attachment sync polish (photos → Exchange)

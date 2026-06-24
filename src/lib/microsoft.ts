@@ -45,6 +45,35 @@ export async function fetchMicrosoftMail(
   return apiFetch<EmailMessage[]>(`/api/microsoft/mail?${params.toString()}`);
 }
 
+export async function sendMicrosoftMail(
+  accountId: string,
+  input: { to: string | string[]; subject: string; body: string },
+): Promise<void> {
+  const to = Array.isArray(input.to) ? input.to : [input.to];
+  await apiFetch<void>("/api/microsoft/mail/send", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input, to }),
+  });
+}
+
+export async function replyMicrosoftMail(
+  accountId: string,
+  externalId: string,
+  input: { comment: string; replyAll?: boolean },
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/mail/${encodeURIComponent(externalId)}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input }),
+  });
+}
+
+export async function deleteMicrosoftMail(accountId: string, externalId: string): Promise<void> {
+  await apiFetch<void>(
+    `/api/microsoft/mail/${encodeURIComponent(externalId)}?accountId=${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function fetchMicrosoftMailFolders(accountId: string): Promise<EmailFolder[]> {
   return apiFetch<EmailFolder[]>(
     `/api/microsoft/mail/folders?accountId=${encodeURIComponent(accountId)}`,

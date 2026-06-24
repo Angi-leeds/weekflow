@@ -425,6 +425,64 @@ export async function fetchMicrosoftMessages(
   return (payload.value ?? []).map((message) => mapGraphMessageToDto(message, account, folder));
 }
 
+export interface SendMailInput {
+  to: string[];
+  subject: string;
+  body: string;
+  cc?: string[];
+  bcc?: string[];
+}
+
+function graphRecipients(addresses: string[]) {
+  return addresses
+    .map((address) => address.trim())
+    .filter(Boolean)
+    .map((address) => ({ emailAddress: { address } }));
+}
+
+export async function sendMicrosoftMail(accountId: string, input: SendMailInput): Promise<void> {
+  const toRecipients = graphRecipients(input.to);
+  if (toRecipients.length === 0) throw new Error("At least one recipient is required");
+
+  await graphFetch(accountId, "/me/sendMail", {
+    method: "POST",
+    body: JSON.stringify({
+      message: {
+        subject: input.subject,
+        body: { contentType: "Text", content: input.body },
+        toRecipients,
+        ...(input.cc?.length ? { ccRecipients: graphRecipients(input.cc) } : {}),
+        ...(input.bcc?.length ? { bccRecipients: graphRecipients(input.bcc) } : {}),
+      },
+      saveToSentItems: true,
+    }),
+  });
+}
+
+export async function replyMicrosoftMail(
+  accountId: string,
+  messageId: string,
+  input: { comment: string; replyAll?: boolean },
+): Promise<void> {
+  const comment = input.comment.trim();
+  if (!comment) throw new Error("Reply message is required");
+
+  const endpoint = input.replyAll
+    ? `/me/messages/${encodeURIComponent(messageId)}/replyAll`
+    : `/me/messages/${encodeURIComponent(messageId)}/reply`;
+
+  await graphFetch(accountId, endpoint, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export async function deleteMicrosoftMail(accountId: string, messageId: string): Promise<void> {
+  await graphFetch(accountId, `/me/messages/${encodeURIComponent(messageId)}`, {
+    method: "DELETE",
+  });
+}
+
 const OUTLOOK_NOTE_COLOUR = "#FFF4B8";
 
 function noteBodyText(note: GraphNote): string {
