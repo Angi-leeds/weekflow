@@ -177,3 +177,27 @@ export async function fetchAllGoogleCalendar(
   );
   return batches.flat();
 }
+
+export async function syncCalendarToGoogle(
+  accountId: string,
+  item: CalendarItem,
+  calendarId?: string,
+): Promise<{ externalId: string; htmlLink?: string }> {
+  return apiFetch("/api/google/calendar/sync", {
+    method: "POST",
+    body: JSON.stringify({
+      accountId,
+      item: {
+        localItemId: item.id,
+        title: item.title,
+        date: item.date,
+        endDate: item.endDate,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        allDay: item.allDay,
+        notes: item.notes,
+        calendarId,
+      },
+    }),
+  });
+}

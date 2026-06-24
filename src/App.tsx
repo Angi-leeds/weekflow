@@ -65,13 +65,16 @@ import {
   fetchAllGoogleMail,
   fetchGoogleMail,
   fetchGoogleStatus,
+  googleAccountKey,
   replyGoogleMail,
   sendGoogleMail,
+  syncCalendarToGoogle,
 } from './lib/google'
 import { mergeGraphContacts } from './lib/mergeContacts'
 import {
   resolveConnectedAccountId,
   resolveDefaultComposeAccountId,
+  resolveGoogleConnectedAccountId,
 } from './lib/integrationDefaults'
 import {
   INITIAL_CONTACTS,
@@ -953,9 +956,17 @@ export default function App() {
 
   const handleSaveItem = useCallback(
     async (item: CalendarItem) => {
-      const accounts = microsoftStatus?.accounts ?? []
-      const fallbackAccountKey =
-        accounts[0] ? microsoftAccountKey(accounts[0].id) : calendarAccountForCategory(item.categoryId)
+      const microsoftAccounts = microsoftStatus?.accounts ?? []
+      const googleAccounts = googleStatus?.accounts ?? []
+      const useGoogle =
+        item.provider === 'google' || (item.accountId?.startsWith('google-') ?? false)
+      const fallbackAccountKey = useGoogle
+        ? googleAccounts[0]
+          ? googleAccountKey(googleAccounts[0].id)
+          : calendarAccountForCategory(item.categoryId)
+        : microsoftAccounts[0]
+          ? microsoftAccountKey(microsoftAccounts[0].id)
+          : calendarAccountForCategory(item.categoryId)
       const normalized = {
         ...item,
         accountId: item.accountId ?? fallbackAccountKey,
@@ -970,14 +981,60 @@ export default function App() {
         return [...prev, normalized]
       })
 
+      const category = categories.find((entry) => entry.id === normalized.categoryId)
+
+      if (useGoogle) {
+        const connectedAccountId = resolveGoogleConnectedAccountId(
+          googleAccounts,
+          integrationAccountDefaults,
+          normalized.accountId,
+        )
+        if (!connectedAccountId) return
+
+        if (category?.kind === 'task') {
+          setToastMessage('Tasks sync to Microsoft To Do only')
+          return
+        }
+
+        const defaultCalendarId =
+          normalized.calendarId ?? integrationAccountDefaults.googleCalendar?.defaultCalendarId
+
+        try {
+          const result = await syncCalendarToGoogle(
+            connectedAccountId,
+            normalized,
+            defaultCalendarId,
+          )
+          setItems((prev) =>
+            prev.map((entry) =>
+              entry.id === normalized.id
+                ? {
+                    ...entry,
+                    externalId: result.externalId,
+                    provider: 'google',
+                    connectedAccountId,
+                  }
+                : entry,
+            ),
+          )
+          await refreshGoogle()
+          setToastMessage('Synced to Google Calendar')
+        } catch (error) {
+          console.error(error)
+          setToastMessage(
+            error instanceof Error ? error.message : 'Saved locally; Google Calendar sync failed',
+          )
+        }
+        return
+      }
+
       const connectedAccountId = resolveConnectedAccountId(
-        accounts,
+        microsoftAccounts,
         integrationAccountDefaults,
         normalized.accountId,
       )
       if (!connectedAccountId) return
 
-      const category = categories.find((entry) => entry.id === normalized.categoryId)
       const linkType = getItemLinkType(normalized, categories)
       const photoAttachment = attachments.find(
         (entry) =>
@@ -1040,7 +1097,7 @@ export default function App() {
         )
       }
     },
-    [attachments, categories, integrationAccountDefaults, microsoftStatus],
+    [attachments, categories, googleStatus, integrationAccountDefaults, microsoftStatus, refreshGoogle],
   )
 
   const handleDeleteItem = useCallback((id: string) => {

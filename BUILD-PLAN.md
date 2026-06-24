@@ -625,7 +625,20 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 4. Item form Google calendar picker + default application on new events
 5. Compose modal uses `resolveDefaultComposeAccountId`
 
-**Next:** Google calendar event create/sync (write), Apple integrations.
+**Next:** Apple integrations, native apps, billing.
+
+#### Phase 10e — Google Calendar write/sync ✅ (Done)
+
+**Goal:** Create and update Google Calendar events when saving calendar items (mirror Outlook `syncCalendarItemToMicrosoft`).
+
+**Done:**
+1. OAuth scope extended: `calendar.events` — **reconnect Google** after deploy
+2. `syncCalendarItemToGoogle` in `google-api-service.ts` — POST/PATCH events, `myaxisLocalItemId` in extended properties, provider mapping
+3. Route: `POST /api/google/calendar/sync`
+4. Client: `syncCalendarToGoogle()` in `src/lib/google.ts`
+5. `handleSaveItem` routes Google-provider items to Google sync; refreshes calendar after sync
+
+**Acceptance criteria:** ✅ Save event with Google calendar selected → event appears in Google Calendar; edit updates existing event.
 
 #### Phase 10e+ — remaining Phase 10 (deferred)
 
@@ -823,7 +836,7 @@ curl http://localhost:5000/api/status
 **Recommended phase order before marketing:** 10c (Google polish) or Apple/native apps.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10e** unless owner specifies otherwise (Phases 0–9c, 10a–10d, and 11 complete).
+2. **Start at Phase 10e+** unless owner specifies otherwise (Phases 0–9c, 10a–10e, and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

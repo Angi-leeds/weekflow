@@ -7,8 +7,26 @@ export const GOOGLE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/drive",
 ] as const;
+
+export interface GoogleCalendarSyncInput {
+  localItemId: string;
+  title: string;
+  date: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  notes?: string;
+  calendarId?: string;
+}
+
+export interface GoogleCalendarEventResult {
+  externalId: string;
+  htmlLink?: string;
+}
 
 export interface GoogleConnectedAccountPublic {
   id: string;

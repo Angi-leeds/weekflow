@@ -1,9 +1,17 @@
 import { normalizeEmailBody } from "../../shared/emailBody";
-import type { GoogleCalendarDto, GoogleDriveFolderDto, GoogleMailFolderDto } from "../../shared/googleApi";
+import type {
+  GoogleCalendarDto,
+  GoogleCalendarEventResult,
+  GoogleCalendarSyncInput,
+  GoogleDriveFolderDto,
+  GoogleMailFolderDto,
+} from "../../shared/googleApi";
 import {
   type ConnectedAccountRecord,
   getConnectedAccountRecord,
+  getProviderMapping,
   updateConnectedAccountTokens,
+  upsertProviderMapping,
 } from "./connected-account-service";
 import { refreshGoogleAccessToken } from "./google-auth-service";
 
@@ -650,6 +658,92 @@ export async function copyEmailToGoogleDriveFolder(
 
   const item = (await response.json()) as { name: string; webViewLink?: string };
   return { name: item.name, webUrl: item.webViewLink };
+}
+
+const MYAXIS_LOCAL_ITEM_PROPERTY = "myaxisLocalItemId";
+
+function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string, unknown> {
+  const timeZone = process.env.GOOGLE_CALENDAR_TIMEZONE ?? "Europe/London";
+
+  if (input.allDay) {
+    const exclusiveEnd =
+      input.endDate && input.endDate >= input.date
+        ? addDaysIso(input.endDate, 1)
+        : addDaysIso(input.date, 1);
+    return {
+      summary: input.title,
+      description: input.notes ?? "",
+      start: { date: input.date },
+      end: { date: exclusiveEnd },
+    };
+  }
+
+  const startTime = input.startTime ?? "09:00";
+  const endTime = input.endTime ?? input.startTime ?? "10:00";
+  const endDate = input.endDate && input.endDate > input.date ? input.endDate : input.date;
+
+  return {
+    summary: input.title,
+    description: input.notes ?? "",
+    start: { dateTime: `${input.date}T${startTime}:00`, timeZone },
+    end: { dateTime: `${endDate}T${endTime}:00`, timeZone },
+  };
+}
+
+function withMyAxisExtendedProperties(
+  payload: Record<string, unknown>,
+  localItemId: string,
+): Record<string, unknown> {
+  return {
+    ...payload,
+    extendedProperties: {
+      private: {
+        [MYAXIS_LOCAL_ITEM_PROPERTY]: localItemId,
+      },
+    },
+  };
+}
+
+export async function syncCalendarItemToGoogle(
+  accountId: string,
+  input: GoogleCalendarSyncInput,
+): Promise<GoogleCalendarEventResult> {
+  const mapping = await getProviderMapping("calendar", input.localItemId);
+  const basePayload = buildGoogleEventPayload(input);
+  const calendars = await fetchGoogleCalendars(accountId);
+  const targetCalendar =
+    calendars.find((entry) => entry.googleCalendarId === input.calendarId) ??
+    calendars.find((entry) => entry.isDefault) ??
+    calendars[0];
+  const calendarId = targetCalendar?.googleCalendarId ?? "primary";
+  const eventsBase = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events`;
+
+  if (mapping && mapping.connectedAccountId === accountId) {
+    const payload = withMyAxisExtendedProperties(basePayload, input.localItemId);
+    const response = await googleFetch(
+      accountId,
+      `${eventsBase}/${encodeURIComponent(mapping.externalId)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    );
+    const event = (await response.json()) as { id: string; htmlLink?: string };
+    return { externalId: event.id, htmlLink: event.htmlLink };
+  }
+
+  const payload = withMyAxisExtendedProperties(basePayload, input.localItemId);
+  const response = await googleFetch(accountId, eventsBase, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  const event = (await response.json()) as { id: string; htmlLink?: string };
+
+  await upsertProviderMapping({
+    connectedAccountId: accountId,
+    itemType: "calendar",
+    localItemId: input.localItemId,
+    externalId: event.id,
+  });
+
+  return { externalId: event.id, htmlLink: event.htmlLink };
 }
 
 function randomBoundary(): string {

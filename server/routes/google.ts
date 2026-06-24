@@ -5,6 +5,7 @@ import {
   createGoogleOAuthState,
   exchangeGoogleAuthCode,
 } from "../services/google-auth-service";
+import type { GoogleCalendarSyncInput } from "../../shared/googleApi";
 import {
   deleteConnectedAccount,
   isGoogleOAuthConfigured,
@@ -20,6 +21,7 @@ import {
   fetchGoogleMessages,
   replyGoogleMail,
   sendGoogleMail,
+  syncCalendarItemToGoogle,
 } from "../services/google-api-service";
 import { getAppBaseUrl } from "../services/microsoft-auth-service";
 
@@ -164,6 +166,25 @@ export function registerGoogleRoutes(app: Express): void {
     } catch (error) {
       console.error("GET /api/google/calendars failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch Google calendars";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/google/calendar/sync", async (req, res) => {
+    const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
+    const item = req.body?.item as GoogleCalendarSyncInput | undefined;
+
+    if (!accountId || !item?.localItemId || !item.title || !item.date) {
+      res.status(400).json({ message: "Invalid calendar sync payload" });
+      return;
+    }
+
+    try {
+      const result = await syncCalendarItemToGoogle(accountId, item);
+      res.json(result);
+    } catch (error) {
+      console.error("POST /api/google/calendar/sync failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to sync calendar event";
       res.status(500).json({ message });
     }
   });
