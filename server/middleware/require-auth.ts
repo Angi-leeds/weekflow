@@ -6,6 +6,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/status",
   "/api/auth",
   "/api/microsoft/auth/callback",
+  "/api/google/auth/callback",
 ];
 
 function isPublicApiPath(path: string): boolean {

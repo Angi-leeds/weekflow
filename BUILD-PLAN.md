@@ -40,6 +40,7 @@ Read this fully before writing code. All product decisions below are **locked** 
 | PostgreSQL | **Attached** — migrations on server start | `DATABASE_URL` |
 | Object Storage | Optional — local fallback in dev | `DEFAULT_OBJECT_STORAGE_BUCKET_ID` |
 | Microsoft OAuth | Optional — real Outlook when secrets set | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI`, `APP_URL` |
+| Google OAuth | Optional — Gmail/Calendar connect (Phase 10a) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `APP_URL` |
 | Health check | `GET /api/health` | — |
 | Status check | `GET /api/status` | — |
 
@@ -566,11 +567,28 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 ---
 
-### Phase 10 — Google + Apple + native apps (deferred overview)
+### Phase 10 — Google + Apple + native apps
 
 **Prerequisite:** Phase 9b account model complete — Phase 10 **reuses** the same merged/per-account UI and defaults pattern for Gmail and Apple.
 
-- Google Gmail/Calendar/Drive OAuth — same account picker / defaults UX as 9b
+#### Phase 10a — Google OAuth foundation ✅ (Done)
+
+**Goal:** Connect Google accounts in Settings; store tokens in `connected_accounts` with `provider: "google"`. No Gmail/Calendar fetch yet.
+
+**Done:**
+1. `shared/googleApi.ts` — scopes (`gmail.readonly`, `calendar.readonly`), status DTO
+2. `server/services/google-auth-service.ts` + `server/routes/google.ts` — OAuth start/callback/status/disconnect
+3. `connected-account-service` — multi-provider upsert/list (`microsoft` | `google`)
+4. Client: `src/lib/google.ts`, `GoogleConnectPanel.tsx`, Settings Email section
+5. Env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `APP_URL`
+
+**Acceptance criteria:** ✅ Connect Google account in Settings → account listed; disconnect works.
+
+**Next (10b):** Gmail + Google Calendar read sync into merged mail/calendar views (mirror 9b multi-account pattern).
+
+#### Phase 10b+ — remaining Phase 10 (deferred)
+
+- Google Gmail/Calendar/Drive fetch + merged UI — same account picker / defaults UX as 9b
 - Apple iCloud (limited APIs — hyperlink fallbacks in notes — **d50**)
 - Native iOS/Android wrapper or Capacitor — **d61**
 - Voice recording + push notifications — **d37** full
@@ -761,10 +779,10 @@ curl http://localhost:5000/api/status
 
 ## 12. Agent instructions
 
-**Recommended phase order before marketing:** 10 (Google/Apple) or polish/hardening.
+**Recommended phase order before marketing:** 10b (Google sync) or polish/hardening.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10** unless owner specifies otherwise (Phases 0–9c and 11 complete).
+2. **Start at Phase 10b** unless owner specifies otherwise (Phases 0–9c, 10a, and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

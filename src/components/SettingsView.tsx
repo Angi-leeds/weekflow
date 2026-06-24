@@ -28,10 +28,12 @@ import type {
   GraphTodoListDto,
   MicrosoftIntegrationStatus,
 } from '../../shared/microsoftGraph'
+import type { GoogleIntegrationStatus } from '../../shared/googleApi'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SyncHelpView } from './SyncHelpView'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
 import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
+import { GoogleConnectPanel } from './GoogleConnectPanel'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
@@ -63,6 +65,9 @@ interface SettingsViewProps {
   microsoftStatus: MicrosoftIntegrationStatus | null
   microsoftLoading: boolean
   onMicrosoftRefresh: () => void
+  googleStatus: GoogleIntegrationStatus | null
+  googleLoading: boolean
+  onGoogleRefresh: () => void
   emailAccounts: EmailAccount[]
   calendarAccounts: EmailAccount[]
   usingRealMicrosoft: boolean
@@ -100,6 +105,9 @@ export function SettingsView({
   microsoftStatus,
   microsoftLoading,
   onMicrosoftRefresh,
+  googleStatus,
+  googleLoading,
+  onGoogleRefresh,
   emailAccounts,
   calendarAccounts,
   usingRealMicrosoft,
@@ -117,6 +125,7 @@ export function SettingsView({
   const [showSyncHelp, setShowSyncHelp] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
   const outlookPanelRef = useRef<HTMLDivElement>(null)
+  const googlePanelRef = useRef<HTMLDivElement>(null)
   const defaultMicrosoftAccountId =
     integrationAccountDefaults.defaultMicrosoftAccountId ??
     microsoftStatus?.accounts[0]?.id ??
@@ -142,6 +151,10 @@ export function SettingsView({
 
   const scrollToOutlook = () => {
     outlookPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const scrollToGoogle = () => {
+    googlePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   const showPhase10Toast = (name: string) => {
@@ -362,6 +375,14 @@ export function SettingsView({
           />
         </div>
 
+        <div ref={googlePanelRef}>
+          <GoogleConnectPanel
+            status={googleStatus}
+            loading={googleLoading}
+            onRefresh={onGoogleRefresh}
+          />
+        </div>
+
         {usingRealMicrosoft && (microsoftStatus?.accounts.length ?? 0) > 0 && (
           <>
             <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
@@ -451,12 +472,12 @@ export function SettingsView({
         <SettingsIntegrationRow
           label="Gmail"
           description="Google mail and calendar sync."
-          phaseLabel="Phase 10"
+          phaseLabel={googleStatus?.configured ? 'Connect' : 'Phase 10'}
           notifyChecked={integrationPreferences.googleInterest}
           onNotifyChange={(googleInterest) =>
             onIntegrationPreferencesChange({ ...integrationPreferences, googleInterest })
           }
-          onConnect={() => showPhase10Toast('Gmail')}
+          onConnect={scrollToGoogle}
         />
         <SettingsIntegrationRow
           label="Apple Mail"
@@ -477,12 +498,18 @@ export function SettingsView({
         <SettingsIntegrationRow
           label="Google Calendar"
           description="Sync events from Google Calendar accounts."
-          phaseLabel="Phase 10"
+          phaseLabel={
+            googleStatus?.connected && (googleStatus.accounts.length ?? 0) > 0
+              ? 'Connected'
+              : googleStatus?.configured
+                ? 'Connect'
+                : 'Phase 10'
+          }
           notifyChecked={integrationPreferences.googleInterest}
           onNotifyChange={(googleInterest) =>
             onIntegrationPreferencesChange({ ...integrationPreferences, googleInterest })
           }
-          onConnect={() => showPhase10Toast('Google Calendar')}
+          onConnect={scrollToGoogle}
         />
         <SettingsIntegrationRow
           label="Apple Calendar"

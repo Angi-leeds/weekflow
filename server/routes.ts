@@ -9,6 +9,7 @@ import { registerLinkRoutes } from "./routes/links";
 import { registerItemShareRoutes } from "./routes/item-shares";
 import { registerBoardPinRoutes } from "./routes/board-pins";
 import { registerAttachmentRoutes } from "./routes/attachments";
+import { registerGoogleRoutes } from "./routes/google";
 import { registerMicrosoftRoutes } from "./routes/microsoft";
 import { registerSuperAdminRoutes } from "./routes/super-admin";
 
@@ -31,6 +32,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerBoardPinRoutes(app);
   registerAttachmentRoutes(app);
   registerMicrosoftRoutes(app);
+  registerGoogleRoutes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({

@@ -134,6 +134,7 @@ export async function exchangeMicrosoftAuthCode(
       : null;
 
   const record = await upsertConnectedAccount({
+    provider: "microsoft",
     providerAccountId: profile.id,
     email,
     displayName: profile.displayName ?? email,

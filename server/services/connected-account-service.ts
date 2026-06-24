@@ -2,10 +2,13 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { and, eq } from "drizzle-orm";
+import type { GoogleConnectedAccountPublic } from "../../shared/googleApi";
 import type { ConnectedAccountPublic } from "../../shared/microsoftGraph";
 import { DEMO_HOUSEHOLD_ID } from "../../shared/links";
 import { getDb } from "../db/index";
 import { connectedAccounts, providerItemMappings } from "../db/schema";
+
+export type IntegrationProvider = "microsoft" | "google";
 
 const LOCAL_DIR = path.resolve(
   process.env.LOCAL_CONNECTED_ACCOUNTS_DIR ||
@@ -15,7 +18,7 @@ const LOCAL_DIR = path.resolve(
 export interface ConnectedAccountRecord {
   id: string;
   householdId: string;
-  provider: "microsoft";
+  provider: IntegrationProvider;
   providerAccountId: string;
   email: string;
   displayName: string;
@@ -34,14 +37,25 @@ export interface ProviderItemMappingRecord {
   itemType: "calendar" | "email" | "task";
   localItemId: string;
   externalId: string;
-  provider: "microsoft";
+  provider: IntegrationProvider;
   createdAt: string;
 }
 
-function toPublic(record: ConnectedAccountRecord): ConnectedAccountPublic {
+function toMicrosoftPublic(record: ConnectedAccountRecord): ConnectedAccountPublic {
   return {
     id: record.id,
-    provider: record.provider,
+    provider: "microsoft",
+    email: record.email,
+    displayName: record.displayName,
+    providerAccountId: record.providerAccountId,
+    connectedAt: record.createdAt,
+  };
+}
+
+function toGooglePublic(record: ConnectedAccountRecord): GoogleConnectedAccountPublic {
+  return {
+    id: record.id,
+    provider: "google",
     email: record.email,
     displayName: record.displayName,
     providerAccountId: record.providerAccountId,
@@ -83,7 +97,7 @@ function rowToAccount(row: typeof connectedAccounts.$inferSelect): ConnectedAcco
   return {
     id: row.id,
     householdId: row.householdId,
-    provider: "microsoft",
+    provider: row.provider as IntegrationProvider,
     providerAccountId: row.providerAccountId,
     email: row.email,
     displayName: row.displayName,
@@ -100,10 +114,16 @@ export function isMicrosoftOAuthConfigured(): boolean {
   return Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
 }
 
-export async function listConnectedAccounts(): Promise<ConnectedAccountPublic[]> {
+export function isGoogleOAuthConfigured(): boolean {
+  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+async function listConnectedAccountRecords(
+  provider: IntegrationProvider,
+): Promise<ConnectedAccountRecord[]> {
   const db = getDb();
   if (!db) {
-    return (await readLocalAccounts()).map(toPublic);
+    return (await readLocalAccounts()).filter((entry) => entry.provider === provider);
   }
 
   const rows = await db
@@ -112,11 +132,21 @@ export async function listConnectedAccounts(): Promise<ConnectedAccountPublic[]>
     .where(
       and(
         eq(connectedAccounts.householdId, DEMO_HOUSEHOLD_ID),
-        eq(connectedAccounts.provider, "microsoft"),
+        eq(connectedAccounts.provider, provider),
       ),
     );
 
-  return rows.map((row) => toPublic(rowToAccount(row)));
+  return rows.map((row) => rowToAccount(row));
+}
+
+export async function listConnectedAccounts(): Promise<ConnectedAccountPublic[]> {
+  const records = await listConnectedAccountRecords("microsoft");
+  return records.map(toMicrosoftPublic);
+}
+
+export async function listGoogleConnectedAccounts(): Promise<GoogleConnectedAccountPublic[]> {
+  const records = await listConnectedAccountRecords("google");
+  return records.map(toGooglePublic);
 }
 
 export async function getConnectedAccountRecord(
@@ -139,6 +169,7 @@ export async function getConnectedAccountRecord(
 }
 
 export async function upsertConnectedAccount(input: {
+  provider: IntegrationProvider;
   providerAccountId: string;
   email: string;
   displayName: string;
@@ -154,7 +185,8 @@ export async function upsertConnectedAccount(input: {
     const local = await readLocalAccounts();
     const existing = local.find(
       (entry) =>
-        entry.provider === "microsoft" && entry.providerAccountId === input.providerAccountId,
+        entry.provider === input.provider &&
+        entry.providerAccountId === input.providerAccountId,
     );
     if (existing) {
       const updated: ConnectedAccountRecord = {
@@ -176,7 +208,7 @@ export async function upsertConnectedAccount(input: {
     const created: ConnectedAccountRecord = {
       id: randomUUID(),
       householdId: DEMO_HOUSEHOLD_ID,
-      provider: "microsoft",
+      provider: input.provider,
       providerAccountId: input.providerAccountId,
       email: input.email,
       displayName: input.displayName,
@@ -197,7 +229,7 @@ export async function upsertConnectedAccount(input: {
     .where(
       and(
         eq(connectedAccounts.householdId, DEMO_HOUSEHOLD_ID),
-        eq(connectedAccounts.provider, "microsoft"),
+        eq(connectedAccounts.provider, input.provider),
         eq(connectedAccounts.providerAccountId, input.providerAccountId),
       ),
     )
@@ -224,7 +256,7 @@ export async function upsertConnectedAccount(input: {
     .insert(connectedAccounts)
     .values({
       householdId: DEMO_HOUSEHOLD_ID,
-      provider: "microsoft",
+      provider: input.provider,
       providerAccountId: input.providerAccountId,
       email: input.email,
       displayName: input.displayName,
@@ -246,6 +278,7 @@ export async function updateConnectedAccountTokens(
   if (!record) return null;
 
   return upsertConnectedAccount({
+    provider: record.provider,
     providerAccountId: record.providerAccountId,
     email: record.email,
     displayName: record.displayName,

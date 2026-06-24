@@ -57,6 +57,7 @@ import {
   syncCalendarToMicrosoft,
   updateMicrosoftNote,
 } from './lib/microsoft'
+import { fetchGoogleStatus } from './lib/google'
 import { mergeGraphContacts } from './lib/mergeContacts'
 import {
   resolveConnectedAccountId,
@@ -82,6 +83,7 @@ import {
   useRealMicrosoftData,
 } from './lib/connectedAccounts'
 import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
+import type { GoogleIntegrationStatus } from '../shared/googleApi'
 import type { GraphCalendarDto, GraphTodoListDto } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
@@ -175,6 +177,8 @@ export default function App() {
   )
   const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftIntegrationStatus | null>(null)
   const [microsoftLoading, setMicrosoftLoading] = useState(true)
+  const [googleStatus, setGoogleStatus] = useState<GoogleIntegrationStatus | null>(null)
+  const [googleLoading, setGoogleLoading] = useState(true)
   const [graphEmails, setGraphEmails] = useState<EmailMessage[]>([])
   const [graphEmailFolders, setGraphEmailFolders] = useState<EmailFolder[]>([])
   const [graphCalendarItems, setGraphCalendarItems] = useState<CalendarItem[]>([])
@@ -236,6 +240,18 @@ export default function App() {
       console.error(error)
     } finally {
       setMicrosoftLoading(false)
+    }
+  }, [])
+
+  const refreshGoogle = useCallback(async () => {
+    setGoogleLoading(true)
+    try {
+      const status = await fetchGoogleStatus()
+      setGoogleStatus(status)
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setGoogleLoading(false)
     }
   }, [])
 
@@ -379,7 +395,8 @@ export default function App() {
 
   useEffect(() => {
     void refreshMicrosoft()
-  }, [refreshMicrosoft])
+    void refreshGoogle()
+  }, [refreshMicrosoft, refreshGoogle])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -412,10 +429,20 @@ export default function App() {
       setToastMessage('Microsoft sign-in failed. Check server OAuth settings.')
     }
 
-    if (params.has('section') || params.has('microsoft')) {
+    const googleResult = params.get('google')
+    if (googleResult === 'connected') {
+      setSection('settings')
+      setToastMessage(`Connected ${params.get('email') ?? 'Google account'}`)
+      void refreshGoogle()
+    } else if (googleResult === 'error') {
+      setSection('settings')
+      setToastMessage('Google sign-in failed. Check server OAuth settings.')
+    }
+
+    if (params.has('section') || params.has('microsoft') || params.has('google')) {
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [refreshMicrosoft, user?.isSuperAdmin])
+  }, [refreshMicrosoft, refreshGoogle, user?.isSuperAdmin])
 
   const sharedBoardItems = useMemo(
     () =>
@@ -1389,6 +1416,9 @@ export default function App() {
             microsoftStatus={microsoftStatus}
             microsoftLoading={microsoftLoading}
             onMicrosoftRefresh={refreshMicrosoft}
+            googleStatus={googleStatus}
+            googleLoading={googleLoading}
+            onGoogleRefresh={refreshGoogle}
             emailAccounts={emailAccounts}
             calendarAccounts={calendarAccounts}
             usingRealMicrosoft={usingRealMicrosoft}
