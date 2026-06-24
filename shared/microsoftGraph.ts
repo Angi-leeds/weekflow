@@ -45,6 +45,7 @@ export interface ProviderItemMapping {
 export interface GraphCalendarEventResult {
   externalId: string;
   webLink?: string;
+  photoAttached?: boolean;
 }
 
 export interface GraphMailFolderDto {

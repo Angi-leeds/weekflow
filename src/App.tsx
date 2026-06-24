@@ -920,7 +920,13 @@ export default function App() {
               : entry,
           ),
         )
-        setToastMessage('Synced to Outlook calendar')
+        setToastMessage(
+          result.photoAttached
+            ? 'Synced to Outlook calendar with photo'
+            : photoAttachment
+              ? 'Synced to Outlook calendar (photo upload skipped)'
+              : 'Synced to Outlook calendar',
+        )
       } catch (error) {
         console.error(error)
         setToastMessage(

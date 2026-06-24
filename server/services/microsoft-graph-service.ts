@@ -1,5 +1,3 @@
-import fs from "fs/promises";
-import path from "path";
 import type {
   GraphCalendarDto,
   GraphCalendarEventResult,
@@ -17,10 +15,7 @@ import {
   upsertProviderMapping,
 } from "./connected-account-service";
 import { refreshMicrosoftAccessToken } from "./microsoft-auth-service";
-
-const LOCAL_STORAGE_DIR = path.resolve(
-  process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), ".local-object-storage"),
-);
+import { readAttachmentBuffer } from "./storage-service";
 
 interface GraphMessage {
   id: string;
@@ -652,13 +647,29 @@ function addDaysIso(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
-async function readLocalAttachmentBuffer(storageKey: string): Promise<Buffer | null> {
+async function removeExistingPhotoAttachments(
+  accountId: string,
+  eventId: string,
+  filename: string,
+): Promise<void> {
   try {
-    const segments = storageKey.split("/").filter(Boolean);
-    const filePath = path.join(LOCAL_STORAGE_DIR, ...segments);
-    return await fs.readFile(filePath);
-  } catch {
-    return null;
+    const response = await graphFetch(
+      accountId,
+      `/me/events/${encodeURIComponent(eventId)}/attachments?$select=id,name`,
+    );
+    const payload = (await response.json()) as { value?: Array<{ id: string; name?: string }> };
+    const matches = (payload.value ?? []).filter((entry) => entry.name === filename);
+    await Promise.all(
+      matches.map((entry) =>
+        graphFetch(
+          accountId,
+          `/me/events/${encodeURIComponent(eventId)}/attachments/${encodeURIComponent(entry.id)}`,
+          { method: "DELETE" },
+        ),
+      ),
+    );
+  } catch (error) {
+    console.warn(`Failed to replace photo attachments on event ${eventId}:`, error);
   }
 }
 
@@ -666,21 +677,28 @@ async function attachPhotoToEvent(
   accountId: string,
   eventId: string,
   input: CalendarSyncInput,
-): Promise<void> {
-  if (!input.photoStorageKey || !input.photoMimeType) return;
+): Promise<boolean> {
+  if (!input.photoStorageKey || !input.photoMimeType) return false;
 
-  const buffer = await readLocalAttachmentBuffer(input.photoStorageKey);
-  if (!buffer) return;
+  const file = await readAttachmentBuffer(input.photoStorageKey);
+  if (!file) {
+    throw new Error("Photo file could not be read for Outlook sync");
+  }
 
-  await graphFetch(accountId, `/me/events/${eventId}/attachments`, {
+  const filename = input.photoFilename ?? "photo.jpg";
+  await removeExistingPhotoAttachments(accountId, eventId, filename);
+
+  await graphFetch(accountId, `/me/events/${encodeURIComponent(eventId)}/attachments`, {
     method: "POST",
     body: JSON.stringify({
       "@odata.type": "#microsoft.graph.fileAttachment",
-      name: input.photoFilename ?? "photo.jpg",
-      contentType: input.photoMimeType,
-      contentBytes: buffer.toString("base64"),
+      name: filename,
+      contentType: input.photoMimeType || file.mimeType,
+      contentBytes: file.buffer.toString("base64"),
     }),
   });
+
+  return true;
 }
 
 export async function syncCalendarItemToMicrosoft(
@@ -704,8 +722,11 @@ export async function syncCalendarItemToMicrosoft(
       body: JSON.stringify(payload),
     });
     const event = (await response.json()) as { id: string; webLink?: string };
-    await attachPhotoToEvent(accountId, event.id, input);
-    return { externalId: event.id, webLink: event.webLink };
+    let photoAttached = false;
+    if (input.photoStorageKey) {
+      photoAttached = await attachPhotoToEvent(accountId, event.id, input);
+    }
+    return { externalId: event.id, webLink: event.webLink, photoAttached };
   }
 
   const response = await graphFetch(accountId, `${calendarBase}/events`, {
@@ -721,8 +742,11 @@ export async function syncCalendarItemToMicrosoft(
     externalId: event.id,
   });
 
-  await attachPhotoToEvent(accountId, event.id, input);
-  return { externalId: event.id, webLink: event.webLink };
+  let photoAttached = false;
+  if (input.photoStorageKey) {
+    photoAttached = await attachPhotoToEvent(accountId, event.id, input);
+  }
+  return { externalId: event.id, webLink: event.webLink, photoAttached };
 }
 
 export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {

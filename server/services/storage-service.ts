@@ -99,6 +99,32 @@ export async function readLocalAttachmentFile(
   }
 }
 
+export async function readAttachmentBuffer(
+  storageKey: string,
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  if (storageKey.startsWith("/objects/")) {
+    if (!isObjectStorageConfigured()) return null;
+    try {
+      const { ObjectStorageService } = await import(
+        "../replit_integrations/object_storage/objectStorage"
+      );
+      const service = new ObjectStorageService();
+      const file = await service.getObjectEntityFile(storageKey);
+      const [buffer] = await file.download();
+      const [metadata] = await file.getMetadata();
+      return {
+        buffer,
+        mimeType: metadata.contentType ?? "application/octet-stream",
+      };
+    } catch (error) {
+      console.warn(`Failed to read object storage attachment ${storageKey}:`, error);
+      return null;
+    }
+  }
+
+  return readLocalAttachmentFile(storageKey);
+}
+
 export function attachmentPublicUrl(storageKey: string): string {
   if (storageKey.startsWith("/objects/")) {
     return storageKey;
