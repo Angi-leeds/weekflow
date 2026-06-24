@@ -25,6 +25,7 @@ declare global {
       email: string;
       displayName: string;
       isSuperAdmin: boolean;
+      totpEnabled?: boolean;
       createdAt: string;
     }
   }

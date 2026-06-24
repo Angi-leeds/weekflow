@@ -142,7 +142,7 @@ import { Toast } from './components/Toast'
 import { KioskPinGate } from './components/KioskPinGate'
 
 export default function App() {
-  const { user, config, logout } = useAuth()
+  const { user, config, logout, setUser } = useAuth()
   const [section, setSection] = useState<AppSection>('calendar')
   const [categories, setCategories] = useState<Category[]>(
     () => loadStoredCategories() ?? DEFAULT_CATEGORIES,
@@ -1634,6 +1634,7 @@ export default function App() {
             sharedBoardCount={sharedBoardItems.length}
             authEnabled={config?.enabled ?? false}
             authUser={user}
+            onAuthUserUpdated={setUser}
             onLogout={config?.enabled ? logout : undefined}
             onOpenSuperAdmin={
               user?.isSuperAdmin ? () => setSection('super-admin') : undefined

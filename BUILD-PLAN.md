@@ -741,6 +741,22 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 **Phase 11b (optional follow-up):** Invite links, password reset email, 2FA, Cloudflare Access integration docs.
 
+#### Phase 11b — Invites, password reset, 2FA ✅ (Done)
+
+**Goal:** Complete web-app auth polish before Capacitor: household invites, password reset, TOTP 2FA, edge-access docs.
+
+**Done:**
+1. Migration `0004_auth_phase_11b.sql` — reset tokens, household invites, auth challenges, user TOTP columns
+2. Password reset: `POST /api/auth/forgot-password`, `GET/POST /api/auth/reset-password`
+3. Household invites: super-admin create/revoke; `/?invite=token` registration bypasses closed signup
+4. TOTP 2FA: setup/enable/disable in Settings; login challenge flow
+5. Email delivery via optional `SMTP_URL` webhook; dev preview links in UI when email not configured
+6. Cloudflare Access notes in `replit.md`
+
+**Acceptance criteria:** ✅ Super admin creates invite → recipient registers via link; forgot password flow works; 2FA can be enabled and required at login.
+
+**Next:** Phase 10f+ deferred items (Capacitor, voice/push, billing) — start with Capacitor when ready for native shell.
+
 **Interim (before Phase 11):** Document in `replit.md` that custom domain is owner-trusted only; recommend Replit "Deploy" access or Cloudflare until gateway ships.
 
 ---
@@ -847,7 +863,7 @@ curl http://localhost:5000/api/status
 **Recommended phase order before marketing:** 10c (Google polish) or Apple/native apps.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10f+** unless owner specifies otherwise (Phases 0–9c, 10a–10f, and 11 complete).
+2. **Start at Phase 10f+ / Capacitor** unless owner specifies otherwise (Phases 0–11b complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

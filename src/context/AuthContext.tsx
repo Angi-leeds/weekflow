@@ -8,8 +8,16 @@ import {
   type ReactNode,
 } from "react";
 import type { AuthConfig, AuthUser } from "../../shared/auth";
-import { fetchAuthConfig, fetchCurrentUser, logout as logoutRequest } from "../lib/auth";
+import {
+  clearAuthUrlParams,
+  fetchAuthConfig,
+  fetchCurrentUser,
+  logout as logoutRequest,
+  readAuthUrlParams,
+} from "../lib/auth";
+import { AcceptInviteScreen } from "../components/AcceptInviteScreen";
 import { AuthScreen } from "../components/AuthScreen";
+import { ResetPasswordScreen } from "../components/ResetPasswordScreen";
 
 interface AuthContextValue {
   config: AuthConfig | null;
@@ -34,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [urlParams] = useState(() => readAuthUrlParams());
 
   const refresh = useCallback(async () => {
     const [nextConfig, session] = await Promise.all([
@@ -79,6 +88,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   if (config?.enabled && !user) {
+    if (urlParams.reset) {
+      return (
+        <AuthContext.Provider value={value}>
+          <ResetPasswordScreen
+            token={urlParams.reset}
+            onComplete={() => {
+              clearAuthUrlParams();
+              window.location.href = window.location.pathname;
+            }}
+          />
+        </AuthContext.Provider>
+      );
+    }
+
+    if (urlParams.invite) {
+      return (
+        <AuthContext.Provider value={value}>
+          <AcceptInviteScreen
+            token={urlParams.invite}
+            config={config}
+            onAuthenticated={(nextUser) => {
+              setUser(nextUser);
+            }}
+            onBack={() => {
+              clearAuthUrlParams();
+              window.location.href = window.location.pathname;
+            }}
+          />
+        </AuthContext.Provider>
+      );
+    }
+
     return (
       <AuthContext.Provider value={value}>
         <AuthScreen

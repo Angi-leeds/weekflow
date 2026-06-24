@@ -3,9 +3,9 @@
 ## Overview
 MyAxis is a mobile-first personal hub (week-list calendar, email, tasks, contacts, notes) with an integrated family noticeboard mode (formerly Corky). Prototype uses mock data locally; Microsoft Graph when OAuth env vars are set on Replit.
 
-**Build order:** Phase **9b** (multi-account Outlook) → Phase **11** (login + super admin — **required before public custom domain**) → Phase 9c/10. See `BUILD-PLAN.md`.
+**Build order:** Phase **9b** (multi-account Outlook) → Phase **11** (login + super admin) → Phase **11b** (invites, reset, 2FA) → Phase 9c/10. See `BUILD-PLAN.md`.
 
-**Security (until Phase 11):** Custom domain has **no app login**. Restrict URL sharing; optional Replit/Cloudflare edge gate. Phase 11 reference: **menagerie** (`export-docs/05-AUTHZ-ROLES-PERMISSIONS.md`, `server/routes.ts` auth + `/api/super-admin/*`, `client/src/pages/super-admin/app-control-centre.tsx`).
+**Security:** When `SESSION_SECRET` is set, the app requires login. Optional Cloudflare Access in front of the custom domain adds an edge gate before MyAxis sessions (see below).
 
 ## User preferences
 - Mobile-first; week list is the signature calendar view.
@@ -37,6 +37,30 @@ MyAxis is a mobile-first personal hub (week-list calendar, email, tasks, contact
 | `npm run dev` | Express + Vite HMR (development) |
 | `npm run build` | Vite client → `dist/public`, server → `dist/index.js` |
 | `npm run start` | Production server (after build) |
+
+## Auth env vars (Phase 11–11b)
+
+| Var | Purpose |
+|-----|---------|
+| `SESSION_SECRET` | Enables auth gateway (required for production) |
+| `SUPER_ADMIN_EMAIL` | Bootstrap super admin on first register |
+| `SIGNUP_MODE` | `closed` (default), `allowlist`, or `open` |
+| `SIGNUP_ALLOWLIST_EMAILS` | Comma-separated emails allowed to register |
+| `APP_URL` | Public app URL for invite/reset links |
+| `SMTP_URL` | Optional HTTP webhook — POST `{ to, subject, text, html }` to send auth emails |
+
+When `SMTP_URL` is not set, reset and invite links are logged on the server and surfaced in the UI for dev preview.
+
+## Cloudflare Access (optional edge gate)
+
+For a custom domain on Replit, you can put **Cloudflare Access** in front of the app so only approved identities reach MyAxis at all:
+
+1. Point the domain through Cloudflare and proxy the Replit deploy origin.
+2. In Zero Trust → Access → Applications, create a self-hosted app for your hostname.
+3. Add an Allow policy (e.g. emails in your Google Workspace or a one-time PIN).
+4. MyAxis session login (Phase 11) still applies **after** the edge gate — Access protects the origin; MyAxis protects household data and OAuth tokens.
+
+This is optional but recommended for owner-only deployments before wider household invites.
 
 ## Prototype vs full build
 - **Now**: client state in localStorage; mock email/calendar data; optional Microsoft Graph when OAuth env vars are set.

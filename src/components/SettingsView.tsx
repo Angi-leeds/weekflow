@@ -31,7 +31,7 @@ import type {
 import type { GoogleCalendarDto, GoogleIntegrationStatus } from '../../shared/googleApi'
 import type { AppleIntegrationStatus } from '../../shared/appleApi'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
-import { SyncHelpView } from './SyncHelpView'
+import { SecuritySettingsPanel } from './SecuritySettingsPanel'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
 import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
 import { GoogleConnectPanel } from './GoogleConnectPanel'
@@ -86,6 +86,7 @@ interface SettingsViewProps {
   sharedBoardCount?: number
   authEnabled?: boolean
   authUser?: AuthUser | null
+  onAuthUserUpdated?: (user: AuthUser) => void
   onLogout?: () => void
   onOpenSuperAdmin?: () => void
 }
@@ -132,6 +133,7 @@ export function SettingsView({
   sharedBoardCount = 0,
   authEnabled = false,
   authUser,
+  onAuthUserUpdated,
   onLogout,
   onOpenSuperAdmin,
 }: SettingsViewProps) {
@@ -673,6 +675,14 @@ export function SettingsView({
             />
           )}
         </SettingsGroup>
+      )}
+
+      {authEnabled && authUser && onAuthUserUpdated && (
+        <SecuritySettingsPanel
+          user={authUser}
+          onUserUpdated={onAuthUserUpdated}
+          onShowToast={onShowToast}
+        />
       )}
 
       <SettingsGroup title="About">

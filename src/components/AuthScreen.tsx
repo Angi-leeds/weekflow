@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { AuthConfig, AuthUser } from "../../shared/auth";
 import { APP_NAME } from "../branding";
 import { login, register } from "../lib/auth";
+import { ForgotPasswordScreen } from "./ForgotPasswordScreen";
+import { TotpLoginScreen } from "./TotpLoginScreen";
 
 type AuthMode = "login" | "register";
 
@@ -19,6 +21,22 @@ export function AuthScreen({ config, onAuthenticated }: AuthScreenProps) {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
+
+  if (showForgot) {
+    return <ForgotPasswordScreen onBack={() => setShowForgot(false)} />;
+  }
+
+  if (totpChallenge) {
+    return (
+      <TotpLoginScreen
+        challengeToken={totpChallenge}
+        onAuthenticated={onAuthenticated}
+        onBack={() => setTotpChallenge(null)}
+      />
+    );
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -26,14 +44,23 @@ export function AuthScreen({ config, onAuthenticated }: AuthScreenProps) {
     setSubmitting(true);
 
     try {
-      const user =
-        mode === "login"
-          ? await login(email, password)
-          : await register({
-              email,
-              password,
-              displayName: displayName.trim() || undefined,
-            });
+      if (mode === "login") {
+        const result = await login(email, password);
+        if (result.requiresTotp && result.challengeToken) {
+          setTotpChallenge(result.challengeToken);
+          return;
+        }
+        if (result.user) {
+          onAuthenticated(result.user);
+        }
+        return;
+      }
+
+      const user = await register({
+        email,
+        password,
+        displayName: displayName.trim() || undefined,
+      });
       onAuthenticated(user);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Something went wrong");
@@ -136,6 +163,16 @@ export function AuthScreen({ config, onAuthenticated }: AuthScreenProps) {
               required
             />
           </label>
+
+          {mode === "login" && config.passwordResetEnabled && (
+            <button
+              type="button"
+              onClick={() => setShowForgot(true)}
+              className="text-caption font-semibold text-wf-accent"
+            >
+              Forgot password?
+            </button>
+          )}
 
           {error && (
             <p className="rounded-xl bg-wf-red/10 px-3 py-2 text-caption font-medium text-wf-red">

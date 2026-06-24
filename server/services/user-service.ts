@@ -8,6 +8,12 @@ import {
 } from "../config/auth-config";
 import { getDb } from "../db/index";
 import { users } from "../db/schema";
+import { consumeHouseholdInvite, previewHouseholdInvite } from "./invite-service";
+import {
+  buildOtpAuthUrl,
+  generateTotpSecret,
+  verifyTotpCode,
+} from "./totp-service";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -19,6 +25,7 @@ function toAuthUser(row: DbUser): AuthUser {
     email: row.email,
     displayName: row.displayName,
     isSuperAdmin: row.isSuperAdmin,
+    totpEnabled: row.totpEnabled,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -85,6 +92,7 @@ export async function registerUser(input: {
   email: string;
   password: string;
   displayName?: string;
+  inviteToken?: string;
 }): Promise<{ user?: AuthUser; error?: string }> {
   const db = getDb();
   if (!db) {
@@ -103,9 +111,16 @@ export async function registerUser(input: {
   }
 
   const userCount = await countUsers();
-  const signupCheck = canRegisterEmail(email, userCount);
-  if (!signupCheck.allowed) {
-    return { error: signupCheck.reason ?? "signup_closed" };
+  if (input.inviteToken) {
+    const preview = await previewHouseholdInvite(input.inviteToken);
+    if (!preview.valid || preview.email !== email) {
+      return { error: "invalid_invite" };
+    }
+  } else {
+    const signupCheck = canRegisterEmail(email, userCount);
+    if (!signupCheck.allowed) {
+      return { error: signupCheck.reason ?? "signup_closed" };
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -127,7 +142,79 @@ export async function registerUser(input: {
     return { error: "register_failed" };
   }
 
+  if (input.inviteToken) {
+    await consumeHouseholdInvite(input.inviteToken, email);
+  }
+
   return { user: toAuthUser(row) };
+}
+
+export async function beginTotpSetup(userId: string): Promise<{ secret: string; otpauthUrl: string } | null> {
+  const db = getDb();
+  const user = await getUserById(userId);
+  if (!db || !user) return null;
+
+  const secret = user.totpSecret ?? generateTotpSecret();
+  if (!user.totpSecret) {
+    await db.update(users).set({ totpSecret: secret, updatedAt: new Date() }).where(eq(users.id, userId));
+  }
+
+  return {
+    secret,
+    otpauthUrl: buildOtpAuthUrl(user.email, secret),
+  };
+}
+
+export async function enableTotp(userId: string, code: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getUserById(userId);
+  if (!user?.totpSecret) {
+    return { ok: false, error: "totp_not_started" };
+  }
+  if (!verifyTotpCode(user.totpSecret, code)) {
+    return { ok: false, error: "invalid_code" };
+  }
+
+  const db = getDb();
+  if (!db) return { ok: false, error: "database_unavailable" };
+
+  await db
+    .update(users)
+    .set({ totpEnabled: true, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+
+  return { ok: true };
+}
+
+export async function disableTotp(
+  userId: string,
+  password: string,
+  code: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getUserById(userId);
+  if (!user) return { ok: false, error: "user_not_found" };
+
+  const match = await bcrypt.compare(password, user.passwordHash);
+  if (!match) return { ok: false, error: "invalid_password" };
+
+  if (!user.totpSecret || !verifyTotpCode(user.totpSecret, code)) {
+    return { ok: false, error: "invalid_code" };
+  }
+
+  const db = getDb();
+  if (!db) return { ok: false, error: "database_unavailable" };
+
+  await db
+    .update(users)
+    .set({ totpEnabled: false, totpSecret: null, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+
+  return { ok: true };
+}
+
+export async function verifyUserTotp(userId: string, code: string): Promise<boolean> {
+  const user = await getUserById(userId);
+  if (!user?.totpEnabled || !user.totpSecret) return false;
+  return verifyTotpCode(user.totpSecret, code);
 }
 
 export function serializeUserForSession(user: DbUser): AuthUser {
