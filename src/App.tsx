@@ -239,8 +239,14 @@ export default function App() {
       setMicrosoftStatus(status)
       const accounts = status.accounts
       if (accounts.length > 0) {
-        const [mailBundle, calendar, outlookNotes, outlookContacts, calendars, todoLists] =
-          await Promise.all([
+        const [
+          mailResult,
+          calendarResult,
+          notesResult,
+          contactsResult,
+          calendarsResult,
+          todoListsResult,
+        ] = await Promise.allSettled([
           fetchAllMicrosoftMail(accounts),
           fetchAllMicrosoftCalendar(accounts),
           Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
@@ -250,6 +256,25 @@ export default function App() {
           fetchAllMicrosoftCalendarsList(accounts),
           fetchAllMicrosoftTodoLists(accounts),
         ])
+
+        const mailBundle =
+          mailResult.status === 'fulfilled' ? mailResult.value : { mail: [], folders: [] }
+        const calendar = calendarResult.status === 'fulfilled' ? calendarResult.value : []
+        const outlookNotes = notesResult.status === 'fulfilled' ? notesResult.value : []
+        const outlookContacts = contactsResult.status === 'fulfilled' ? contactsResult.value : []
+        const calendars = calendarsResult.status === 'fulfilled' ? calendarsResult.value : []
+        const todoLists = todoListsResult.status === 'fulfilled' ? todoListsResult.value : []
+
+        for (const result of [
+          mailResult,
+          calendarResult,
+          notesResult,
+          contactsResult,
+          calendarsResult,
+          todoListsResult,
+        ]) {
+          if (result.status === 'rejected') console.error(result.reason)
+        }
         setGraphEmailFolders((prev) => {
           const other = prev.filter(
             (folder) => !folder.accountId.startsWith('ms-'),

@@ -139,6 +139,31 @@ function folderCompositeId(accountKey: string, graphFolderId: string): string {
   return `${accountKey}-${graphFolderId}`;
 }
 
+/** Graph OData values must keep literal commas, slashes, etc. inside $select/$orderby. */
+function encodeODataValue(value: string): string {
+  return encodeURIComponent(value)
+    .replace(/%2C/gi, ",")
+    .replace(/%2F/gi, "/")
+    .replace(/%28/gi, "(")
+    .replace(/%29/gi, ")")
+    .replace(/%27/gi, "'")
+    .replace(/%3A/gi, ":");
+}
+
+/** Build a Graph query string without URLSearchParams (which encodes $ as %24). */
+function buildGraphQuery(params: Record<string, string>): string {
+  return Object.entries(params)
+    .map(([key, value]) => {
+      const encodedValue = key.startsWith("$") ? encodeODataValue(value) : encodeURIComponent(value);
+      return `${key}=${encodedValue}`;
+    })
+    .join("&");
+}
+
+function encodeGraphPathSegment(id: string): string {
+  return encodeURIComponent(id);
+}
+
 async function getValidAccessToken(accountId: string): Promise<string> {
   const record = await getConnectedAccountRecord(accountId);
   if (!record) throw new Error("Connected account not found");
@@ -262,7 +287,7 @@ export async function fetchMicrosoftCalendarEvents(
   const start = startDate ?? addDaysIso(new Date().toISOString().slice(0, 10), -30);
   const end = endDate ?? addDaysIso(new Date().toISOString().slice(0, 10), 90);
 
-  const params = new URLSearchParams({
+  const query = buildGraphQuery({
     startDateTime: `${start}T00:00:00`,
     endDateTime: `${end}T23:59:59`,
     $top: "250",
@@ -275,7 +300,7 @@ export async function fetchMicrosoftCalendarEvents(
     const calendar = calendars.find((entry) => entry.graphCalendarId === calendarGraphId);
     const response = await graphFetch(
       accountId,
-      `/me/calendars/${calendarGraphId}/calendarView?${params.toString()}`,
+      `/me/calendars/${encodeGraphPathSegment(calendarGraphId)}/calendarView?${query}`,
     );
     const payload = (await response.json()) as { value?: GraphEvent[] };
     return (payload.value ?? []).map((event) =>
@@ -288,7 +313,7 @@ export async function fetchMicrosoftCalendarEvents(
 
   const calendars = await fetchMicrosoftCalendars(accountId);
   if (calendars.length === 0) {
-    const response = await graphFetch(accountId, `/me/calendarView?${params.toString()}`);
+    const response = await graphFetch(accountId, `/me/calendarView?${query}`);
     const payload = (await response.json()) as { value?: GraphEvent[] };
     return (payload.value ?? []).map((event) => mapGraphEventToDto(event, account));
   }
@@ -297,7 +322,7 @@ export async function fetchMicrosoftCalendarEvents(
     calendars.map(async (calendar) => {
       const response = await graphFetch(
         accountId,
-        `/me/calendars/${calendar.graphCalendarId}/calendarView?${params.toString()}`,
+        `/me/calendars/${encodeGraphPathSegment(calendar.graphCalendarId)}/calendarView?${query}`,
       );
       const payload = (await response.json()) as { value?: GraphEvent[] };
       return (payload.value ?? []).map((event) =>
@@ -405,8 +430,8 @@ export async function fetchMicrosoftMessages(
     folders[0];
   if (!folder) return [];
 
-  const folderPath = folderGraphId ?? folder.graphFolderId;
-  const params = new URLSearchParams({
+  const folderPath = encodeGraphPathSegment(folderGraphId ?? folder.graphFolderId);
+  const query = buildGraphQuery({
     $top: String(top),
     $orderby: "receivedDateTime desc",
     $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,flag",
@@ -414,7 +439,7 @@ export async function fetchMicrosoftMessages(
 
   const response = await graphFetch(
     accountId,
-    `/me/mailFolders/${folderPath}/messages?${params.toString()}`,
+    `/me/mailFolders/${folderPath}/messages?${query}`,
   );
   const payload = (await response.json()) as { value?: GraphMessage[] };
 
@@ -749,14 +774,18 @@ export async function syncCalendarItemToMicrosoft(
     calendars.find((entry) => entry.isDefault) ??
     calendars[0];
   const calendarBase = targetCalendar
-    ? `/me/calendars/${targetCalendar.graphCalendarId}`
+    ? `/me/calendars/${encodeGraphPathSegment(targetCalendar.graphCalendarId)}`
     : "/me/calendar";
 
   if (mapping && mapping.connectedAccountId === accountId) {
-    const response = await graphFetch(accountId, `${calendarBase}/events/${mapping.externalId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
+    const response = await graphFetch(
+      accountId,
+      `${calendarBase}/events/${encodeURIComponent(mapping.externalId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    );
     const event = (await response.json()) as { id: string; webLink?: string };
     let photoAttached = false;
     if (input.photoStorageKey) {
@@ -791,7 +820,8 @@ export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphT
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
-  const response = await graphFetch(accountId, "/me/todo/lists?$select=id,displayName,wellknownListName");
+  // Personal Microsoft accounts reject $select on /me/todo/lists (RequestBroker--ParseUri).
+  const response = await graphFetch(accountId, "/me/todo/lists");
   const payload = (await response.json()) as {
     value?: Array<{ id: string; displayName?: string; wellknownListName?: string }>;
   };
@@ -835,7 +865,7 @@ export async function createMicrosoftTodoTask(
 
   const response = await graphFetch(
     accountId,
-    `/me/todo/lists/${targetList.graphListId}/tasks`,
+    `/me/todo/lists/${encodeGraphPathSegment(targetList.graphListId)}/tasks`,
     {
       method: "POST",
       body: JSON.stringify(body),
@@ -861,7 +891,7 @@ export async function fetchMicrosoftContacts(accountId: string, top = 100): Prom
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
-  const params = new URLSearchParams({
+  const query = buildGraphQuery({
     $top: String(top),
     $orderby: "displayName",
     $select:
@@ -870,7 +900,7 @@ export async function fetchMicrosoftContacts(accountId: string, top = 100): Prom
 
   let response: Response;
   try {
-    response = await graphFetch(accountId, `/me/contacts?${params.toString()}`);
+    response = await graphFetch(accountId, `/me/contacts?${query}`);
   } catch (error) {
     console.warn(`Contacts fetch failed for ${accountId} — reconnect may need Contacts.Read scope:`, error);
     return [];
