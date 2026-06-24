@@ -90,6 +90,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tables: dbStatus.tables,
         weekflowTables: dbStatus.weekflowTables,
         schemaReady,
+        authSchemaReady: dbStatus.authSchemaReady,
+        appliedMigrations: dbStatus.appliedMigrations,
       });
     } catch (error) {
       console.error("Database status check failed:", error);

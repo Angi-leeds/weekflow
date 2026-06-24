@@ -96,7 +96,9 @@ export function setupAuth(app: Express): boolean {
       }
       done(null, serializeUserForSession(user));
     } catch (error) {
-      done(error);
+      // Stale session or schema mismatch — log out instead of 500ing every page load.
+      console.error("Failed to deserialize user session — treating as logged out:", error);
+      done(null, false);
     }
   });
 
