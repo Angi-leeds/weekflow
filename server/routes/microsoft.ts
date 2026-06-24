@@ -277,6 +277,14 @@ export function registerMicrosoftRoutes(app: Express): void {
     } catch (error) {
       console.error("GET /api/microsoft/calendar failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch Outlook calendar";
+      if (
+        message.includes("(429)") ||
+        message.includes("ApplicationThrottled") ||
+        message.includes("MailboxConcurrency")
+      ) {
+        res.json([]);
+        return;
+      }
       res.status(500).json({ message });
     }
   });

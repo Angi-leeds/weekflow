@@ -239,23 +239,25 @@ export default function App() {
       setMicrosoftStatus(status)
       const accounts = status.accounts
       if (accounts.length > 0) {
-        const [
-          mailResult,
-          calendarResult,
-          notesResult,
-          contactsResult,
-          calendarsResult,
-          todoListsResult,
-        ] = await Promise.allSettled([
-          fetchAllMicrosoftMail(accounts),
-          fetchAllMicrosoftCalendar(accounts),
+        const settle = async <T,>(promise: Promise<T>): Promise<PromiseSettledResult<T>> => {
+          try {
+            return { status: 'fulfilled', value: await promise }
+          } catch (reason) {
+            return { status: 'rejected', reason }
+          }
+        }
+
+        // Serial Graph refresh — parallel bursts hit Microsoft MailboxConcurrency limits.
+        const mailResult = await settle(fetchAllMicrosoftMail(accounts))
+        const calendarsResult = await settle(fetchAllMicrosoftCalendarsList(accounts))
+        const calendarResult = await settle(fetchAllMicrosoftCalendar(accounts))
+        const todoListsResult = await settle(fetchAllMicrosoftTodoLists(accounts))
+        const contactsResult = await settle(fetchAllMicrosoftContacts(accounts))
+        const notesResult = await settle(
           Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
             batches.flat(),
           ),
-          fetchAllMicrosoftContacts(accounts),
-          fetchAllMicrosoftCalendarsList(accounts),
-          fetchAllMicrosoftTodoLists(accounts),
-        ])
+        )
 
         const mailBundle =
           mailResult.status === 'fulfilled' ? mailResult.value : { mail: [], folders: [] }

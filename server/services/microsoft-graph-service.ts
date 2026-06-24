@@ -164,6 +164,68 @@ function encodeGraphPathSegment(id: string): string {
   return encodeURIComponent(id);
 }
 
+const GRAPH_MAX_CONCURRENT_PER_ACCOUNT = 2;
+const GRAPH_MAX_RETRIES = 4;
+const GRAPH_CALENDAR_GAP_MS = 150;
+
+const graphSlots = new Map<string, { active: number; queue: Array<() => void> }>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getGraphSlotState(accountId: string) {
+  let state = graphSlots.get(accountId);
+  if (!state) {
+    state = { active: 0, queue: [] };
+    graphSlots.set(accountId, state);
+  }
+  return state;
+}
+
+async function acquireGraphSlot(accountId: string): Promise<void> {
+  const state = getGraphSlotState(accountId);
+  if (state.active < GRAPH_MAX_CONCURRENT_PER_ACCOUNT) {
+    state.active += 1;
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    state.queue.push(resolve);
+  });
+  state.active += 1;
+}
+
+function releaseGraphSlot(accountId: string): void {
+  const state = getGraphSlotState(accountId);
+  state.active -= 1;
+  const next = state.queue.shift();
+  if (next) next();
+}
+
+function parseRetryAfterMs(response: Response): number | null {
+  const header = response.headers.get("Retry-After");
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(header);
+  if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+  return null;
+}
+
+function isRetryableGraphStatus(status: number): boolean {
+  return status === 429 || status === 503 || status === 504;
+}
+
+function isGraphThrottleError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("(429)") ||
+    message.includes("ApplicationThrottled") ||
+    message.includes("MailboxConcurrency")
+  );
+}
+
 async function getValidAccessToken(accountId: string): Promise<string> {
   const record = await getConnectedAccountRecord(accountId);
   if (!record) throw new Error("Connected account not found");
@@ -180,22 +242,44 @@ async function getValidAccessToken(accountId: string): Promise<string> {
 }
 
 async function graphFetch(accountId: string, path: string, init?: RequestInit): Promise<Response> {
-  const token = await getValidAccessToken(accountId);
-  const response = await fetch(`${MICROSOFT_GRAPH_BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  await acquireGraphSlot(accountId);
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Graph request failed (${response.status}): ${detail}`);
+  try {
+    for (let attempt = 1; attempt <= GRAPH_MAX_RETRIES; attempt += 1) {
+      const token = await getValidAccessToken(accountId);
+      const response = await fetch(`${MICROSOFT_GRAPH_BASE}${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...init?.headers,
+        },
+      });
+
+      if (response.ok) {
+        return response;
+      }
+
+      const detail = await response.text();
+      const retryable = isRetryableGraphStatus(response.status) && attempt < GRAPH_MAX_RETRIES;
+
+      if (retryable) {
+        const retryAfter =
+          parseRetryAfterMs(response) ?? Math.min(1000 * 2 ** (attempt - 1), 30_000);
+        console.warn(
+          `Graph throttled (${response.status}) for ${path} — retry ${attempt}/${GRAPH_MAX_RETRIES} in ${retryAfter}ms`,
+        );
+        await sleep(retryAfter);
+        continue;
+      }
+
+      throw new Error(`Graph request failed (${response.status}): ${detail}`);
+    }
+
+    throw new Error("Graph request failed after retries");
+  } finally {
+    releaseGraphSlot(accountId);
   }
-
-  return response;
 }
 
 function parseGraphEventDateTime(dateTime: string | undefined): { date: string; time?: string } {
@@ -318,30 +402,44 @@ export async function fetchMicrosoftCalendarEvents(
     return (payload.value ?? []).map((event) => mapGraphEventToDto(event, account));
   }
 
-  const batches = await Promise.all(
-    calendars.map(async (calendar) => {
+  const orderedCalendars = [...calendars].sort((a, b) => {
+    if (a.isDefault && !b.isDefault) return -1;
+    if (!a.isDefault && b.isDefault) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const merged: GraphCalendarItemDto[] = [];
+  const seen = new Set<string>();
+
+  for (const calendar of orderedCalendars) {
+    try {
       const response = await graphFetch(
         accountId,
         `/me/calendars/${encodeGraphPathSegment(calendar.graphCalendarId)}/calendarView?${query}`,
       );
       const payload = (await response.json()) as { value?: GraphEvent[] };
-      return (payload.value ?? []).map((event) =>
-        mapGraphEventToDto(event, account, {
+      for (const event of payload.value ?? []) {
+        const dto = mapGraphEventToDto(event, account, {
           id: calendar.graphCalendarId,
           name: calendar.name,
-        }),
-      );
-    }),
-  );
+        });
+        const key = `${dto.connectedAccountId}:${dto.externalId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(dto);
+      }
+    } catch (error) {
+      if (isGraphThrottleError(error)) {
+        console.warn(`Calendar throttle — skipping "${calendar.name}" for ${accountId}:`, error);
+        continue;
+      }
+      throw error;
+    }
 
-  const merged = batches.flat();
-  const seen = new Set<string>();
-  return merged.filter((event) => {
-    const key = `${event.connectedAccountId}:${event.externalId}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    await sleep(GRAPH_CALENDAR_GAP_MS);
+  }
+
+  return merged;
 }
 
 const WELL_KNOWN_FOLDERS: Array<{
