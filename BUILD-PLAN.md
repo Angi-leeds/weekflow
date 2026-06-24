@@ -640,9 +640,21 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 **Acceptance criteria:** ✅ Save event with Google calendar selected → event appears in Google Calendar; edit updates existing event.
 
-#### Phase 10e+ — remaining Phase 10 (deferred)
+#### Phase 10f — Apple iCloud hyperlink fallbacks ✅ (Done)
 
-- Apple iCloud (limited APIs — hyperlink fallbacks in notes — **d50**)
+**Goal:** Link iCloud accounts without OAuth; hyperlink fallbacks for Mail/Notes; optional ICS calendar subscribe for read-only events.
+
+**Done:**
+1. `shared/appleApi.ts` — Apple account + calendar DTOs
+2. Manual link via `connected_accounts` (`provider: "apple"`) — email, display name, optional calendar subscribe URL in scopes JSON
+3. `server/services/ics-calendar-service.ts` — fetch/parse ICS from webcal/https subscribe URL
+4. Routes: `GET /api/apple/status`, `POST/PATCH/DELETE /api/apple/accounts`, `GET /api/apple/calendar`
+5. Client: `AppleConnectPanel`, `appleLinks.ts`, merged account badges; iCloud Mail/Notes fallbacks in Email/Notes views
+
+**Acceptance criteria:** ✅ Link iCloud email in Settings → account appears in mail/calendar lists; paste calendar subscribe URL → events merge into calendar view; Notes/Email show Open iCloud / copy fallbacks.
+
+#### Phase 10f+ — remaining Phase 10 (deferred)
+
 - Native iOS/Android wrapper or Capacitor — **d61**
 - Voice recording + push notifications — **d37** full
 - Billing / household subscription — **d15**
@@ -835,7 +847,7 @@ curl http://localhost:5000/api/status
 **Recommended phase order before marketing:** 10c (Google polish) or Apple/native apps.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10e+** unless owner specifies otherwise (Phases 0–9c, 10a–10e, and 11 complete).
+2. **Start at Phase 10f+** unless owner specifies otherwise (Phases 0–9c, 10a–10f, and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

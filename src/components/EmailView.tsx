@@ -23,6 +23,7 @@ import {
 } from '../mockData'
 import type { EmailAccount, EmailFolder } from '../types'
 import { getShareForEntity } from '../lib/itemShares'
+import { icloudMailUrl, openExternalUrl } from '../lib/appleLinks'
 import { Badge } from './ui/Badge'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
@@ -256,7 +257,22 @@ export function EmailView({
           }`}
         >
           {filtered.length === 0 ? (
-            <p className="p-6 text-center text-subhead text-wf-text-tertiary">No messages</p>
+            activeAccountId?.startsWith('apple-') ? (
+              <div className="p-6 text-center">
+                <p className="text-subhead text-wf-text-tertiary">
+                  iCloud Mail cannot be synced in the browser yet.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openExternalUrl(icloudMailUrl())}
+                  className="mt-4 rounded-xl bg-[#555555] px-4 py-2.5 text-subhead font-semibold text-white"
+                >
+                  Open iCloud Mail
+                </button>
+              </div>
+            ) : (
+              <p className="p-6 text-center text-subhead text-wf-text-tertiary">No messages</p>
+            )
           ) : (
             filtered.map((email) => (
               <EmailRow

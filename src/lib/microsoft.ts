@@ -297,6 +297,7 @@ export function mergeGraphMail(
     (email) =>
       email.provider !== "microsoft" &&
       email.provider !== "google" &&
+      email.provider !== "apple" &&
       !email.externalId,
   );
   const dedupedGraph = graphEmails.filter(
@@ -317,11 +318,11 @@ export function mergeGraphCalendar(
     graphItems.map((item) => item.externalId).filter(Boolean) as string[],
   );
   const locals = localItems.filter((item) => {
-    if ((item.provider === "microsoft" || item.provider === "google") && item.externalId) {
+    if ((item.provider === "microsoft" || item.provider === "google" || item.provider === "apple") && item.externalId) {
       return !graphExternalIds.has(item.externalId);
     }
     if (item.externalId) return !graphExternalIds.has(item.externalId);
-    return !item.id.startsWith("graph-") && !item.id.startsWith("gcal-");
+    return !item.id.startsWith("graph-") && !item.id.startsWith("gcal-") && !item.id.startsWith("applecal-");
   });
   const dedupedGraph = graphItems.filter(
     (item, index, list) =>

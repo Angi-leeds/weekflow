@@ -70,6 +70,10 @@ import {
   sendGoogleMail,
   syncCalendarToGoogle,
 } from './lib/google'
+import {
+  fetchAllAppleCalendar,
+  fetchAppleStatus,
+} from './lib/apple'
 import { mergeGraphContacts } from './lib/mergeContacts'
 import {
   resolveConnectedAccountId,
@@ -96,11 +100,13 @@ import {
   resolveCalendarAccounts,
   resolveEmailAccounts,
   resolveEmailFolders,
+  useRealAppleData,
   useRealGoogleData,
   useRealMicrosoftData,
 } from './lib/connectedAccounts'
 import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
 import type { GoogleIntegrationStatus } from '../shared/googleApi'
+import type { AppleIntegrationStatus } from '../shared/appleApi'
 import type { GoogleCalendarDto } from '../shared/googleApi'
 import type { GraphCalendarDto, GraphTodoListDto } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
@@ -197,6 +203,8 @@ export default function App() {
   const [microsoftLoading, setMicrosoftLoading] = useState(true)
   const [googleStatus, setGoogleStatus] = useState<GoogleIntegrationStatus | null>(null)
   const [googleLoading, setGoogleLoading] = useState(true)
+  const [appleStatus, setAppleStatus] = useState<AppleIntegrationStatus | null>(null)
+  const [appleLoading, setAppleLoading] = useState(true)
   const [graphEmails, setGraphEmails] = useState<EmailMessage[]>([])
   const [graphEmailFolders, setGraphEmailFolders] = useState<EmailFolder[]>([])
   const [graphCalendarItems, setGraphCalendarItems] = useState<CalendarItem[]>([])
@@ -209,14 +217,15 @@ export default function App() {
 
   const usingRealMicrosoft = useRealMicrosoftData(microsoftStatus, microsoftLoading)
   const usingRealGoogle = useRealGoogleData(googleStatus, googleLoading)
-  const usingRealIntegrations = usingRealMicrosoft || usingRealGoogle
+  const usingRealApple = useRealAppleData(appleStatus, appleLoading)
+  const usingRealIntegrations = usingRealMicrosoft || usingRealGoogle || usingRealApple
   const emailAccounts = useMemo(
-    () => resolveEmailAccounts(microsoftStatus, googleStatus),
-    [microsoftStatus, googleStatus],
+    () => resolveEmailAccounts(microsoftStatus, googleStatus, appleStatus),
+    [microsoftStatus, googleStatus, appleStatus],
   )
   const calendarAccounts = useMemo(
-    () => resolveCalendarAccounts(microsoftStatus, googleStatus),
-    [microsoftStatus, googleStatus],
+    () => resolveCalendarAccounts(microsoftStatus, googleStatus, appleStatus),
+    [microsoftStatus, googleStatus, appleStatus],
   )
   const emailFolders = useMemo(
     () => resolveEmailFolders(emailAccounts, graphEmailFolders),
@@ -242,25 +251,27 @@ export default function App() {
           fetchAllMicrosoftTodoLists(accounts),
         ])
         setGraphEmailFolders((prev) => {
-          const googleOnly = prev.filter((folder) => folder.accountId.startsWith('google-'))
-          return [...mailBundle.folders, ...googleOnly]
+          const other = prev.filter(
+            (folder) => !folder.accountId.startsWith('ms-'),
+          )
+          return [...mailBundle.folders, ...other]
         })
         setGraphEmails((prev) => {
-          const googleOnly = prev.filter((email) => email.provider === 'google')
-          return mergeGraphMail([], [...mailBundle.mail, ...googleOnly])
+          const other = prev.filter((email) => email.provider !== 'microsoft')
+          return mergeGraphMail([], [...mailBundle.mail, ...other])
         })
         setGraphCalendarItems((prev) => {
-          const googleOnly = prev.filter((item) => item.provider === 'google')
-          return mergeGraphCalendar([], [...calendar, ...googleOnly])
+          const other = prev.filter((item) => item.provider !== 'microsoft')
+          return mergeGraphCalendar([], [...calendar, ...other])
         })
         setGraphNotes(outlookNotes)
         setGraphContacts(outlookContacts)
         setGraphCalendars(calendars)
         setGraphTodoLists(todoLists)
       } else {
-        setGraphEmailFolders((prev) => prev.filter((folder) => folder.accountId.startsWith('google-')))
-        setGraphEmails((prev) => prev.filter((email) => email.provider === 'google'))
-        setGraphCalendarItems((prev) => prev.filter((item) => item.provider === 'google'))
+        setGraphEmailFolders((prev) => prev.filter((folder) => !folder.accountId.startsWith('ms-')))
+        setGraphEmails((prev) => prev.filter((email) => email.provider !== 'microsoft'))
+        setGraphCalendarItems((prev) => prev.filter((item) => item.provider !== 'microsoft'))
         setGraphNotes([])
         setGraphContacts([])
         setGraphCalendars([])
@@ -285,16 +296,16 @@ export default function App() {
           fetchAllGoogleCalendarsList(status.accounts),
         ])
         setGraphEmailFolders((prev) => {
-          const microsoftOnly = prev.filter((folder) => !folder.accountId.startsWith('google-'))
-          return [...microsoftOnly, ...mailBundle.folders]
+          const other = prev.filter((folder) => !folder.accountId.startsWith('google-'))
+          return [...other, ...mailBundle.folders]
         })
         setGraphEmails((prev) => {
-          const microsoftOnly = prev.filter((email) => email.provider !== 'google')
-          return mergeGraphMail([], [...microsoftOnly, ...mailBundle.mail])
+          const other = prev.filter((email) => email.provider !== 'google')
+          return mergeGraphMail([], [...other, ...mailBundle.mail])
         })
         setGraphCalendarItems((prev) => {
-          const microsoftOnly = prev.filter((item) => item.provider !== 'google')
-          return mergeGraphCalendar([], [...microsoftOnly, ...calendar])
+          const other = prev.filter((item) => item.provider !== 'google')
+          return mergeGraphCalendar([], [...other, ...calendar])
         })
         setGraphGoogleCalendars(googleCalendars)
       } else {
@@ -307,6 +318,27 @@ export default function App() {
       console.error(error)
     } finally {
       setGoogleLoading(false)
+    }
+  }, [])
+
+  const refreshApple = useCallback(async () => {
+    setAppleLoading(true)
+    try {
+      const status = await fetchAppleStatus()
+      setAppleStatus(status)
+      if (status.accounts.length > 0) {
+        const calendar = await fetchAllAppleCalendar(status.accounts)
+        setGraphCalendarItems((prev) => {
+          const other = prev.filter((item) => item.provider !== 'apple')
+          return mergeGraphCalendar([], [...other, ...calendar])
+        })
+      } else {
+        setGraphCalendarItems((prev) => prev.filter((item) => item.provider !== 'apple'))
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setAppleLoading(false)
     }
   }, [])
 
@@ -369,8 +401,11 @@ export default function App() {
     for (const account of googleStatus?.accounts ?? []) {
       map[account.id] = account.email
     }
+    for (const account of appleStatus?.accounts ?? []) {
+      map[account.id] = account.email
+    }
     return map
-  }, [microsoftStatus, googleStatus])
+  }, [microsoftStatus, googleStatus, appleStatus])
 
   const activeMember = useMemo(() => getActiveMember(permissionsConfig), [permissionsConfig])
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
@@ -454,7 +489,8 @@ export default function App() {
   useEffect(() => {
     void refreshMicrosoft()
     void refreshGoogle()
-  }, [refreshMicrosoft, refreshGoogle])
+    void refreshApple()
+  }, [refreshMicrosoft, refreshGoogle, refreshApple])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1543,6 +1579,7 @@ export default function App() {
             onSaveNote={handleSaveNote}
             onDeleteNote={handleDeleteNote}
             onOpenSettings={() => setSection('settings')}
+            onShowToast={setToastMessage}
           />
         )}
 
@@ -1582,10 +1619,14 @@ export default function App() {
             googleStatus={googleStatus}
             googleLoading={googleLoading}
             onGoogleRefresh={refreshGoogle}
+            appleStatus={appleStatus}
+            appleLoading={appleLoading}
+            onAppleRefresh={refreshApple}
             emailAccounts={emailAccounts}
             calendarAccounts={calendarAccounts}
             usingRealMicrosoft={usingRealMicrosoft}
             usingRealGoogle={usingRealGoogle}
+            usingRealApple={usingRealApple}
             onShowCalendarAccount={handleShowCalendarAccount}
             onShowToast={setToastMessage}
             onOpenBoard={() => setSection('board')}

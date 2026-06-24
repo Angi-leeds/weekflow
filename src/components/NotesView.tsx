@@ -17,7 +17,12 @@ import {
 } from "../lib/notes";
 import { getShareForEntity } from "../lib/itemShares";
 import { useIsWide } from "../hooks/useMediaQuery";
-import { NoteFormModal } from "./NoteFormModal";
+import {
+  copyTextToClipboard,
+  icloudNotesUrl,
+  noteTitleForAppleNotes,
+  openExternalUrl,
+} from "../lib/appleLinks";
 import { ShareToBoardFields, shareStateFromRecord } from "./ShareToBoardFields";
 
 type NotesFilter = "all" | "recent";
@@ -39,6 +44,7 @@ interface NotesViewProps {
   }) => void | Promise<void>;
   onDeleteNote: (note: Note) => void | Promise<void>;
   onOpenSettings?: () => void;
+  onShowToast?: (message: string) => void;
 }
 
 export function NotesView({
@@ -52,6 +58,7 @@ export function NotesView({
   onSaveNote,
   onDeleteNote,
   onOpenSettings,
+  onShowToast,
 }: NotesViewProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<NotesFilter>("all");
@@ -245,6 +252,7 @@ export function NotesView({
             onBack={() => setSelectedId(null)}
             onEdit={() => openEdit(selected)}
             onDelete={() => onDeleteNote(selected)}
+            onShowToast={onShowToast}
           />
         )}
       </div>
@@ -357,6 +365,7 @@ function NoteDetail({
   onBack,
   onEdit,
   onDelete,
+  onShowToast,
 }: {
   note: Note;
   fullScreen: boolean;
@@ -365,7 +374,13 @@ function NoteDetail({
   onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onShowToast?: (message: string) => void;
 }) {
+  const handleCopyForAppleNotes = async () => {
+    const copied = await copyTextToClipboard(noteTitleForAppleNotes(note.title, note.body));
+    onShowToast?.(copied ? "Copied — paste into Apple Notes" : "Could not copy to clipboard");
+  };
+
   return (
     <div
       className={`flex min-h-0 flex-1 flex-col bg-wf-bg ${
@@ -435,9 +450,25 @@ function NoteDetail({
         <div className="mt-6 rounded-2xl border border-wf-border bg-wf-surface px-4 py-3">
           <p className="text-caption font-semibold text-wf-text">Apple Notes</p>
           <p className="mt-1 text-caption text-wf-text-tertiary">
-            Apple does not offer a public Notes API. iCloud Notes sync is planned for Phase 10 with
-            device-side or hyperlink fallbacks where possible.
+            Apple does not offer a public Notes API. Open iCloud Notes in the browser or copy this
+            note to paste on your device.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => openExternalUrl(icloudNotesUrl())}
+              className="rounded-xl bg-[#555555] px-3 py-2 text-caption font-semibold text-white"
+            >
+              Open iCloud Notes
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCopyForAppleNotes()}
+              className="rounded-xl border border-wf-border px-3 py-2 text-caption font-semibold text-wf-text-secondary"
+            >
+              Copy for Apple Notes
+            </button>
+          </div>
         </div>
       </div>
 

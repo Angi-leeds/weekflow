@@ -29,11 +29,13 @@ import type {
   MicrosoftIntegrationStatus,
 } from '../../shared/microsoftGraph'
 import type { GoogleCalendarDto, GoogleIntegrationStatus } from '../../shared/googleApi'
+import type { AppleIntegrationStatus } from '../../shared/appleApi'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SyncHelpView } from './SyncHelpView'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
 import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
 import { GoogleConnectPanel } from './GoogleConnectPanel'
+import { AppleConnectPanel } from './AppleConnectPanel'
 import { CategoriesManager } from './CategoriesManager'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
@@ -69,10 +71,14 @@ interface SettingsViewProps {
   googleStatus: GoogleIntegrationStatus | null
   googleLoading: boolean
   onGoogleRefresh: () => void
+  appleStatus: AppleIntegrationStatus | null
+  appleLoading: boolean
+  onAppleRefresh: () => void
   emailAccounts: EmailAccount[]
   calendarAccounts: EmailAccount[]
   usingRealMicrosoft: boolean
   usingRealGoogle: boolean
+  usingRealApple: boolean
   onShowCalendarAccount: (accountId: string) => void
   onShowToast?: (message: string) => void
   onOpenBoard?: () => void
@@ -111,10 +117,14 @@ export function SettingsView({
   googleStatus,
   googleLoading,
   onGoogleRefresh,
+  appleStatus,
+  appleLoading,
+  onAppleRefresh,
   emailAccounts,
   calendarAccounts,
   usingRealMicrosoft,
   usingRealGoogle,
+  usingRealApple,
   onShowCalendarAccount,
   onShowToast,
   onOpenBoard,
@@ -130,6 +140,7 @@ export function SettingsView({
   const [showPermissions, setShowPermissions] = useState(false)
   const outlookPanelRef = useRef<HTMLDivElement>(null)
   const googlePanelRef = useRef<HTMLDivElement>(null)
+  const applePanelRef = useRef<HTMLDivElement>(null)
   const defaultMicrosoftAccountId =
     integrationAccountDefaults.defaultMicrosoftAccountId ??
     microsoftStatus?.accounts[0]?.id ??
@@ -180,8 +191,8 @@ export function SettingsView({
     googlePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const showPhase10Toast = (name: string) => {
-    onShowToast?.(`${name} is planned for Phase 10`)
+  const scrollToApple = () => {
+    applePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   if (showSyncHelp) {
@@ -406,6 +417,15 @@ export function SettingsView({
           />
         </div>
 
+        <div ref={applePanelRef}>
+          <AppleConnectPanel
+            status={appleStatus}
+            loading={appleLoading}
+            onRefresh={onAppleRefresh}
+            onShowToast={onShowToast}
+          />
+        </div>
+
         {usingRealMicrosoft && (microsoftStatus?.accounts.length ?? 0) > 0 && (
           <>
             <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
@@ -571,12 +591,12 @@ export function SettingsView({
         <SettingsIntegrationRow
           label="Apple Mail"
           description="iCloud mail with hyperlink fallbacks where APIs are limited."
-          phaseLabel="Phase 10"
+          phaseLabel={usingRealApple ? 'Linked' : 'Link in Settings'}
           notifyChecked={integrationPreferences.appleInterest}
           onNotifyChange={(appleInterest) =>
             onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
           }
-          onConnect={() => showPhase10Toast('Apple Mail')}
+          onConnect={scrollToApple}
         />
       </SettingsGroup>
 
@@ -602,23 +622,23 @@ export function SettingsView({
         />
         <SettingsIntegrationRow
           label="Apple Calendar"
-          description="Subscribe to iCloud calendars where supported."
-          phaseLabel="Phase 10"
+          description="Subscribe to iCloud calendars via public calendar link."
+          phaseLabel={usingRealApple ? 'Linked' : 'Link in Settings'}
           notifyChecked={integrationPreferences.appleInterest}
           onNotifyChange={(appleInterest) =>
             onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
           }
-          onConnect={() => showPhase10Toast('Apple Calendar')}
+          onConnect={scrollToApple}
         />
         <SettingsIntegrationRow
           label="Apple Notes"
-          description="No public iCloud Notes API — device export or deep links in Phase 10."
-          phaseLabel="Phase 10"
+          description="No public iCloud Notes API — open iCloud Notes or copy note text."
+          phaseLabel={usingRealApple ? 'Linked' : 'Link in Settings'}
           notifyChecked={integrationPreferences.appleInterest}
           onNotifyChange={(appleInterest) =>
             onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
           }
-          onConnect={() => showPhase10Toast('Apple Notes')}
+          onConnect={scrollToApple}
         />
         <SettingsToggleRow
           label="Push notifications"

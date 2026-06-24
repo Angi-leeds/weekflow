@@ -3,12 +3,13 @@ import fs from "fs/promises";
 import path from "path";
 import { and, eq } from "drizzle-orm";
 import type { GoogleConnectedAccountPublic } from "../../shared/googleApi";
+import type { AppleConnectedAccountPublic } from "../../shared/appleApi";
 import type { ConnectedAccountPublic } from "../../shared/microsoftGraph";
 import { DEMO_HOUSEHOLD_ID } from "../../shared/links";
 import { getDb } from "../db/index";
 import { connectedAccounts, providerItemMappings } from "../db/schema";
 
-export type IntegrationProvider = "microsoft" | "google";
+export type IntegrationProvider = "microsoft" | "google" | "apple";
 
 const LOCAL_DIR = path.resolve(
   process.env.LOCAL_CONNECTED_ACCOUNTS_DIR ||
@@ -118,7 +119,7 @@ export function isGoogleOAuthConfigured(): boolean {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
-async function listConnectedAccountRecords(
+export async function listConnectedAccountRecords(
   provider: IntegrationProvider,
 ): Promise<ConnectedAccountRecord[]> {
   const db = getDb();
