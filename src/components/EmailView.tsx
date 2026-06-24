@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
+import { normalizeEmailBody } from '../../shared/emailBody'
 import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { CalendarItem, EmailMessage } from '../types'
 import { useIsWide } from '../hooks/useMediaQuery'
@@ -516,7 +517,7 @@ function MessagePreview({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <p className="whitespace-pre-wrap text-body leading-relaxed text-wf-text">
-          {email.body}
+          {normalizeEmailBody(email.body) || email.preview || '(No message body)'}
         </p>
       </div>
 

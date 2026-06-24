@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import type { GraphCalendarEventResult } from "../../shared/microsoftGraph";
+import { normalizeEmailBody } from "../../shared/emailBody";
 import { MICROSOFT_GRAPH_BASE } from "../../shared/microsoftGraph";
 import {
   type ConnectedAccountRecord,
@@ -245,7 +246,10 @@ export async function fetchMicrosoftMessages(
     fromEmail: message.from?.emailAddress?.address ?? "",
     subject: message.subject ?? "(No subject)",
     preview: message.bodyPreview ?? "",
-    body: message.body?.content ?? message.bodyPreview ?? "",
+    body: normalizeEmailBody(
+      message.body?.content ?? message.bodyPreview ?? "",
+      message.body?.contentType,
+    ),
     date: message.receivedDateTime ?? new Date().toISOString(),
     unread: !message.isRead,
     starred: false,
@@ -259,24 +263,8 @@ export async function fetchMicrosoftMessages(
 
 const OUTLOOK_NOTE_COLOUR = "#FFF4B8";
 
-function stripHtml(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
-}
-
 function noteBodyText(note: GraphNote): string {
-  const raw = note.body?.content ?? note.bodyPreview ?? "";
-  if (note.body?.contentType?.toLowerCase() === "html") {
-    return stripHtml(raw);
-  }
-  return raw.trim();
+  return normalizeEmailBody(note.body?.content ?? note.bodyPreview ?? "", note.body?.contentType);
 }
 
 function mapGraphNoteToDto(note: GraphNote, account: ConnectedAccountRecord): GraphNoteDto {
