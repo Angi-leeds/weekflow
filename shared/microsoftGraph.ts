@@ -7,6 +7,7 @@ export const MICROSOFT_GRAPH_SCOPES = [
   "Tasks.ReadWrite",
   "Contacts.Read",
   "Files.Read.All",
+  "Files.ReadWrite",
 ] as const;
 
 export type MicrosoftGraphScope = (typeof MICROSOFT_GRAPH_SCOPES)[number];
@@ -71,4 +72,13 @@ export interface GraphTodoListDto {
   accountId: string;
   connectedAccountId: string;
   isDefault?: boolean;
+}
+
+export interface GraphDriveItemDto {
+  id: string;
+  name: string;
+  webUrl?: string;
+  accountId: string;
+  connectedAccountId: string;
+  parentId?: string;
 }

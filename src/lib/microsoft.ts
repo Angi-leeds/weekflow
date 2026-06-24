@@ -1,5 +1,6 @@
 import type {
   GraphCalendarDto,
+  GraphDriveItemDto,
   GraphMailFolderDto,
   GraphTodoListDto,
   MicrosoftIntegrationStatus,
@@ -72,6 +73,26 @@ export async function deleteMicrosoftMail(accountId: string, externalId: string)
     `/api/microsoft/mail/${encodeURIComponent(externalId)}?accountId=${encodeURIComponent(accountId)}`,
     { method: "DELETE" },
   );
+}
+
+export async function fetchOneDriveFolders(
+  accountId: string,
+  parentId?: string,
+): Promise<GraphDriveItemDto[]> {
+  const params = new URLSearchParams({ accountId });
+  if (parentId) params.set("parentId", parentId);
+  return apiFetch(`/api/microsoft/drive/folders?${params.toString()}`);
+}
+
+export async function copyEmailToOneDriveFolder(
+  accountId: string,
+  folderId: string,
+  input: { subject: string; from: string; fromEmail: string; date: string; body: string },
+): Promise<{ name: string; webUrl?: string }> {
+  return apiFetch("/api/microsoft/drive/copy-email", {
+    method: "POST",
+    body: JSON.stringify({ accountId, folderId, ...input }),
+  });
 }
 
 export async function fetchMicrosoftMailFolders(accountId: string): Promise<EmailFolder[]> {

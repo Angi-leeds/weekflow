@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CalendarPlus, ClipboardList, Copy, FolderOpen, Share2, X } from 'lucide-react'
 import type { EmailActionFlowOptions } from '../../shared/emailActionFlow'
 import { DEFAULT_EMAIL_ACTION_FLOW } from '../../shared/emailActionFlow'
 import { BOARD_DISPLAY_LABELS } from '../../shared/itemShares'
 import type { EmailMessage } from '../types'
 import { MOCK_CLOUD_FOLDERS } from '../mockData'
+import { OneDriveFolderPicker } from './OneDriveFolderPicker'
 
 interface EmailActionFlowModalProps {
   open: boolean
   email: EmailMessage | null
   defaultDueDate?: string
+  usingRealMicrosoft?: boolean
+  connectedAccountId?: string
   onClose: () => void
   onSubmit: (email: EmailMessage, options: EmailActionFlowOptions) => Promise<void>
 }
@@ -18,27 +21,41 @@ export function EmailActionFlowModal({
   open,
   email,
   defaultDueDate,
+  usingRealMicrosoft = false,
+  connectedAccountId,
   onClose,
   onSubmit,
 }: EmailActionFlowModalProps) {
   const [options, setOptions] = useState<EmailActionFlowOptions>(DEFAULT_EMAIL_ACTION_FLOW)
   const [submitting, setSubmitting] = useState(false)
 
+  const resolvedAccountId = useMemo(() => {
+    if (connectedAccountId) return connectedAccountId
+    if (email?.connectedAccountId) return email.connectedAccountId
+    if (email?.accountId?.startsWith('ms-')) return email.accountId.slice(3)
+    return undefined
+  }, [connectedAccountId, email])
+
   useEffect(() => {
     if (open && email) {
+      const mockFolder = MOCK_CLOUD_FOLDERS[0]
       setOptions({
         ...DEFAULT_EMAIL_ACTION_FLOW,
         dueDate: defaultDueDate ?? DEFAULT_EMAIL_ACTION_FLOW.dueDate,
-        folderId: MOCK_CLOUD_FOLDERS[0]?.id,
+        folderId: usingRealMicrosoft ? undefined : mockFolder?.id,
+        folderUrl: usingRealMicrosoft ? undefined : mockFolder?.url,
+        folderLabel: usingRealMicrosoft ? undefined : mockFolder?.label,
+        folderProvider: usingRealMicrosoft ? undefined : mockFolder?.provider,
       })
     }
-  }, [open, email, defaultDueDate])
+  }, [open, email, defaultDueDate, usingRealMicrosoft])
 
   if (!open || !email) return null
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!options.dueDate) return
+    if (options.tagFolder && !options.folderId) return
     setSubmitting(true)
     try {
       await onSubmit(email, options)
@@ -47,6 +64,11 @@ export function EmailActionFlowModal({
       setSubmitting(false)
     }
   }
+
+  const folderTagLabel = usingRealMicrosoft ? 'Tag OneDrive folder' : 'Tag OneDrive folder (mock)'
+  const autoCopyLabel = usingRealMicrosoft
+    ? 'Auto-copy email to folder'
+    : 'Auto-copy email to folder (mock)'
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center">
@@ -134,21 +156,54 @@ export function EmailActionFlowModal({
 
           <FlowToggle
             icon={FolderOpen}
-            label="Tag OneDrive folder (mock)"
+            label={folderTagLabel}
             checked={options.tagFolder}
             onChange={(tagFolder) => setOptions((prev) => ({ ...prev, tagFolder }))}
           />
 
-          {options.tagFolder && (
+          {options.tagFolder && usingRealMicrosoft && resolvedAccountId && (
+            <div className="pl-8">
+              <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
+                Folder
+              </span>
+              <OneDriveFolderPicker
+                accountId={resolvedAccountId}
+                selectedFolderId={options.folderId}
+                onSelect={(folder) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    folderId: folder.id,
+                    folderUrl: folder.url,
+                    folderLabel: folder.label,
+                    folderProvider: 'OneDrive',
+                  }))
+                }
+              />
+              {options.folderLabel && (
+                <p className="mt-2 text-caption text-wf-text-tertiary">
+                  Selected: {options.folderLabel}
+                </p>
+              )}
+            </div>
+          )}
+
+          {options.tagFolder && !usingRealMicrosoft && (
             <label className="block pl-8">
               <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
                 Folder path
               </span>
               <select
                 value={options.folderId ?? ''}
-                onChange={(event) =>
-                  setOptions((prev) => ({ ...prev, folderId: event.target.value }))
-                }
+                onChange={(event) => {
+                  const folder = MOCK_CLOUD_FOLDERS.find((entry) => entry.id === event.target.value)
+                  setOptions((prev) => ({
+                    ...prev,
+                    folderId: event.target.value,
+                    folderUrl: folder?.url,
+                    folderLabel: folder?.label,
+                    folderProvider: folder?.provider,
+                  }))
+                }}
                 className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body outline-none focus:border-wf-accent"
               >
                 {MOCK_CLOUD_FOLDERS.map((folder) => (
@@ -160,9 +215,15 @@ export function EmailActionFlowModal({
             </label>
           )}
 
+          {options.tagFolder && usingRealMicrosoft && !resolvedAccountId && (
+            <p className="pl-8 text-caption text-wf-red">
+              Connect Outlook in Settings to pick a OneDrive folder.
+            </p>
+          )}
+
           <FlowToggle
             icon={Copy}
-            label="Auto-copy email to folder"
+            label={autoCopyLabel}
             checked={options.autoCopy}
             onChange={(autoCopy) => setOptions((prev) => ({ ...prev, autoCopy }))}
           />
@@ -174,34 +235,38 @@ export function EmailActionFlowModal({
               checked={options.shareToBoard}
               onChange={(shareToBoard) => setOptions((prev) => ({ ...prev, shareToBoard }))}
             />
-          {options.shareToBoard && (
-            <label className="mt-3 block pl-8">
-              <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
-                Board display
-              </span>
-              <select
-                value={options.boardDisplay}
-                onChange={(event) =>
-                  setOptions((prev) => ({
-                    ...prev,
-                    boardDisplay: event.target.value as EmailActionFlowOptions['boardDisplay'],
-                  }))
-                }
-                className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body outline-none focus:border-wf-accent"
-              >
-                {Object.entries(BOARD_DISPLAY_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+            {options.shareToBoard && (
+              <label className="mt-3 block pl-8">
+                <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
+                  Board display
+                </span>
+                <select
+                  value={options.boardDisplay}
+                  onChange={(event) =>
+                    setOptions((prev) => ({
+                      ...prev,
+                      boardDisplay: event.target.value as EmailActionFlowOptions['boardDisplay'],
+                    }))
+                  }
+                  className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+                >
+                  {Object.entries(BOARD_DISPLAY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={submitting || !options.dueDate}
+            disabled={
+              submitting ||
+              !options.dueDate ||
+              (options.tagFolder && !options.folderId)
+            }
             className="w-full rounded-xl bg-wf-accent py-3.5 text-body font-semibold text-white disabled:opacity-50"
           >
             {submitting ? 'Creating…' : 'Create linked items'}

@@ -9,6 +9,9 @@ export interface EmailActionFlowOptions {
   dueDate: string;
   taskLeadDays: number;
   folderId?: string;
+  folderUrl?: string;
+  folderLabel?: string;
+  folderProvider?: string;
   boardDisplay: BoardDisplay;
 }
 

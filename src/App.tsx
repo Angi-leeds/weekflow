@@ -53,6 +53,7 @@ import {
   replyMicrosoftMail,
   sendMicrosoftMail,
   deleteMicrosoftMail,
+  copyEmailToOneDriveFolder,
   syncCalendarToMicrosoft,
   updateMicrosoftNote,
 } from './lib/microsoft'
@@ -539,7 +540,7 @@ export default function App() {
         if (url) {
           window.open(url, '_blank', 'noopener,noreferrer')
         } else {
-          setToastMessage('Folder link (mock) — connect OneDrive in a later phase.')
+          setToastMessage('Folder link unavailable.')
         }
         return
       }
@@ -560,6 +561,19 @@ export default function App() {
       handleNavigateLink(item.itemType as EntityType, item.itemId)
     },
     [handleNavigateLink],
+  )
+
+  const resolveEmailConnectedAccountId = useCallback(
+    (email: EmailMessage): string | undefined => {
+      if (email.connectedAccountId) return email.connectedAccountId
+      if (email.accountId?.startsWith('ms-')) return email.accountId.slice(3)
+      return resolveConnectedAccountId(
+        microsoftStatus?.accounts ?? [],
+        integrationAccountDefaults,
+        email.accountId,
+      )
+    },
+    [integrationAccountDefaults, microsoftStatus],
   )
 
   const handleCreateTaskFromEmail = useCallback(
@@ -598,7 +612,16 @@ export default function App() {
       const eventCategory =
         categories.find((category) => category.id === 'appointment') ?? categories[0]
       const taskCategory = categories.find((category) => category.id === 'task') ?? categories[0]
-      const folder = options.folderId ? getMockCloudFolder(options.folderId) : undefined
+      const mockFolder = options.folderId ? getMockCloudFolder(options.folderId) : undefined
+      const folder =
+        options.folderId && options.folderUrl
+          ? {
+              id: options.folderId,
+              url: options.folderUrl,
+              label: options.folderLabel ?? mockFolder?.label ?? 'OneDrive folder',
+              provider: options.folderProvider ?? mockFolder?.provider ?? 'OneDrive',
+            }
+          : mockFolder
 
       let calendarItem: CalendarItem | null = null
       let taskItem: CalendarItem | null = null
@@ -689,11 +712,30 @@ export default function App() {
       }
 
       if (options.autoCopy) {
-        setToastMessage(
-          folder
-            ? `Email copied to ${folder.label} (mock)`
-            : 'Email copied to folder (mock)',
-        )
+        if (usingRealMicrosoft && folder && options.folderId) {
+          const connectedAccountId = resolveEmailConnectedAccountId(email)
+          if (connectedAccountId) {
+            try {
+              const copied = await copyEmailToOneDriveFolder(connectedAccountId, options.folderId, {
+                subject: email.subject,
+                from: email.from,
+                fromEmail: email.fromEmail,
+                date: email.date,
+                body: email.body,
+              })
+              setToastMessage(`Email copied to ${folder.label} (${copied.name})`)
+            } catch (error) {
+              console.error(error)
+              setToastMessage(
+                error instanceof Error ? error.message : 'Saved links; OneDrive copy failed',
+              )
+            }
+          }
+        } else {
+          setToastMessage(
+            folder ? `Email copied to ${folder.label} (mock)` : 'Email copied to folder (mock)',
+          )
+        }
       }
 
       if (calendarItem) {
@@ -706,7 +748,7 @@ export default function App() {
         setModalOpen(true)
       }
     },
-    [categories, handleCreateLink, handleShareUpdate],
+    [categories, handleCreateLink, handleShareUpdate, usingRealMicrosoft, resolveEmailConnectedAccountId],
   )
 
   const handleLinkExistingSelect = useCallback(
@@ -938,19 +980,6 @@ export default function App() {
     setEmailSearchQuery(null)
     setSection('email')
   }, [])
-
-  const resolveEmailConnectedAccountId = useCallback(
-    (email: EmailMessage): string | undefined => {
-      if (email.connectedAccountId) return email.connectedAccountId
-      if (email.accountId?.startsWith('ms-')) return email.accountId.slice(3)
-      return resolveConnectedAccountId(
-        microsoftStatus?.accounts ?? [],
-        integrationAccountDefaults,
-        email.accountId,
-      )
-    },
-    [integrationAccountDefaults, microsoftStatus],
-  )
 
   const handleEmailComposeSend = useCallback(
     async (payload: {
@@ -1443,6 +1472,7 @@ export default function App() {
         open={emailActionFlowEmail !== null}
         email={emailActionFlowEmail}
         defaultDueDate="2026-06-30"
+        usingRealMicrosoft={usingRealMicrosoft}
         onClose={() => setEmailActionFlowEmail(null)}
         onSubmit={handleEmailActionFlow}
       />

@@ -554,7 +554,7 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 **Tasks:**
 1. Mail **send** + reply from MyAxis — **d57** ✅ compose, reply, reply-all, delete via Graph
-2. OneDrive folder picker + auto-copy in email action flow — **d48–d56**
+2. OneDrive folder picker + auto-copy in email action flow — **d48–d56** ✅ browse + upload via Graph
 3. Extended properties / open extensions for link graph on Exchange items — **d46**
 4. Calendar attachment sync polish (photos → Exchange)
 5. Outlook **category** sync — **deferred (d3)** unless owner prioritises

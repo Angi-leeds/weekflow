@@ -21,6 +21,8 @@ import {
   replyMicrosoftMail,
   sendMicrosoftMail,
   deleteMicrosoftMail,
+  fetchOneDriveFolders,
+  copyEmailToOneDriveFolder,
   syncCalendarItemToMicrosoft,
   updateMicrosoftNote,
 } from "../services/microsoft-graph-service";
@@ -183,6 +185,55 @@ export function registerMicrosoftRoutes(app: Express): void {
     } catch (error) {
       console.error("DELETE /api/microsoft/mail/:externalId failed:", error);
       const message = error instanceof Error ? error.message : "Failed to delete mail";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/drive/folders", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const parentId = typeof req.query.parentId === "string" ? req.query.parentId : undefined;
+
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const folders = await fetchOneDriveFolders(accountId, parentId);
+      res.json(folders);
+    } catch (error) {
+      console.error("GET /api/microsoft/drive/folders failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch OneDrive folders";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/microsoft/drive/copy-email", async (req, res) => {
+    const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
+    const folderId = typeof req.body?.folderId === "string" ? req.body.folderId : null;
+    const subject = typeof req.body?.subject === "string" ? req.body.subject : null;
+    const from = typeof req.body?.from === "string" ? req.body.from : "";
+    const fromEmail = typeof req.body?.fromEmail === "string" ? req.body.fromEmail : "";
+    const date = typeof req.body?.date === "string" ? req.body.date : "";
+    const body = typeof req.body?.body === "string" ? req.body.body : "";
+
+    if (!accountId || !folderId || !subject) {
+      res.status(400).json({ message: "Invalid copy-email payload" });
+      return;
+    }
+
+    try {
+      const result = await copyEmailToOneDriveFolder(accountId, folderId, {
+        subject,
+        from,
+        fromEmail,
+        date,
+        body,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("POST /api/microsoft/drive/copy-email failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to copy email to OneDrive";
       res.status(500).json({ message });
     }
   });

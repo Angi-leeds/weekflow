@@ -3,6 +3,7 @@ import path from "path";
 import type {
   GraphCalendarDto,
   GraphCalendarEventResult,
+  GraphDriveItemDto,
   GraphMailFolderDto,
   GraphTodoListDto,
 } from "../../shared/microsoftGraph";
@@ -481,6 +482,81 @@ export async function deleteMicrosoftMail(accountId: string, messageId: string):
   await graphFetch(accountId, `/me/messages/${encodeURIComponent(messageId)}`, {
     method: "DELETE",
   });
+}
+
+interface GraphDriveItem {
+  id: string;
+  name: string;
+  webUrl?: string;
+  folder?: Record<string, unknown>;
+}
+
+export async function fetchOneDriveFolders(
+  accountId: string,
+  parentId?: string,
+): Promise<GraphDriveItemDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const accountKey = accountKeyFromRecord(account);
+  const path = parentId
+    ? `/me/drive/items/${encodeURIComponent(parentId)}/children?$select=id,name,webUrl,folder`
+    : `/me/drive/root/children?$select=id,name,webUrl,folder`;
+
+  const response = await graphFetch(accountId, path);
+  const payload = (await response.json()) as { value?: GraphDriveItem[] };
+
+  return (payload.value ?? [])
+    .filter((item) => Boolean(item.folder))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      webUrl: item.webUrl,
+      accountId: accountKey,
+      connectedAccountId: account.id,
+      parentId,
+    }));
+}
+
+function safeDriveFileName(subject: string): string {
+  const cleaned = subject.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, " ").trim();
+  return (cleaned.slice(0, 120) || "email") + ".txt";
+}
+
+export async function copyEmailToOneDriveFolder(
+  accountId: string,
+  folderId: string,
+  input: { subject: string; from: string; fromEmail: string; date: string; body: string },
+): Promise<{ name: string; webUrl?: string }> {
+  const fileName = safeDriveFileName(input.subject);
+  const content = [
+    `From: ${input.from} <${input.fromEmail}>`,
+    `Date: ${input.date}`,
+    `Subject: ${input.subject}`,
+    "",
+    input.body,
+  ].join("\n");
+
+  const token = await getValidAccessToken(accountId);
+  const response = await fetch(
+    `${MICROSOFT_GRAPH_BASE}/me/drive/items/${encodeURIComponent(folderId)}:/${encodeURIComponent(fileName)}:/content`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "text/plain",
+      },
+      body: content,
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Graph upload failed (${response.status}): ${detail}`);
+  }
+
+  const item = (await response.json()) as { name: string; webUrl?: string };
+  return { name: item.name, webUrl: item.webUrl };
 }
 
 const OUTLOOK_NOTE_COLOUR = "#FFF4B8";
