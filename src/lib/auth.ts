@@ -7,13 +7,19 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
 
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
+    const body = isJson ? await response.json().catch(() => ({})) : {};
     throw new Error(body.message ?? `Request failed (${response.status})`);
   }
 
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  if (!isJson) {
+    throw new Error(`Expected JSON response from ${path} but got ${response.headers.get("content-type") ?? "unknown"}`);
   }
 
   return response.json() as Promise<T>;
