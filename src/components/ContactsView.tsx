@@ -28,8 +28,8 @@ interface ContactsViewProps {
   emailAccounts: EmailAccount[];
   emailFolders: EmailFolder[];
   onSaveContact: (contact: Contact) => void;
-  onDeleteContact: (id: string) => void;
-  onToggleStar: (id: string) => void;
+  onDeleteContact: (contact: Contact) => void;
+  onToggleStar: (contact: Contact) => void;
   onOpenEmail: (email: EmailMessage) => void;
 }
 
@@ -212,7 +212,7 @@ export function ContactsView({
                 emailCount={countEmailsFromContact(contact, emails)}
                 accountLabel={contactAccountLabel(contact, emailAccounts)}
                 onSelect={() => setSelectedId(contact.id)}
-                onToggleStar={() => onToggleStar(contact.id)}
+                onToggleStar={() => onToggleStar(contact)}
               />
             ))
           )}
@@ -226,10 +226,10 @@ export function ContactsView({
             emailFolders={emailFolders}
             onBack={() => setSelectedId(null)}
             onEdit={() => selected && openEdit(selected)}
-            onDelete={() => selected && onDeleteContact(selected.id)}
+            onDelete={() => selected && onDeleteContact(selected)}
             onOpenEmail={onOpenEmail}
-            onSaveNotes={(notes) => onSaveContact({ ...selected, notes: notes || undefined })}
-            onToggleStar={() => selected && onToggleStar(selected.id)}
+            onSaveNotes={(notes) => selected && onSaveContact({ ...selected, notes: notes || undefined })}
+            onToggleStar={() => selected && onToggleStar(selected)}
             showBack={!isWide}
           />
         )}
@@ -408,7 +408,7 @@ function ContactDetail({
 
         <ContactNotesSection
           contact={contact}
-          editable={editable}
+          editable
           onSaveNotes={onSaveNotes}
         />
 
@@ -441,6 +441,20 @@ function ContactDetail({
             </button>
           </div>
         )}
+
+        {!editable && contact.source === "microsoft" && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Remove ${contact.name} from MyAxis? They will stay in Outlook.`)) onDelete();
+              }}
+              className="w-full rounded-xl border border-wf-red/30 py-2.5 text-body font-semibold text-wf-red"
+            >
+              Remove from MyAxis
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -456,7 +470,15 @@ function ContactFieldsCard({ contact }: { contact: Contact }) {
     contact.website;
   const hasOther = contact.address || contact.birthday;
 
-  if (!hasContactMethods && !hasOther) return null;
+  if (!hasContactMethods && !hasOther) {
+    return (
+      <div className="rounded-2xl bg-wf-surface p-4 text-body text-wf-text-secondary shadow-[var(--shadow-card)]">
+        {contact.source === "microsoft"
+          ? "No phone or email details returned from Outlook for this contact."
+          : "No contact details yet."}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 rounded-2xl bg-wf-surface p-4 shadow-[var(--shadow-card)]">

@@ -18,6 +18,7 @@ import {
   fetchMicrosoftMessages,
   fetchMicrosoftNotes,
   fetchMicrosoftTodoLists,
+  fetchMicrosoftTodoTasks,
   replyMicrosoftMail,
   sendMicrosoftMail,
   deleteMicrosoftMail,
@@ -364,6 +365,31 @@ export function registerMicrosoftRoutes(app: Express): void {
     } catch (error) {
       console.error("GET /api/microsoft/todo/lists failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch To Do lists";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/todo/tasks", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const tasks = await fetchMicrosoftTodoTasks(accountId);
+      res.json(tasks);
+    } catch (error) {
+      console.error("GET /api/microsoft/todo/tasks failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch To Do tasks";
+      if (
+        message.includes("(429)") ||
+        message.includes("ApplicationThrottled") ||
+        message.includes("MailboxConcurrency")
+      ) {
+        res.json([]);
+        return;
+      }
       res.status(500).json({ message });
     }
   });

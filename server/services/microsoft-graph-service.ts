@@ -94,6 +94,7 @@ export interface GraphCalendarItemDto {
   categoryId: string;
   colour: string;
   notes?: string;
+  completed?: boolean;
   accountId: string;
   externalId: string;
   provider: "microsoft";
@@ -121,10 +122,17 @@ export interface GraphContactDto {
   id: string;
   name: string;
   email?: string;
+  emailSecondary?: string;
   phone?: string;
   mobilePhone?: string;
+  homePhone?: string;
   company?: string;
   jobTitle?: string;
+  department?: string;
+  website?: string;
+  address?: string;
+  birthday?: string;
+  notes?: string;
   accountId: string;
   connectedAccountId: string;
   externalId: string;
@@ -973,6 +981,66 @@ export async function createMicrosoftTodoTask(
   return { externalId: task.id };
 }
 
+interface GraphTodoTask {
+  id: string;
+  title?: string;
+  status?: string;
+  body?: { content?: string };
+  dueDateTime?: { dateTime?: string; timeZone?: string };
+}
+
+export async function fetchMicrosoftTodoTasks(accountId: string): Promise<GraphCalendarItemDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const lists = await fetchMicrosoftTodoLists(accountId);
+  const merged: GraphCalendarItemDto[] = [];
+  const seen = new Set<string>();
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const list of lists) {
+    try {
+      const response = await graphFetch(
+        accountId,
+        `/me/todo/lists/${encodeGraphPathSegment(list.graphListId)}/tasks`,
+      );
+      const payload = (await response.json()) as { value?: GraphTodoTask[] };
+
+      for (const task of payload.value ?? []) {
+        const key = `${account.id}:${task.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const dueDate = task.dueDateTime?.dateTime?.slice(0, 10) ?? today;
+        merged.push({
+          id: `graph-todo-${task.id}`,
+          title: task.title?.trim() || "(No title)",
+          date: dueDate,
+          allDay: true,
+          categoryId: "task",
+          colour: "#4A5A9C",
+          notes: task.body?.content?.trim() || undefined,
+          accountId: list.accountId,
+          externalId: task.id,
+          provider: "microsoft",
+          connectedAccountId: account.id,
+          completed: task.status === "completed",
+        });
+      }
+    } catch (error) {
+      if (isGraphThrottleError(error)) {
+        console.warn(`Todo tasks throttle — skipping "${list.name}" for ${accountId}:`, error);
+        continue;
+      }
+      throw error;
+    }
+
+    await sleep(GRAPH_CALENDAR_GAP_MS);
+  }
+
+  return merged;
+}
+
 interface GraphContact {
   id: string;
   displayName?: string;
@@ -980,20 +1048,25 @@ interface GraphContact {
   surname?: string;
   companyName?: string;
   jobTitle?: string;
+  department?: string;
   emailAddresses?: Array<{ address?: string; name?: string }>;
   businessPhones?: string[];
+  homePhones?: string[];
   mobilePhone?: string;
+  businessHomePage?: string;
+  homeAddress?: { street?: string; city?: string; state?: string; postalCode?: string; countryOrRegion?: string };
+  birthday?: string;
+  personalNotes?: string;
 }
 
-export async function fetchMicrosoftContacts(accountId: string, top = 100): Promise<GraphContactDto[]> {
+export async function fetchMicrosoftContacts(accountId: string, top = 250): Promise<GraphContactDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
+  // Personal Microsoft accounts reject $select on some endpoints — fetch full contacts.
   const query = buildGraphQuery({
     $top: String(top),
     $orderby: "displayName",
-    $select:
-      "id,displayName,givenName,surname,companyName,jobTitle,emailAddresses,businessPhones,mobilePhone",
   });
 
   let response: Response;
@@ -1013,6 +1086,15 @@ export async function fetchMicrosoftContacts(accountId: string, top = 100): Prom
       [contact.givenName, contact.surname].filter(Boolean).join(" ").trim() ||
       contact.emailAddresses?.[0]?.name ||
       "Unknown contact";
+    const addressParts = contact.homeAddress
+      ? [
+          contact.homeAddress.street,
+          contact.homeAddress.city,
+          contact.homeAddress.state,
+          contact.homeAddress.postalCode,
+          contact.homeAddress.countryOrRegion,
+        ].filter(Boolean)
+      : [];
     return {
       id: `graph-contact-${contact.id}`,
       name,
@@ -1025,6 +1107,13 @@ export async function fetchMicrosoftContacts(accountId: string, top = 100): Prom
       connectedAccountId: account.id,
       externalId: contact.id,
       provider: "microsoft" as const,
+      emailSecondary: contact.emailAddresses?.[1]?.address,
+      homePhone: contact.homePhones?.[0],
+      department: contact.department,
+      website: contact.businessHomePage,
+      address: addressParts.length > 0 ? addressParts.join("\n") : undefined,
+      birthday: contact.birthday?.slice(0, 10),
+      notes: contact.personalNotes,
     };
   });
 }

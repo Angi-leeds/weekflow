@@ -155,18 +155,50 @@ export function groupContactEmailsByFolder(
   );
 }
 
-export function mergeGraphContacts(localContacts: Contact[], graphContacts: Contact[]): Contact[] {
-  const graphEmails = new Set(
-    graphContacts.map((contact) => contact.email?.toLowerCase()).filter(Boolean) as string[],
-  );
-  const locals = localContacts.filter((contact) => {
-    if (contact.source === "microsoft") return false;
-    if (contact.email && graphEmails.has(contact.email.toLowerCase())) return false;
-    return true;
-  });
-  return [...graphContacts, ...locals];
-}
-
 export function isEditableContact(contact: Contact): boolean {
   return contact.source !== "microsoft" && contact.source !== "household";
+}
+
+export interface ContactOverlay {
+  notes?: string;
+  starred?: boolean;
+  hidden?: boolean;
+}
+
+const OVERLAY_STORAGE_KEY = "weekflow-contact-overlays";
+
+export function loadContactOverlays(): Record<string, ContactOverlay> {
+  try {
+    const raw = localStorage.getItem(OVERLAY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ContactOverlay>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveContactOverlays(overlays: Record<string, ContactOverlay>): void {
+  localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(overlays));
+}
+
+export function applyContactOverlays(
+  contacts: Contact[],
+  overlays: Record<string, ContactOverlay>,
+): Contact[] {
+  return contacts
+    .map((contact) => {
+      if (!contact.externalId) return contact;
+      const overlay = overlays[contact.externalId];
+      if (!overlay) return contact;
+      return {
+        ...contact,
+        notes: overlay.notes ?? contact.notes,
+        starred: overlay.starred ?? contact.starred,
+      };
+    })
+    .filter((contact) => {
+      if (!contact.externalId) return true;
+      return !overlays[contact.externalId]?.hidden;
+    });
 }

@@ -8,7 +8,7 @@ import type { Attachment } from '../shared/attachments'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder } from './types'
 import { type ListDisplayOptions } from './types'
 import { memberCan } from '../shared/householdPermissions'
-import { initialEmails, initialItems, getMockCloudFolder, calendarAccountForCategory } from './mockData'
+import { initialEmails, getMockCloudFolder, calendarAccountForCategory } from './mockData'
 import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from './dateUtils'
 import type { EmailActionFlowOptions } from '../shared/emailActionFlow'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
@@ -43,6 +43,7 @@ import {
   fetchAllMicrosoftContacts,
   fetchAllMicrosoftMail,
   fetchAllMicrosoftTodoLists,
+  fetchAllMicrosoftTodoTasks,
   fetchMicrosoftMail,
   fetchMicrosoftNotes,
   fetchMicrosoftStatus,
@@ -84,7 +85,11 @@ import {
   INITIAL_CONTACTS,
   loadStoredContacts,
   saveStoredContacts,
+  loadContactOverlays,
+  saveContactOverlays,
+  applyContactOverlays,
 } from './lib/contacts'
+import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
   createLocalNote,
@@ -147,11 +152,14 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>(
     () => loadStoredCategories() ?? DEFAULT_CATEGORIES,
   )
-  const [items, setItems] = useState<CalendarItem[]>(initialItems)
+  const [items, setItems] = useState<CalendarItem[]>(() => loadStoredItems() ?? defaultItems())
   const [emails, setEmails] = useState(initialEmails)
   const [contacts, setContacts] = useState<Contact[]>(
     () => loadStoredContacts() ?? INITIAL_CONTACTS,
   )
+  const [contactOverlays, setContactOverlays] = useState<
+    Record<string, import('./lib/contacts').ContactOverlay>
+  >(() => loadContactOverlays())
   const [notes, setNotes] = useState<Note[]>(
     () => loadStoredNotes() ?? INITIAL_NOTES,
   )
@@ -252,6 +260,7 @@ export default function App() {
         const calendarsResult = await settle(fetchAllMicrosoftCalendarsList(accounts))
         const calendarResult = await settle(fetchAllMicrosoftCalendar(accounts))
         const todoListsResult = await settle(fetchAllMicrosoftTodoLists(accounts))
+        const todoTasksResult = await settle(fetchAllMicrosoftTodoTasks(accounts))
         const contactsResult = await settle(fetchAllMicrosoftContacts(accounts))
         const notesResult = await settle(
           Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
@@ -266,6 +275,7 @@ export default function App() {
         const outlookContacts = contactsResult.status === 'fulfilled' ? contactsResult.value : []
         const calendars = calendarsResult.status === 'fulfilled' ? calendarsResult.value : []
         const todoLists = todoListsResult.status === 'fulfilled' ? todoListsResult.value : []
+        const todoTasks = todoTasksResult.status === 'fulfilled' ? todoTasksResult.value : []
 
         for (const result of [
           mailResult,
@@ -274,6 +284,7 @@ export default function App() {
           contactsResult,
           calendarsResult,
           todoListsResult,
+          todoTasksResult,
         ]) {
           if (result.status === 'rejected') console.error(result.reason)
         }
@@ -289,7 +300,7 @@ export default function App() {
         })
         setGraphCalendarItems((prev) => {
           const other = prev.filter((item) => item.provider !== 'microsoft')
-          return mergeGraphCalendar([], [...calendar, ...other])
+          return mergeGraphCalendar([], [...calendar, ...todoTasks, ...other])
         })
         setGraphNotes(outlookNotes)
         setGraphContacts(outlookContacts)
@@ -416,8 +427,8 @@ export default function App() {
   )
 
   const displayContacts = useMemo(
-    () => mergeGraphContacts(contacts, graphContacts),
-    [contacts, graphContacts],
+    () => applyContactOverlays(mergeGraphContacts(contacts, graphContacts), contactOverlays),
+    [contacts, graphContacts, contactOverlays],
   )
 
   const outlookAccountEmails = useMemo(() => {
@@ -460,6 +471,14 @@ export default function App() {
   useEffect(() => {
     saveStoredContacts(contacts)
   }, [contacts])
+
+  useEffect(() => {
+    saveStoredItems(items)
+  }, [items])
+
+  useEffect(() => {
+    saveContactOverlays(contactOverlays)
+  }, [contactOverlays])
 
   useEffect(() => {
     saveStoredNotes(notes)
@@ -1112,12 +1131,24 @@ export default function App() {
 
       try {
         if (category?.kind === 'task') {
-          await createMicrosoftTodo(connectedAccountId, {
+          const result = await createMicrosoftTodo(connectedAccountId, {
             title: normalized.title,
             dueDate: normalized.date,
             notes: normalized.notes,
             todoListId: normalized.todoListId ?? defaultTodoListId,
           })
+          setItems((prev) =>
+            prev.map((entry) =>
+              entry.id === normalized.id
+                ? {
+                    ...entry,
+                    externalId: result.externalId,
+                    provider: 'microsoft',
+                    connectedAccountId,
+                  }
+                : entry,
+            ),
+          )
           setToastMessage('Task synced to Microsoft To Do')
           return
         }
@@ -1184,6 +1215,18 @@ export default function App() {
   }
 
   const handleSaveContact = useCallback((contact: Contact) => {
+    if (contact.source === 'microsoft' && contact.externalId) {
+      setContactOverlays((prev) => ({
+        ...prev,
+        [contact.externalId!]: {
+          ...prev[contact.externalId!],
+          notes: contact.notes,
+          starred: contact.starred,
+        },
+      }))
+      return
+    }
+
     setContacts((prev) => {
       const index = prev.findIndex((entry) => entry.id === contact.id)
       if (index >= 0) {
@@ -1195,14 +1238,33 @@ export default function App() {
     })
   }, [])
 
-  const handleDeleteContact = useCallback((id: string) => {
-    setContacts((prev) => prev.filter((contact) => contact.id !== id))
+  const handleDeleteContact = useCallback((contact: Contact) => {
+    if (contact.source === 'microsoft' && contact.externalId) {
+      setContactOverlays((prev) => ({
+        ...prev,
+        [contact.externalId!]: { ...prev[contact.externalId!], hidden: true },
+      }))
+      return
+    }
+
+    setContacts((prev) => prev.filter((entry) => entry.id !== contact.id))
   }, [])
 
-  const handleToggleContactStar = useCallback((id: string) => {
+  const handleToggleContactStar = useCallback((contact: Contact) => {
+    if (contact.source === 'microsoft' && contact.externalId) {
+      setContactOverlays((prev) => ({
+        ...prev,
+        [contact.externalId!]: {
+          ...prev[contact.externalId!],
+          starred: !contact.starred,
+        },
+      }))
+      return
+    }
+
     setContacts((prev) =>
-      prev.map((contact) =>
-        contact.id === id ? { ...contact, starred: !contact.starred } : contact,
+      prev.map((entry) =>
+        entry.id === contact.id ? { ...entry, starred: !entry.starred } : entry,
       ),
     )
   }, [])

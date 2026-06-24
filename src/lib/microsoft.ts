@@ -117,16 +117,29 @@ export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphT
   );
 }
 
+export async function fetchMicrosoftTodoTasks(accountId: string): Promise<CalendarItem[]> {
+  return apiFetch<CalendarItem[]>(
+    `/api/microsoft/todo/tasks?accountId=${encodeURIComponent(accountId)}`,
+  );
+}
+
 export async function fetchMicrosoftContacts(accountId: string): Promise<Contact[]> {
   const contacts = await apiFetch<
     Array<{
       id: string;
       name: string;
       email?: string;
+      emailSecondary?: string;
       phone?: string;
       mobilePhone?: string;
+      homePhone?: string;
       company?: string;
       jobTitle?: string;
+      department?: string;
+      website?: string;
+      address?: string;
+      birthday?: string;
+      notes?: string;
       accountId: string;
       connectedAccountId: string;
       externalId: string;
@@ -138,10 +151,17 @@ export async function fetchMicrosoftContacts(accountId: string): Promise<Contact
     id: contact.id,
     name: contact.name,
     email: contact.email,
+    emailSecondary: contact.emailSecondary,
     phone: contact.phone,
     mobilePhone: contact.mobilePhone,
+    homePhone: contact.homePhone,
     company: contact.company,
     jobTitle: contact.jobTitle,
+    department: contact.department,
+    website: contact.website,
+    address: contact.address,
+    birthday: contact.birthday,
+    notes: contact.notes,
     source: "microsoft" as const,
     externalId: contact.externalId,
     accountId: contact.accountId,
@@ -208,6 +228,16 @@ export async function fetchAllMicrosoftTodoLists(
   if (accounts.length === 0) return [];
   const batches = await Promise.all(
     accounts.map((account) => fetchMicrosoftTodoLists(account.id)),
+  );
+  return batches.flat();
+}
+
+export async function fetchAllMicrosoftTodoTasks(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<CalendarItem[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(
+    accounts.map((account) => fetchMicrosoftTodoTasks(account.id)),
   );
   return batches.flat();
 }
@@ -322,7 +352,12 @@ export function mergeGraphCalendar(
       return !graphExternalIds.has(item.externalId);
     }
     if (item.externalId) return !graphExternalIds.has(item.externalId);
-    return !item.id.startsWith("graph-") && !item.id.startsWith("gcal-") && !item.id.startsWith("applecal-");
+    return (
+      !item.id.startsWith("graph-") &&
+      !item.id.startsWith("gcal-") &&
+      !item.id.startsWith("applecal-") &&
+      !item.id.startsWith("graph-todo-")
+    );
   });
   const dedupedGraph = graphItems.filter(
     (item, index, list) =>
