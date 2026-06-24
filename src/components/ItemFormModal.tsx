@@ -4,6 +4,7 @@ import type { Attachment } from '../../shared/attachments'
 import type { EntityType, ItemLink } from '../../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { GraphCalendarDto, GraphTodoListDto } from '../../shared/microsoftGraph'
+import type { GoogleCalendarDto } from '../../shared/googleApi'
 import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults } from '../types'
 import { isTaskCategory, resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
@@ -32,10 +33,12 @@ interface ItemFormModalProps {
   onLinkExisting?: () => void
   onRemoveLink?: (linkId: string) => void
   usingRealMicrosoft?: boolean
+  usingRealGoogle?: boolean
   microsoftCalendars?: GraphCalendarDto[]
+  googleCalendars?: GoogleCalendarDto[]
   microsoftTodoLists?: GraphTodoListDto[]
   integrationAccountDefaults?: IntegrationAccountDefaults
-  outlookAccountEmails?: Record<string, string>
+  connectedAccountEmails?: Record<string, string>
 }
 
 const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
@@ -52,22 +55,33 @@ const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
   }
 }
 
-function applyOutlookDefaults(
+function preferGoogleCalendarDefaults(
+  defaults: IntegrationAccountDefaults | undefined,
+  usingRealMicrosoft: boolean,
+  usingRealGoogle: boolean,
+): boolean {
+  if (!usingRealGoogle) return false
+  if (!usingRealMicrosoft) return true
+  if (defaults?.defaultGoogleAccountId && !defaults?.defaultMicrosoftAccountId) return true
+  return false
+}
+
+function applyIntegrationDefaults(
   base: CalendarItem,
   categories: Category[],
   usingRealMicrosoft: boolean,
+  usingRealGoogle: boolean,
   microsoftCalendars: GraphCalendarDto[],
+  googleCalendars: GoogleCalendarDto[],
   microsoftTodoLists: GraphTodoListDto[],
   integrationAccountDefaults?: IntegrationAccountDefaults,
 ): CalendarItem {
-  if (!usingRealMicrosoft) return base
+  if (isTaskCategory(categories, base.categoryId) && usingRealMicrosoft) {
+    const defaultAccountId =
+      integrationAccountDefaults?.defaultMicrosoftAccountId ??
+      microsoftCalendars[0]?.connectedAccountId ??
+      microsoftTodoLists[0]?.connectedAccountId
 
-  const defaultAccountId =
-    integrationAccountDefaults?.defaultMicrosoftAccountId ??
-    microsoftCalendars[0]?.connectedAccountId ??
-    microsoftTodoLists[0]?.connectedAccountId
-
-  if (isTaskCategory(categories, base.categoryId)) {
     const preferredList =
       microsoftTodoLists.find(
         (list) =>
@@ -87,6 +101,39 @@ function applyOutlookDefaults(
     }
   }
 
+  if (preferGoogleCalendarDefaults(integrationAccountDefaults, usingRealMicrosoft, usingRealGoogle)) {
+    const defaultAccountId =
+      integrationAccountDefaults?.defaultGoogleAccountId ??
+      googleCalendars[0]?.connectedAccountId
+    const preferredCalendar =
+      googleCalendars.find(
+        (calendar) =>
+          calendar.googleCalendarId ===
+            integrationAccountDefaults?.googleCalendar?.defaultCalendarId &&
+          calendar.connectedAccountId === defaultAccountId,
+      ) ??
+      googleCalendars.find(
+        (calendar) => calendar.connectedAccountId === defaultAccountId && calendar.isDefault,
+      ) ??
+      googleCalendars.find((calendar) => calendar.connectedAccountId === defaultAccountId)
+    if (!preferredCalendar) return base
+    return {
+      ...base,
+      calendarId: preferredCalendar.googleCalendarId,
+      calendarName: preferredCalendar.name,
+      accountId: preferredCalendar.accountId,
+      connectedAccountId: preferredCalendar.connectedAccountId,
+      provider: 'google',
+    }
+  }
+
+  if (!usingRealMicrosoft) return base
+
+  const defaultAccountId =
+    integrationAccountDefaults?.defaultMicrosoftAccountId ??
+    microsoftCalendars[0]?.connectedAccountId ??
+    microsoftTodoLists[0]?.connectedAccountId
+
   const preferredCalendar =
     microsoftCalendars.find(
       (calendar) =>
@@ -104,6 +151,7 @@ function applyOutlookDefaults(
     calendarName: preferredCalendar.name,
     accountId: preferredCalendar.accountId,
     connectedAccountId: preferredCalendar.connectedAccountId,
+    provider: 'microsoft',
   }
 }
 
@@ -126,10 +174,12 @@ export function ItemFormModal({
   onLinkExisting,
   onRemoveLink,
   usingRealMicrosoft = false,
+  usingRealGoogle = false,
   microsoftCalendars = [],
+  googleCalendars = [],
   microsoftTodoLists = [],
   integrationAccountDefaults,
-  outlookAccountEmails = {},
+  connectedAccountEmails = {},
 }: ItemFormModalProps) {
   const [form, setForm] = useState<CalendarItem>(() => emptyForm(defaultDate, categories))
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -143,11 +193,13 @@ export function ItemFormModal({
     }
     const base = emptyForm(defaultDate, categories)
     setForm(
-      applyOutlookDefaults(
+      applyIntegrationDefaults(
         base,
         categories,
         usingRealMicrosoft,
+        usingRealGoogle,
         microsoftCalendars,
+        googleCalendars,
         microsoftTodoLists,
         integrationAccountDefaults,
       ),
@@ -158,13 +210,25 @@ export function ItemFormModal({
     defaultDate,
     categories,
     usingRealMicrosoft,
+    usingRealGoogle,
     microsoftCalendars,
+    googleCalendars,
     microsoftTodoLists,
     integrationAccountDefaults,
   ])
 
   const isEdit = Boolean(item?.id)
   const isTask = isTaskCategory(categories, form.categoryId)
+
+  const googleCalendarOptions = useMemo(
+    () =>
+      googleCalendars.map((calendar) => ({
+        value: calendar.googleCalendarId,
+        label: `${calendar.name}${calendar.isDefault ? ' (primary)' : ''}`,
+        calendar,
+      })),
+    [googleCalendars],
+  )
 
   const calendarOptions = useMemo(
     () =>
@@ -186,8 +250,8 @@ export function ItemFormModal({
     [microsoftTodoLists],
   )
 
-  const outlookLabel = (connectedAccountId: string) =>
-    outlookAccountEmails[connectedAccountId] ?? 'Outlook'
+  const accountLabel = (connectedAccountId: string) =>
+    connectedAccountEmails[connectedAccountId] ?? 'Account'
 
   if (!open) return null
 
@@ -244,11 +308,13 @@ export function ItemFormModal({
       todoListId: undefined,
     }
     setForm(
-      applyOutlookDefaults(
+      applyIntegrationDefaults(
         next,
         categories,
         usingRealMicrosoft,
+        usingRealGoogle,
         microsoftCalendars,
+        googleCalendars,
         microsoftTodoLists,
         integrationAccountDefaults,
       ),
@@ -372,7 +438,7 @@ export function ItemFormModal({
               >
                 {todoListOptions.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {outlookLabel(option.list.connectedAccountId)} · {option.label}
+                    {accountLabel(option.list.connectedAccountId)} · {option.label}
                   </option>
                 ))}
               </select>
@@ -382,7 +448,7 @@ export function ItemFormModal({
           {usingRealMicrosoft && !isTask && calendarOptions.length > 0 && (
             <Field label="Save to Outlook calendar">
               <select
-                value={form.calendarId ?? ''}
+                value={form.provider === 'google' ? '' : (form.calendarId ?? '')}
                 onChange={(e) => {
                   const calendar = microsoftCalendars.find(
                     (entry) => entry.graphCalendarId === e.target.value,
@@ -394,13 +460,44 @@ export function ItemFormModal({
                     calendarName: calendar.name,
                     accountId: calendar.accountId,
                     connectedAccountId: calendar.connectedAccountId,
+                    provider: 'microsoft',
                   })
                 }}
                 className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
               >
                 {calendarOptions.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {outlookLabel(option.calendar.connectedAccountId)} · {option.label}
+                    {accountLabel(option.calendar.connectedAccountId)} · {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          {usingRealGoogle && !isTask && googleCalendarOptions.length > 0 && (
+            <Field label="Save to Google calendar">
+              <select
+                value={form.provider === 'google' ? (form.calendarId ?? '') : ''}
+                onChange={(e) => {
+                  const calendar = googleCalendars.find(
+                    (entry) => entry.googleCalendarId === e.target.value,
+                  )
+                  if (!calendar) return
+                  setForm({
+                    ...form,
+                    calendarId: calendar.googleCalendarId,
+                    calendarName: calendar.name,
+                    accountId: calendar.accountId,
+                    connectedAccountId: calendar.connectedAccountId,
+                    provider: 'google',
+                  })
+                }}
+                className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+              >
+                <option value="">Select Google calendar…</option>
+                {googleCalendarOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {accountLabel(option.calendar.connectedAccountId)} · {option.label}
                   </option>
                 ))}
               </select>

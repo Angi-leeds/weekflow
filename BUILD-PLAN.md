@@ -614,9 +614,22 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 **Acceptance criteria:** ✅ Send/reply Gmail from connected account; bill flow tags Drive folder and copies email.
 
-#### Phase 10d+ — remaining Phase 10 (deferred)
+#### Phase 10d — Google account defaults ✅ (Done)
 
-- Google account default pickers (calendar/mail)
+**Goal:** Settings pickers for default Google account, calendar, and Gmail label; apply defaults in item form and compose.
+
+**Done:**
+1. `defaultGoogleAccountId`, `googleCalendar`, `googleEmail` in integration defaults
+2. `GET /api/google/calendars` + fetch on refresh
+3. Settings UI for Google defaults when connected
+4. Item form Google calendar picker + default application on new events
+5. Compose modal uses `resolveDefaultComposeAccountId`
+
+**Next:** Google calendar event create/sync (write), Apple integrations.
+
+#### Phase 10e+ — remaining Phase 10 (deferred)
+
+- Google calendar write/sync to connected calendars
 - Apple iCloud (limited APIs — hyperlink fallbacks in notes — **d50**)
 - Native iOS/Android wrapper or Capacitor — **d61**
 - Voice recording + push notifications — **d37** full
@@ -810,7 +823,7 @@ curl http://localhost:5000/api/status
 **Recommended phase order before marketing:** 10c (Google polish) or Apple/native apps.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10d** unless owner specifies otherwise (Phases 0–9c, 10a–10c, and 11 complete).
+2. **Start at Phase 10e** unless owner specifies otherwise (Phases 0–9c, 10a–10d, and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

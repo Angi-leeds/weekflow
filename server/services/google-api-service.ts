@@ -1,5 +1,5 @@
 import { normalizeEmailBody } from "../../shared/emailBody";
-import type { GoogleDriveFolderDto, GoogleMailFolderDto } from "../../shared/googleApi";
+import type { GoogleCalendarDto, GoogleDriveFolderDto, GoogleMailFolderDto } from "../../shared/googleApi";
 import {
   type ConnectedAccountRecord,
   getConnectedAccountRecord,
@@ -47,15 +47,6 @@ export interface GoogleCalendarItemDto {
   connectedAccountId: string;
   calendarId?: string;
   calendarName?: string;
-}
-
-export interface GoogleCalendarDto {
-  id: string;
-  googleCalendarId: string;
-  name: string;
-  accountId: string;
-  connectedAccountId: string;
-  isDefault?: boolean;
 }
 
 const WELL_KNOWN_LABELS: Array<{

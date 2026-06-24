@@ -1,4 +1,4 @@
-import type { GoogleIntegrationStatus } from "../../shared/googleApi";
+import type { GoogleCalendarDto, GoogleIntegrationStatus } from "../../shared/googleApi";
 import type { CalendarItem, EmailFolder, EmailMessage } from "../types";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -128,6 +128,22 @@ export async function fetchGoogleCalendar(accountId: string): Promise<CalendarIt
   return apiFetch<CalendarItem[]>(
     `/api/google/calendar?accountId=${encodeURIComponent(accountId)}`,
   );
+}
+
+export async function fetchGoogleCalendarsList(accountId: string): Promise<GoogleCalendarDto[]> {
+  return apiFetch<GoogleCalendarDto[]>(
+    `/api/google/calendars?accountId=${encodeURIComponent(accountId)}`,
+  );
+}
+
+export async function fetchAllGoogleCalendarsList(
+  accounts: GoogleIntegrationStatus["accounts"],
+): Promise<GoogleCalendarDto[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(
+    accounts.map((account) => fetchGoogleCalendarsList(account.id)),
+  );
+  return batches.flat();
 }
 
 export async function fetchAllGoogleMail(

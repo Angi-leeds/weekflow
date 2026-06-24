@@ -42,3 +42,12 @@ export interface GoogleDriveFolderDto {
   connectedAccountId: string;
   parentId?: string;
 }
+
+export interface GoogleCalendarDto {
+  id: string;
+  googleCalendarId: string;
+  name: string;
+  accountId: string;
+  connectedAccountId: string;
+  isDefault?: boolean;
+}

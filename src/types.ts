@@ -109,8 +109,11 @@ export const DEFAULT_INTEGRATION_PREFERENCES: IntegrationPreferences = {
 
 export interface IntegrationAccountDefaults {
   defaultMicrosoftAccountId?: string
+  defaultGoogleAccountId?: string
   email?: { defaultAccountId?: string; defaultFolderId?: string }
   calendar?: { defaultAccountId?: string; defaultCalendarId?: string }
+  googleCalendar?: { defaultAccountId?: string; defaultCalendarId?: string }
+  googleEmail?: { defaultAccountId?: string; defaultLabelId?: string }
   notes?: { defaultAccountId?: string }
   tasks?: { defaultAccountId?: string; defaultTodoListId?: string }
   contacts?: { defaultAccountId?: string }

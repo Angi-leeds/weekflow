@@ -28,7 +28,7 @@ import type {
   GraphTodoListDto,
   MicrosoftIntegrationStatus,
 } from '../../shared/microsoftGraph'
-import type { GoogleIntegrationStatus } from '../../shared/googleApi'
+import type { GoogleCalendarDto, GoogleIntegrationStatus } from '../../shared/googleApi'
 import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SyncHelpView } from './SyncHelpView'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
@@ -57,6 +57,7 @@ interface SettingsViewProps {
   integrationAccountDefaults: IntegrationAccountDefaults
   onIntegrationAccountDefaultsChange: (defaults: IntegrationAccountDefaults) => void
   graphCalendars: GraphCalendarDto[]
+  graphGoogleCalendars: GoogleCalendarDto[]
   graphTodoLists: GraphTodoListDto[]
   onSaveCategory: (category: Category) => void
   onDeleteCategory: (id: string) => void
@@ -71,6 +72,7 @@ interface SettingsViewProps {
   emailAccounts: EmailAccount[]
   calendarAccounts: EmailAccount[]
   usingRealMicrosoft: boolean
+  usingRealGoogle: boolean
   onShowCalendarAccount: (accountId: string) => void
   onShowToast?: (message: string) => void
   onOpenBoard?: () => void
@@ -97,6 +99,7 @@ export function SettingsView({
   integrationAccountDefaults,
   onIntegrationAccountDefaultsChange,
   graphCalendars,
+  graphGoogleCalendars,
   graphTodoLists,
   onSaveCategory,
   onDeleteCategory,
@@ -111,6 +114,7 @@ export function SettingsView({
   emailAccounts,
   calendarAccounts,
   usingRealMicrosoft,
+  usingRealGoogle,
   onShowCalendarAccount,
   onShowToast,
   onOpenBoard,
@@ -130,6 +134,25 @@ export function SettingsView({
     integrationAccountDefaults.defaultMicrosoftAccountId ??
     microsoftStatus?.accounts[0]?.id ??
     ''
+
+  const defaultGoogleAccountId =
+    integrationAccountDefaults.defaultGoogleAccountId ??
+    googleStatus?.accounts[0]?.id ??
+    ''
+
+  const calendarsForDefaultGoogleAccount = useMemo(
+    () =>
+      graphGoogleCalendars.filter(
+        (calendar) => calendar.connectedAccountId === defaultGoogleAccountId,
+      ),
+    [graphGoogleCalendars, defaultGoogleAccountId],
+  )
+
+  const googleMailLabels = [
+    { value: 'INBOX', label: 'Inbox' },
+    { value: 'SENT', label: 'Sent' },
+    { value: 'DRAFT', label: 'Drafts' },
+  ]
 
   const calendarsForDefaultAccount = useMemo(
     () => graphCalendars.filter((calendar) => calendar.connectedAccountId === defaultMicrosoftAccountId),
@@ -450,6 +473,72 @@ export function SettingsView({
             <p className="px-4 pb-3 text-caption text-wf-text-tertiary">
               Reconnect Google after scope updates (send, Drive). Reconnect Outlook after Contacts scope changes.
             </p>
+          </>
+        )}
+
+        {usingRealGoogle && (googleStatus?.accounts.length ?? 0) > 0 && (
+          <>
+            <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
+              Defaults for new Gmail messages and Google Calendar events.
+            </p>
+            <SettingsSelectRow
+              label="Default Google account"
+              value={
+                integrationAccountDefaults.defaultGoogleAccountId ??
+                googleStatus?.accounts[0]?.id ??
+                ''
+              }
+              options={(googleStatus?.accounts ?? []).map((account) => ({
+                value: account.id,
+                label: account.email,
+              }))}
+              onChange={(defaultGoogleAccountId) =>
+                onIntegrationAccountDefaultsChange({
+                  ...integrationAccountDefaults,
+                  defaultGoogleAccountId,
+                })
+              }
+            />
+            {calendarsForDefaultGoogleAccount.length > 0 && (
+              <SettingsSelectRow
+                label="Default Google calendar"
+                value={integrationAccountDefaults.googleCalendar?.defaultCalendarId ?? ''}
+                options={calendarsForDefaultGoogleAccount.map((calendar) => ({
+                  value: calendar.googleCalendarId,
+                  label: `${calendar.name}${calendar.isDefault ? ' (primary)' : ''}`,
+                }))}
+                onChange={(defaultCalendarId) =>
+                  onIntegrationAccountDefaultsChange({
+                    ...integrationAccountDefaults,
+                    googleCalendar: {
+                      ...integrationAccountDefaults.googleCalendar,
+                      defaultAccountId: defaultGoogleAccountId,
+                      defaultCalendarId,
+                    },
+                  })
+                }
+              />
+            )}
+            {googleMailLabels.length > 0 && (
+              <SettingsSelectRow
+                label="Default Gmail label"
+                value={integrationAccountDefaults.googleEmail?.defaultLabelId ?? 'INBOX'}
+                options={googleMailLabels.map((label) => ({
+                  value: label.value,
+                  label: label.label,
+                }))}
+                onChange={(defaultLabelId) =>
+                  onIntegrationAccountDefaultsChange({
+                    ...integrationAccountDefaults,
+                    googleEmail: {
+                      ...integrationAccountDefaults.googleEmail,
+                      defaultAccountId: defaultGoogleAccountId,
+                      defaultLabelId,
+                    },
+                  })
+                }
+              />
+            )}
           </>
         )}
 

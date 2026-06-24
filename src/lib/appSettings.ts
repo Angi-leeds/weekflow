@@ -103,6 +103,8 @@ export function loadIntegrationAccountDefaults(): IntegrationAccountDefaults {
       ...parsed,
       email: { ...parsed.email },
       calendar: { ...parsed.calendar },
+      googleCalendar: { ...parsed.googleCalendar },
+      googleEmail: { ...parsed.googleEmail },
       notes: { ...parsed.notes },
       tasks: { ...parsed.tasks },
       contacts: { ...parsed.contacts },

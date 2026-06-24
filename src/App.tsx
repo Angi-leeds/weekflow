@@ -61,6 +61,7 @@ import {
   copyEmailToGoogleDriveFolder,
   deleteGoogleMail,
   fetchAllGoogleCalendar,
+  fetchAllGoogleCalendarsList,
   fetchAllGoogleMail,
   fetchGoogleMail,
   fetchGoogleStatus,
@@ -70,6 +71,7 @@ import {
 import { mergeGraphContacts } from './lib/mergeContacts'
 import {
   resolveConnectedAccountId,
+  resolveDefaultComposeAccountId,
 } from './lib/integrationDefaults'
 import {
   INITIAL_CONTACTS,
@@ -96,6 +98,7 @@ import {
 } from './lib/connectedAccounts'
 import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
 import type { GoogleIntegrationStatus } from '../shared/googleApi'
+import type { GoogleCalendarDto } from '../shared/googleApi'
 import type { GraphCalendarDto, GraphTodoListDto } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
@@ -197,6 +200,7 @@ export default function App() {
   const [graphNotes, setGraphNotes] = useState<Note[]>([])
   const [graphContacts, setGraphContacts] = useState<Contact[]>([])
   const [graphCalendars, setGraphCalendars] = useState<GraphCalendarDto[]>([])
+  const [graphGoogleCalendars, setGraphGoogleCalendars] = useState<GoogleCalendarDto[]>([])
   const [graphTodoLists, setGraphTodoLists] = useState<GraphTodoListDto[]>([])
   const [loadingEmailFolders, setLoadingEmailFolders] = useState<Set<string>>(() => new Set())
 
@@ -272,9 +276,10 @@ export default function App() {
       const status = await fetchGoogleStatus()
       setGoogleStatus(status)
       if (status.accounts.length > 0) {
-        const [mailBundle, calendar] = await Promise.all([
+        const [mailBundle, calendar, googleCalendars] = await Promise.all([
           fetchAllGoogleMail(status.accounts),
           fetchAllGoogleCalendar(status.accounts),
+          fetchAllGoogleCalendarsList(status.accounts),
         ])
         setGraphEmailFolders((prev) => {
           const microsoftOnly = prev.filter((folder) => !folder.accountId.startsWith('google-'))
@@ -288,10 +293,12 @@ export default function App() {
           const microsoftOnly = prev.filter((item) => item.provider !== 'google')
           return mergeGraphCalendar([], [...microsoftOnly, ...calendar])
         })
+        setGraphGoogleCalendars(googleCalendars)
       } else {
         setGraphEmailFolders((prev) => prev.filter((folder) => !folder.accountId.startsWith('google-')))
         setGraphEmails((prev) => prev.filter((email) => email.provider !== 'google'))
         setGraphCalendarItems((prev) => prev.filter((item) => item.provider !== 'google'))
+        setGraphGoogleCalendars([])
       }
     } catch (error) {
       console.error(error)
@@ -356,8 +363,11 @@ export default function App() {
     for (const account of microsoftStatus?.accounts ?? []) {
       map[account.id] = account.email
     }
+    for (const account of googleStatus?.accounts ?? []) {
+      map[account.id] = account.email
+    }
     return map
-  }, [microsoftStatus])
+  }, [microsoftStatus, googleStatus])
 
   const activeMember = useMemo(() => getActiveMember(permissionsConfig), [permissionsConfig])
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
@@ -1503,6 +1513,7 @@ export default function App() {
             integrationAccountDefaults={integrationAccountDefaults}
             onIntegrationAccountDefaultsChange={setIntegrationAccountDefaults}
             graphCalendars={graphCalendars}
+            graphGoogleCalendars={graphGoogleCalendars}
             graphTodoLists={graphTodoLists}
             onSaveCategory={handleSaveCategory}
             onDeleteCategory={handleDeleteCategory}
@@ -1517,6 +1528,7 @@ export default function App() {
             emailAccounts={emailAccounts}
             calendarAccounts={calendarAccounts}
             usingRealMicrosoft={usingRealMicrosoft}
+            usingRealGoogle={usingRealGoogle}
             onShowCalendarAccount={handleShowCalendarAccount}
             onShowToast={setToastMessage}
             onOpenBoard={() => setSection('board')}
@@ -1564,10 +1576,12 @@ export default function App() {
         attachments={attachments}
         onAttachmentUploaded={handleAttachmentUploaded}
         usingRealMicrosoft={usingRealMicrosoft}
+        usingRealGoogle={usingRealGoogle}
         microsoftCalendars={graphCalendars}
+        googleCalendars={graphGoogleCalendars}
         microsoftTodoLists={graphTodoLists}
         integrationAccountDefaults={integrationAccountDefaults}
-        outlookAccountEmails={outlookAccountEmails}
+        connectedAccountEmails={outlookAccountEmails}
         itemShare={
           editingItem
             ? getShareForEntity(
@@ -1614,7 +1628,11 @@ export default function App() {
         mode={emailCompose?.mode ?? 'compose'}
         replyTo={emailCompose?.replyTo}
         accounts={emailAccounts}
-        defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
+        defaultAccountId={resolveDefaultComposeAccountId(
+          integrationAccountDefaults,
+          microsoftStatus,
+          googleStatus,
+        )}
         sending={emailSending}
         onClose={() => setEmailCompose(null)}
         onSend={handleEmailComposeSend}
