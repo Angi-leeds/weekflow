@@ -35,6 +35,64 @@ export function googleAccountKey(accountId: string): string {
   return `google-${accountId}`;
 }
 
+export async function fetchGoogleDriveFolders(
+  accountId: string,
+  parentId?: string,
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    webUrl?: string;
+    accountId: string;
+    connectedAccountId: string;
+    parentId?: string;
+  }>
+> {
+  const params = new URLSearchParams({ accountId });
+  if (parentId) params.set("parentId", parentId);
+  return apiFetch(`/api/google/drive/folders?${params.toString()}`);
+}
+
+export async function copyEmailToGoogleDriveFolder(
+  accountId: string,
+  folderId: string,
+  input: { subject: string; from: string; fromEmail: string; date: string; body: string },
+): Promise<{ name: string; webUrl?: string }> {
+  return apiFetch("/api/google/drive/copy-email", {
+    method: "POST",
+    body: JSON.stringify({ accountId, folderId, ...input }),
+  });
+}
+
+export async function sendGoogleMail(
+  accountId: string,
+  input: { to: string | string[]; subject: string; body: string },
+): Promise<void> {
+  const to = Array.isArray(input.to) ? input.to : [input.to];
+  await apiFetch<void>("/api/google/mail/send", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input, to }),
+  });
+}
+
+export async function replyGoogleMail(
+  accountId: string,
+  externalId: string,
+  input: { comment: string; replyAll?: boolean },
+): Promise<void> {
+  await apiFetch<void>(`/api/google/mail/${encodeURIComponent(externalId)}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input }),
+  });
+}
+
+export async function deleteGoogleMail(accountId: string, externalId: string): Promise<void> {
+  await apiFetch<void>(
+    `/api/google/mail/${encodeURIComponent(externalId)}?accountId=${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function fetchGoogleMailFolders(accountId: string): Promise<EmailFolder[]> {
   const folders = await apiFetch<
     Array<{

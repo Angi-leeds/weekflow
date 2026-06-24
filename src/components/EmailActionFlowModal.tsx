@@ -6,12 +6,15 @@ import { BOARD_DISPLAY_LABELS } from '../../shared/itemShares'
 import type { EmailMessage } from '../types'
 import { MOCK_CLOUD_FOLDERS } from '../mockData'
 import { OneDriveFolderPicker } from './OneDriveFolderPicker'
+import { GoogleDriveFolderPicker } from './GoogleDriveFolderPicker'
+import { isGoogleEmail, isMicrosoftEmail } from '../lib/connectedAccounts'
 
 interface EmailActionFlowModalProps {
   open: boolean
   email: EmailMessage | null
   defaultDueDate?: string
   usingRealMicrosoft?: boolean
+  usingRealGoogle?: boolean
   connectedAccountId?: string
   onClose: () => void
   onSubmit: (email: EmailMessage, options: EmailActionFlowOptions) => Promise<void>
@@ -22,6 +25,7 @@ export function EmailActionFlowModal({
   email,
   defaultDueDate,
   usingRealMicrosoft = false,
+  usingRealGoogle = false,
   connectedAccountId,
   onClose,
   onSubmit,
@@ -33,8 +37,13 @@ export function EmailActionFlowModal({
     if (connectedAccountId) return connectedAccountId
     if (email?.connectedAccountId) return email.connectedAccountId
     if (email?.accountId?.startsWith('ms-')) return email.accountId.slice(3)
+    if (email?.accountId?.startsWith('google-')) return email.accountId.slice(7)
     return undefined
   }, [connectedAccountId, email])
+
+  const usesGoogleDrive = Boolean(email && isGoogleEmail(email) && usingRealGoogle)
+  const usesOneDrive = Boolean(email && isMicrosoftEmail(email) && usingRealMicrosoft)
+  const usesRealCloud = usesGoogleDrive || usesOneDrive
 
   useEffect(() => {
     if (open && email) {
@@ -42,13 +51,13 @@ export function EmailActionFlowModal({
       setOptions({
         ...DEFAULT_EMAIL_ACTION_FLOW,
         dueDate: defaultDueDate ?? DEFAULT_EMAIL_ACTION_FLOW.dueDate,
-        folderId: usingRealMicrosoft ? undefined : mockFolder?.id,
-        folderUrl: usingRealMicrosoft ? undefined : mockFolder?.url,
-        folderLabel: usingRealMicrosoft ? undefined : mockFolder?.label,
-        folderProvider: usingRealMicrosoft ? undefined : mockFolder?.provider,
+        folderId: usesRealCloud ? undefined : mockFolder?.id,
+        folderUrl: usesRealCloud ? undefined : mockFolder?.url,
+        folderLabel: usesRealCloud ? undefined : mockFolder?.label,
+        folderProvider: usesRealCloud ? undefined : mockFolder?.provider,
       })
     }
-  }, [open, email, defaultDueDate, usingRealMicrosoft])
+  }, [open, email, defaultDueDate, usesRealCloud])
 
   if (!open || !email) return null
 
@@ -65,8 +74,12 @@ export function EmailActionFlowModal({
     }
   }
 
-  const folderTagLabel = usingRealMicrosoft ? 'Tag OneDrive folder' : 'Tag OneDrive folder (mock)'
-  const autoCopyLabel = usingRealMicrosoft
+  const folderTagLabel = usesGoogleDrive
+    ? 'Tag Google Drive folder'
+    : usesOneDrive
+      ? 'Tag OneDrive folder'
+      : 'Tag OneDrive folder (mock)'
+  const autoCopyLabel = usesRealCloud
     ? 'Auto-copy email to folder'
     : 'Auto-copy email to folder (mock)'
 
@@ -161,7 +174,7 @@ export function EmailActionFlowModal({
             onChange={(tagFolder) => setOptions((prev) => ({ ...prev, tagFolder }))}
           />
 
-          {options.tagFolder && usingRealMicrosoft && resolvedAccountId && (
+          {options.tagFolder && usesOneDrive && resolvedAccountId && (
             <div className="pl-8">
               <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
                 Folder
@@ -187,7 +200,33 @@ export function EmailActionFlowModal({
             </div>
           )}
 
-          {options.tagFolder && !usingRealMicrosoft && (
+          {options.tagFolder && usesGoogleDrive && resolvedAccountId && (
+            <div className="pl-8">
+              <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
+                Folder
+              </span>
+              <GoogleDriveFolderPicker
+                accountId={resolvedAccountId}
+                selectedFolderId={options.folderId}
+                onSelect={(folder) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    folderId: folder.id,
+                    folderUrl: folder.url,
+                    folderLabel: folder.label,
+                    folderProvider: 'Google Drive',
+                  }))
+                }
+              />
+              {options.folderLabel && (
+                <p className="mt-2 text-caption text-wf-text-tertiary">
+                  Selected: {options.folderLabel}
+                </p>
+              )}
+            </div>
+          )}
+
+          {options.tagFolder && !usesRealCloud && (
             <label className="block pl-8">
               <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
                 Folder path
@@ -215,9 +254,9 @@ export function EmailActionFlowModal({
             </label>
           )}
 
-          {options.tagFolder && usingRealMicrosoft && !resolvedAccountId && (
+          {options.tagFolder && usesRealCloud && !resolvedAccountId && (
             <p className="pl-8 text-caption text-wf-red">
-              Connect Outlook in Settings to pick a OneDrive folder.
+              Connect Gmail or Outlook in Settings to pick a cloud folder.
             </p>
           )}
 

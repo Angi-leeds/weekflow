@@ -58,10 +58,14 @@ import {
   updateMicrosoftNote,
 } from './lib/microsoft'
 import {
+  copyEmailToGoogleDriveFolder,
+  deleteGoogleMail,
   fetchAllGoogleCalendar,
   fetchAllGoogleMail,
   fetchGoogleMail,
   fetchGoogleStatus,
+  replyGoogleMail,
+  sendGoogleMail,
 } from './lib/google'
 import { mergeGraphContacts } from './lib/mergeContacts'
 import {
@@ -82,6 +86,8 @@ import {
   isMockCalendarItem,
   isMockEmail,
   isMockNote,
+  isGoogleEmail,
+  isMicrosoftEmail,
   resolveCalendarAccounts,
   resolveEmailAccounts,
   resolveEmailFolders,
@@ -633,13 +639,21 @@ export default function App() {
     (email: EmailMessage): string | undefined => {
       if (email.connectedAccountId) return email.connectedAccountId
       if (email.accountId?.startsWith('ms-')) return email.accountId.slice(3)
+      if (email.accountId?.startsWith('google-')) return email.accountId.slice(7)
+      if (isGoogleEmail(email)) return googleStatus?.accounts[0]?.id
       return resolveConnectedAccountId(
         microsoftStatus?.accounts ?? [],
         integrationAccountDefaults,
         email.accountId,
       )
     },
-    [integrationAccountDefaults, microsoftStatus],
+    [integrationAccountDefaults, microsoftStatus, googleStatus],
+  )
+
+  const isGoogleConnectedAccount = useCallback(
+    (connectedAccountId: string) =>
+      (googleStatus?.accounts ?? []).some((account) => account.id === connectedAccountId),
+    [googleStatus],
   )
 
   const handleCreateTaskFromEmail = useCallback(
@@ -778,9 +792,9 @@ export default function App() {
       }
 
       if (options.autoCopy) {
-        if (usingRealMicrosoft && folder && options.folderId) {
-          const connectedAccountId = resolveEmailConnectedAccountId(email)
-          if (connectedAccountId) {
+        const connectedAccountId = resolveEmailConnectedAccountId(email)
+        if (connectedAccountId && folder && options.folderId) {
+          if (isMicrosoftEmail(email) && usingRealMicrosoft) {
             try {
               const copied = await copyEmailToOneDriveFolder(connectedAccountId, options.folderId, {
                 subject: email.subject,
@@ -796,8 +810,24 @@ export default function App() {
                 error instanceof Error ? error.message : 'Saved links; OneDrive copy failed',
               )
             }
+          } else if (isGoogleEmail(email) && usingRealGoogle) {
+            try {
+              const copied = await copyEmailToGoogleDriveFolder(connectedAccountId, options.folderId, {
+                subject: email.subject,
+                from: email.from,
+                fromEmail: email.fromEmail,
+                date: email.date,
+                body: email.body,
+              })
+              setToastMessage(`Email copied to ${folder.label} (${copied.name})`)
+            } catch (error) {
+              console.error(error)
+              setToastMessage(
+                error instanceof Error ? error.message : 'Saved links; Google Drive copy failed',
+              )
+            }
           }
-        } else {
+        } else if (!usingRealMicrosoft && !usingRealGoogle) {
           setToastMessage(
             folder ? `Email copied to ${folder.label} (mock)` : 'Email copied to folder (mock)',
           )
@@ -814,7 +844,7 @@ export default function App() {
         setModalOpen(true)
       }
     },
-    [categories, handleCreateLink, handleShareUpdate, usingRealMicrosoft, resolveEmailConnectedAccountId],
+    [categories, handleCreateLink, handleShareUpdate, usingRealMicrosoft, usingRealGoogle, resolveEmailConnectedAccountId],
   )
 
   const handleLinkExistingSelect = useCallback(
@@ -1064,10 +1094,24 @@ export default function App() {
     }) => {
       setEmailSending(true)
       try {
+        const useGoogle = isGoogleConnectedAccount(payload.connectedAccountId)
         if (payload.replyToExternalId) {
-          await replyMicrosoftMail(payload.connectedAccountId, payload.replyToExternalId, {
-            comment: payload.body,
-            replyAll: payload.replyAll,
+          if (useGoogle) {
+            await replyGoogleMail(payload.connectedAccountId, payload.replyToExternalId, {
+              comment: payload.body,
+              replyAll: payload.replyAll,
+            })
+          } else {
+            await replyMicrosoftMail(payload.connectedAccountId, payload.replyToExternalId, {
+              comment: payload.body,
+              replyAll: payload.replyAll,
+            })
+          }
+        } else if (useGoogle) {
+          await sendGoogleMail(payload.connectedAccountId, {
+            to: payload.to ?? '',
+            subject: payload.subject ?? '',
+            body: payload.body,
           })
         } else {
           await sendMicrosoftMail(payload.connectedAccountId, {
@@ -1078,7 +1122,11 @@ export default function App() {
         }
         setEmailCompose(null)
         setToastMessage('Email sent')
-        await refreshMicrosoft()
+        if (useGoogle) {
+          await refreshGoogle()
+        } else {
+          await refreshMicrosoft()
+        }
       } catch (error) {
         console.error(error)
         setToastMessage(error instanceof Error ? error.message : 'Failed to send email')
@@ -1086,17 +1134,25 @@ export default function App() {
         setEmailSending(false)
       }
     },
-    [refreshMicrosoft],
+    [isGoogleConnectedAccount, refreshGoogle, refreshMicrosoft],
   )
 
   const handleDeleteEmail = useCallback(
     async (email: EmailMessage) => {
       const connectedAccountId = resolveEmailConnectedAccountId(email)
       if (!email.externalId || !connectedAccountId) return
-      if (!window.confirm('Move this message to Deleted Items in Outlook?')) return
+      const useGoogle = isGoogleEmail(email)
+      const confirmMessage = useGoogle
+        ? 'Move this message to Gmail Trash?'
+        : 'Move this message to Deleted Items in Outlook?'
+      if (!window.confirm(confirmMessage)) return
 
       try {
-        await deleteMicrosoftMail(connectedAccountId, email.externalId)
+        if (useGoogle) {
+          await deleteGoogleMail(connectedAccountId, email.externalId)
+        } else {
+          await deleteMicrosoftMail(connectedAccountId, email.externalId)
+        }
         setGraphEmails((prev) => prev.filter((entry) => entry.id !== email.id))
         setEmailSelectedId((current) => (current === email.id ? null : current))
         setToastMessage('Message deleted')
@@ -1387,7 +1443,7 @@ export default function App() {
             onOpenActionFlow={setEmailActionFlowEmail}
             onLoadFolderMessages={handleLoadFolderMessages}
             loadingFolderIds={loadingEmailFolders}
-            usingRealMicrosoft={usingRealMicrosoft}
+            usingRealIntegrations={usingRealIntegrations}
             onCompose={() => setEmailCompose({ mode: 'compose' })}
             onReply={(email) => setEmailCompose({ mode: 'reply', replyTo: email })}
             onReplyAll={(email) => setEmailCompose({ mode: 'replyAll', replyTo: email })}
@@ -1548,6 +1604,7 @@ export default function App() {
         email={emailActionFlowEmail}
         defaultDueDate="2026-06-30"
         usingRealMicrosoft={usingRealMicrosoft}
+        usingRealGoogle={usingRealGoogle}
         onClose={() => setEmailActionFlowEmail(null)}
         onSubmit={handleEmailActionFlow}
       />

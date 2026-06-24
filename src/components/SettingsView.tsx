@@ -448,7 +448,7 @@ export function SettingsView({
               />
             )}
             <p className="px-4 pb-3 text-caption text-wf-text-tertiary">
-              Reconnect Outlook after scope updates (e.g. Contacts) so new permissions apply.
+              Reconnect Google after scope updates (send, Drive). Reconnect Outlook after Contacts scope changes.
             </p>
           </>
         )}

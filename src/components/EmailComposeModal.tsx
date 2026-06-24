@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { EmailAccount, EmailMessage } from '../types'
+import { connectedAccountIdFromAccountKey } from '../lib/connectedAccounts'
 
 export type EmailComposeMode = 'compose' | 'reply' | 'replyAll'
 
@@ -41,8 +42,9 @@ export function EmailComposeModal({
 
     const connectedId =
       replyTo?.connectedAccountId ??
-      defaultAccountId ??
-      accounts[0]?.id.replace(/^ms-/, '') ??
+      (defaultAccountId ? connectedAccountIdFromAccountKey(defaultAccountId) ?? defaultAccountId : undefined) ??
+      connectedAccountIdFromAccountKey(accounts[0]?.id ?? '') ??
+      accounts[0]?.id ??
       ''
 
     setAccountId(connectedId)
@@ -118,7 +120,10 @@ export function EmailComposeModal({
                   className={inputClass}
                 >
                   {accounts.map((account) => (
-                    <option key={account.id} value={account.id.replace(/^ms-/, '')}>
+                    <option
+                      key={account.id}
+                      value={connectedAccountIdFromAccountKey(account.id) ?? account.id}
+                    >
                       {account.email}
                     </option>
                   ))}

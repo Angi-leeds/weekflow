@@ -1,5 +1,5 @@
 import { normalizeEmailBody } from "../../shared/emailBody";
-import type { GoogleMailFolderDto } from "../../shared/googleApi";
+import type { GoogleDriveFolderDto, GoogleMailFolderDto } from "../../shared/googleApi";
 import {
   type ConnectedAccountRecord,
   getConnectedAccountRecord,
@@ -435,4 +435,232 @@ export async function fetchGoogleCalendarEvents(
     seen.add(key);
     return true;
   });
+}
+
+const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
+const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3";
+
+export interface SendGoogleMailInput {
+  to: string[];
+  subject: string;
+  body: string;
+  cc?: string[];
+}
+
+function encodeRawEmail(content: string): string {
+  return Buffer.from(content).toString("base64url");
+}
+
+function buildPlainEmail(input: {
+  from: string;
+  to: string[];
+  subject: string;
+  body: string;
+  cc?: string[];
+  inReplyTo?: string;
+  references?: string;
+}): string {
+  const lines = [`From: ${input.from}`, `To: ${input.to.join(", ")}`];
+  if (input.cc?.length) lines.push(`Cc: ${input.cc.join(", ")}`);
+  if (input.inReplyTo) lines.push(`In-Reply-To: ${input.inReplyTo}`);
+  if (input.references) lines.push(`References: ${input.references}`);
+  lines.push(`Subject: ${input.subject}`);
+  lines.push("MIME-Version: 1.0");
+  lines.push("Content-Type: text/plain; charset=utf-8");
+  lines.push("");
+  lines.push(input.body);
+  return encodeRawEmail(lines.join("\r\n"));
+}
+
+function parseAddressList(value: string): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((part) => parseFromHeader(part.trim()).email)
+    .filter(Boolean);
+}
+
+async function fetchGmailMessage(accountId: string, messageId: string): Promise<GmailMessage> {
+  const response = await googleFetch(
+    accountId,
+    `${GMAIL_API_BASE}/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
+  );
+  return response.json() as Promise<GmailMessage>;
+}
+
+export async function sendGoogleMail(
+  accountId: string,
+  input: SendGoogleMailInput,
+): Promise<void> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const to = input.to.map((entry) => entry.trim()).filter(Boolean);
+  if (to.length === 0) throw new Error("At least one recipient is required");
+
+  const raw = buildPlainEmail({
+    from: account.email,
+    to,
+    subject: input.subject,
+    body: input.body,
+    cc: input.cc?.map((entry) => entry.trim()).filter(Boolean),
+  });
+
+  await googleFetch(accountId, `${GMAIL_API_BASE}/users/me/messages/send`, {
+    method: "POST",
+    body: JSON.stringify({ raw }),
+  });
+}
+
+export async function replyGoogleMail(
+  accountId: string,
+  messageId: string,
+  input: { comment: string; replyAll?: boolean },
+): Promise<void> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const comment = input.comment.trim();
+  if (!comment) throw new Error("Reply message is required");
+
+  const original = await fetchGmailMessage(accountId, messageId);
+  const headers = original.payload?.headers;
+  const messageIdHeader = getGmailHeader(headers, "Message-Id");
+  const subject = getGmailHeader(headers, "Subject") || "(No subject)";
+  const replySubject = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+
+  let to = [parseFromHeader(getGmailHeader(headers, "From")).email].filter(Boolean);
+  if (input.replyAll) {
+    const participants = [
+      ...parseAddressList(getGmailHeader(headers, "To")),
+      ...parseAddressList(getGmailHeader(headers, "Cc")),
+      parseFromHeader(getGmailHeader(headers, "From")).email,
+    ];
+    const self = account.email.toLowerCase();
+    to = [...new Set(participants.map((entry) => entry.toLowerCase()))]
+      .filter((entry) => entry && entry !== self)
+      .map((entry) => participants.find((p) => p.toLowerCase() === entry) ?? entry);
+  }
+
+  if (to.length === 0) throw new Error("No reply recipients found");
+
+  const raw = buildPlainEmail({
+    from: account.email,
+    to,
+    subject: replySubject,
+    body: comment,
+    inReplyTo: messageIdHeader || undefined,
+    references: messageIdHeader || undefined,
+  });
+
+  await googleFetch(accountId, `${GMAIL_API_BASE}/users/me/messages/send`, {
+    method: "POST",
+    body: JSON.stringify({
+      raw,
+      threadId: original.threadId,
+    }),
+  });
+}
+
+export async function deleteGoogleMail(accountId: string, messageId: string): Promise<void> {
+  await googleFetch(
+    accountId,
+    `${GMAIL_API_BASE}/users/me/messages/${encodeURIComponent(messageId)}/trash`,
+    { method: "POST" },
+  );
+}
+
+export async function fetchGoogleDriveFolders(
+  accountId: string,
+  parentId?: string,
+): Promise<GoogleDriveFolderDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const accountKey = accountKeyFromRecord(account);
+  const parent = parentId ?? "root";
+  const params = new URLSearchParams({
+    q: `'${parent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: "files(id,name,webViewLink)",
+    pageSize: "100",
+    orderBy: "name",
+  });
+
+  const response = await googleFetch(
+    accountId,
+    `${DRIVE_API_BASE}/files?${params.toString()}`,
+  );
+  const payload = (await response.json()) as {
+    files?: Array<{ id: string; name?: string; webViewLink?: string }>;
+  };
+
+  return (payload.files ?? []).map((folder) => ({
+    id: folder.id,
+    name: folder.name ?? "Folder",
+    webUrl: folder.webViewLink,
+    accountId: accountKey,
+    connectedAccountId: account.id,
+    parentId,
+  }));
+}
+
+function safeDriveFileName(subject: string): string {
+  const cleaned = subject.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, " ").trim();
+  return (cleaned.slice(0, 120) || "email") + ".txt";
+}
+
+export async function copyEmailToGoogleDriveFolder(
+  accountId: string,
+  folderId: string,
+  input: { subject: string; from: string; fromEmail: string; date: string; body: string },
+): Promise<{ name: string; webUrl?: string }> {
+  const fileName = safeDriveFileName(input.subject);
+  const content = [
+    `From: ${input.from} <${input.fromEmail}>`,
+    `Date: ${input.date}`,
+    `Subject: ${input.subject}`,
+    "",
+    input.body,
+  ].join("\n");
+
+  const metadata = {
+    name: fileName,
+    mimeType: "text/plain",
+    parents: [folderId],
+  };
+
+  const boundary = `myaxis-${randomBoundary()}`;
+  const body = [
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "",
+    content,
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const token = await getValidGoogleAccessToken(accountId);
+  const response = await fetch(`${DRIVE_UPLOAD_BASE}/files?uploadType=multipart&fields=id,name,webViewLink`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Google Drive upload failed (${response.status}): ${detail}`);
+  }
+
+  const item = (await response.json()) as { name: string; webViewLink?: string };
+  return { name: item.name, webUrl: item.webViewLink };
+}
+
+function randomBoundary(): string {
+  return Math.random().toString(36).slice(2);
 }

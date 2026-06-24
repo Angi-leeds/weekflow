@@ -601,9 +601,22 @@ Split into three slices. **Do Phase 9b before Phase 10** — Google/Apple build 
 
 **Next (10c+):** Google send/reply, Drive picker, account defaults pickers — mirror 9c where applicable.
 
-#### Phase 10c+ — remaining Phase 10 (deferred)
+#### Phase 10c — Gmail send/reply + Google Drive folder tagging ✅ (Done)
 
-- Google mail send/reply, Drive folder tagging
+**Goal:** Send and reply from Gmail; tag Google Drive folders in email action flow; auto-copy email to Drive.
+
+**Done:**
+1. OAuth scopes extended: `gmail.send`, `gmail.modify`, `drive` — **reconnect Google** after deploy
+2. `sendGoogleMail`, `replyGoogleMail`, `deleteGoogleMail` (trash)
+3. `fetchGoogleDriveFolders`, `copyEmailToGoogleDriveFolder`
+4. `GoogleDriveFolderPicker` in email action flow for Gmail messages
+5. Compose/reply/delete wired for Google accounts in Email view
+
+**Acceptance criteria:** ✅ Send/reply Gmail from connected account; bill flow tags Drive folder and copies email.
+
+#### Phase 10d+ — remaining Phase 10 (deferred)
+
+- Google account default pickers (calendar/mail)
 - Apple iCloud (limited APIs — hyperlink fallbacks in notes — **d50**)
 - Native iOS/Android wrapper or Capacitor — **d61**
 - Voice recording + push notifications — **d37** full
@@ -797,7 +810,7 @@ curl http://localhost:5000/api/status
 **Recommended phase order before marketing:** 10c (Google polish) or Apple/native apps.
 
 1. **Read** `replit.md`, `BUILD-PLAN.md` §7, menagerie `05-AUTHZ-ROLES-PERMISSIONS.md` before auth work.
-2. **Start at Phase 10c** unless owner specifies otherwise (Phases 0–9c, 10a–10b, and 11 complete).
+2. **Start at Phase 10d** unless owner specifies otherwise (Phases 0–9c, 10a–10c, and 11 complete).
 3. **Do not** wire Stripe, OpenAI, or unrelated integrations.
 4. **Do not** merge Corky as separate app — board is a mode in MyAxis.
 5. **Do not** move calendar/email to PostgreSQL as system of record — only enhancement layer.

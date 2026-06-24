@@ -8,6 +8,20 @@ import { microsoftAccountKey } from "./microsoft";
 export const MICROSOFT_PROVIDER_COLOUR = "#0078d4";
 export const GOOGLE_PROVIDER_COLOUR = "#4285f4";
 
+export function connectedAccountIdFromAccountKey(accountKey: string): string | undefined {
+  if (accountKey.startsWith("ms-")) return accountKey.slice(3);
+  if (accountKey.startsWith("google-")) return accountKey.slice(7);
+  return undefined;
+}
+
+export function isGoogleEmail(email: { provider?: string; accountId?: string }): boolean {
+  return email.provider === "google" || Boolean(email.accountId?.startsWith("google-"));
+}
+
+export function isMicrosoftEmail(email: { provider?: string; accountId?: string }): boolean {
+  return email.provider === "microsoft" || Boolean(email.accountId?.startsWith("ms-"));
+}
+
 export function isMockEmail(email: { provider?: string; externalId?: string }): boolean {
   return email.provider !== "microsoft" && email.provider !== "google" && !email.externalId;
 }

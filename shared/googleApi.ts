@@ -4,7 +4,10 @@ export const GOOGLE_OAUTH_SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/drive",
 ] as const;
 
 export interface GoogleConnectedAccountPublic {
@@ -29,4 +32,13 @@ export interface GoogleMailFolderDto {
   accountId: string;
   connectedAccountId: string;
   wellKnown?: "inbox" | "sentitems" | "drafts" | "deleteditems";
+}
+
+export interface GoogleDriveFolderDto {
+  id: string;
+  name: string;
+  webUrl?: string;
+  accountId: string;
+  connectedAccountId: string;
+  parentId?: string;
 }

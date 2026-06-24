@@ -53,7 +53,7 @@ interface EmailViewProps {
   onRemoveLink?: (linkId: string) => void
   onLoadFolderMessages?: (folder: EmailFolder) => void
   loadingFolderIds?: Set<string>
-  usingRealMicrosoft?: boolean
+  usingRealIntegrations?: boolean
   onCompose?: () => void
   onReply?: (email: EmailMessage) => void
   onReplyAll?: (email: EmailMessage) => void
@@ -81,7 +81,7 @@ export function EmailView({
   onRemoveLink,
   onLoadFolderMessages,
   loadingFolderIds,
-  usingRealMicrosoft = false,
+  usingRealIntegrations = false,
   onCompose,
   onReply,
   onReplyAll,
@@ -171,7 +171,7 @@ export function EmailView({
           <button
             type="button"
             onClick={onCompose}
-            disabled={!usingRealMicrosoft || !onCompose}
+            disabled={!usingRealIntegrations || !onCompose}
             className="flex h-10 items-center gap-2 rounded-full bg-wf-accent px-4 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-95 disabled:opacity-50"
           >
             <PenLine size={16} strokeWidth={2} />
@@ -281,7 +281,7 @@ export function EmailView({
             links={links}
             items={items}
             emails={emails}
-            usingRealMicrosoft={usingRealMicrosoft}
+            usingRealIntegrations={usingRealIntegrations}
             onClose={isWide ? undefined : () => setSelectedId(null)}
             onToggleStar={selected ? () => onToggleStar(selected.id) : undefined}
             onCreateTask={onCreateTask}
@@ -451,7 +451,7 @@ function MessagePreview({
   links,
   items,
   emails,
-  usingRealMicrosoft = false,
+  usingRealIntegrations = false,
   onClose,
   onToggleStar,
   onCreateTask,
@@ -469,7 +469,7 @@ function MessagePreview({
   links: ItemLink[]
   items: CalendarItem[]
   emails: EmailMessage[]
-  usingRealMicrosoft?: boolean
+  usingRealIntegrations?: boolean
   onClose?: () => void
   onToggleStar?: () => void
   onCreateTask: (email: EmailMessage) => void
@@ -508,7 +508,7 @@ function MessagePreview({
             <span />
           )}
           <div className="flex gap-1.5">
-            {usingRealMicrosoft && email.externalId && (
+            {usingRealIntegrations && email.externalId && (
               <>
                 <ActionChip icon={Reply} label="Reply" onClick={() => onReply?.(email)} />
                 <ActionChip icon={Reply} label="Reply all" onClick={() => onReplyAll?.(email)} />
@@ -589,7 +589,7 @@ function MessagePreview({
         <p className="mb-2 mt-4 text-caption font-semibold text-wf-text-secondary">
           Email actions
         </p>
-        {usingRealMicrosoft && email.externalId && onDelete && (
+        {usingRealIntegrations && email.externalId && onDelete && (
           <button
             type="button"
             onClick={() => onDelete(email)}
@@ -621,8 +621,8 @@ function MessagePreview({
           />
         </div>
         <p className="mt-3 text-caption text-wf-text-tertiary">
-          {usingRealMicrosoft
-            ? 'Sent via connected Outlook account.'
+          {usingRealIntegrations
+            ? 'Sent via connected Gmail or Outlook account.'
             : 'Future integrations: Gmail · Outlook · Apple Mail'}
         </p>
       </div>
