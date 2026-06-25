@@ -101,8 +101,13 @@ export async function fetchMicrosoftMailFolders(accountId: string): Promise<Emai
   );
 }
 
-export async function fetchMicrosoftCalendar(accountId: string): Promise<CalendarItem[]> {
-  return apiFetch<CalendarItem[]>(`/api/microsoft/calendar?accountId=${encodeURIComponent(accountId)}`);
+export async function fetchMicrosoftCalendar(
+  accountId: string,
+  options?: { defaultOnly?: boolean },
+): Promise<CalendarItem[]> {
+  const params = new URLSearchParams({ accountId });
+  if (options?.defaultOnly) params.set("defaultOnly", "true");
+  return apiFetch<CalendarItem[]>(`/api/microsoft/calendar?${params.toString()}`);
 }
 
 export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphCalendarDto[]> {
@@ -114,6 +119,14 @@ export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphC
 export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {
   return apiFetch<GraphTodoListDto[]>(
     `/api/microsoft/todo/lists?accountId=${encodeURIComponent(accountId)}`,
+  );
+}
+
+export async function fetchMicrosoftTodoBundle(
+  accountId: string,
+): Promise<{ lists: GraphTodoListDto[]; tasks: CalendarItem[] }> {
+  return apiFetch<{ lists: GraphTodoListDto[]; tasks: CalendarItem[] }>(
+    `/api/microsoft/todo/bundle?accountId=${encodeURIComponent(accountId)}`,
   );
 }
 
@@ -194,10 +207,11 @@ export async function fetchAllMicrosoftMail(
 
 export async function fetchAllMicrosoftCalendar(
   accounts: MicrosoftIntegrationStatus["accounts"],
+  options?: { defaultOnly?: boolean },
 ): Promise<CalendarItem[]> {
   if (accounts.length === 0) return [];
   const batches = await Promise.all(
-    accounts.map((account) => fetchMicrosoftCalendar(account.id)),
+    accounts.map((account) => fetchMicrosoftCalendar(account.id, options)),
   );
   return batches.flat();
 }
@@ -220,6 +234,19 @@ export async function fetchAllMicrosoftCalendarsList(
     accounts.map((account) => fetchMicrosoftCalendars(account.id)),
   );
   return batches.flat();
+}
+
+export async function fetchAllMicrosoftTodoListsAndTasks(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<{ lists: GraphTodoListDto[]; tasks: CalendarItem[] }> {
+  if (accounts.length === 0) return { lists: [], tasks: [] };
+  const batches = await Promise.all(
+    accounts.map((account) => fetchMicrosoftTodoBundle(account.id)),
+  );
+  return {
+    lists: batches.flatMap((batch) => batch.lists),
+    tasks: batches.flatMap((batch) => batch.tasks),
+  };
 }
 
 export async function fetchAllMicrosoftTodoLists(

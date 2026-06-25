@@ -18,6 +18,7 @@ import {
   fetchMicrosoftMessages,
   fetchMicrosoftNotes,
   fetchMicrosoftTodoLists,
+  fetchMicrosoftTodoListsAndTasks,
   fetchMicrosoftTodoTasks,
   replyMicrosoftMail,
   sendMicrosoftMail,
@@ -266,6 +267,8 @@ export function registerMicrosoftRoutes(app: Express): void {
     const startDate = typeof req.query.startDate === "string" ? req.query.startDate : undefined;
     const endDate = typeof req.query.endDate === "string" ? req.query.endDate : undefined;
     const calendarId = typeof req.query.calendarId === "string" ? req.query.calendarId : undefined;
+    const defaultOnly =
+      req.query.defaultOnly === "true" || req.query.defaultOnly === "1";
 
     try {
       const events = await fetchMicrosoftCalendarEvents(
@@ -273,6 +276,7 @@ export function registerMicrosoftRoutes(app: Express): void {
         startDate,
         endDate,
         calendarId,
+        { defaultOnly },
       );
       res.json(events);
     } catch (error) {
@@ -365,6 +369,31 @@ export function registerMicrosoftRoutes(app: Express): void {
     } catch (error) {
       console.error("GET /api/microsoft/todo/lists failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch To Do lists";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/todo/bundle", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    if (!accountId) {
+      res.status(400).json({ message: "accountId is required" });
+      return;
+    }
+
+    try {
+      const bundle = await fetchMicrosoftTodoListsAndTasks(accountId);
+      res.json(bundle);
+    } catch (error) {
+      console.error("GET /api/microsoft/todo/bundle failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to fetch To Do data";
+      if (
+        message.includes("(429)") ||
+        message.includes("ApplicationThrottled") ||
+        message.includes("MailboxConcurrency")
+      ) {
+        res.json({ lists: [], tasks: [] });
+        return;
+      }
       res.status(500).json({ message });
     }
   });

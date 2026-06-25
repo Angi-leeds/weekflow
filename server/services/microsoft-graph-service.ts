@@ -174,12 +174,28 @@ function encodeGraphPathSegment(id: string): string {
 
 const GRAPH_MAX_CONCURRENT_PER_ACCOUNT = 2;
 const GRAPH_MAX_RETRIES = 4;
-const GRAPH_CALENDAR_GAP_MS = 150;
 
 const graphSlots = new Map<string, { active: number; queue: Array<() => void> }>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let index = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = items[index];
+      index += 1;
+      await worker(current);
+    }
+  });
+  await Promise.all(runners);
 }
 
 function getGraphSlotState(accountId: string) {
@@ -372,6 +388,7 @@ export async function fetchMicrosoftCalendarEvents(
   startDate?: string,
   endDate?: string,
   calendarGraphId?: string,
+  options?: { defaultOnly?: boolean; calendars?: GraphCalendarDto[] },
 ): Promise<GraphCalendarItemDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
@@ -388,7 +405,7 @@ export async function fetchMicrosoftCalendarEvents(
   });
 
   if (calendarGraphId) {
-    const calendars = await fetchMicrosoftCalendars(accountId);
+    const calendars = options?.calendars ?? (await fetchMicrosoftCalendars(accountId));
     const calendar = calendars.find((entry) => entry.graphCalendarId === calendarGraphId);
     const response = await graphFetch(
       accountId,
@@ -403,7 +420,7 @@ export async function fetchMicrosoftCalendarEvents(
     );
   }
 
-  const calendars = await fetchMicrosoftCalendars(accountId);
+  const calendars = options?.calendars ?? (await fetchMicrosoftCalendars(accountId));
   if (calendars.length === 0) {
     const response = await graphFetch(accountId, `/me/calendarView?${query}`);
     const payload = (await response.json()) as { value?: GraphEvent[] };
@@ -416,35 +433,47 @@ export async function fetchMicrosoftCalendarEvents(
     return a.name.localeCompare(b.name);
   });
 
-  const merged: GraphCalendarItemDto[] = [];
-  const seen = new Set<string>();
+  const calendarsToFetch = options?.defaultOnly
+    ? orderedCalendars.filter((calendar) => calendar.isDefault).slice(0, 1)
+    : orderedCalendars;
+  const targetCalendars =
+    calendarsToFetch.length > 0 ? calendarsToFetch : orderedCalendars.slice(0, 1);
 
-  for (const calendar of orderedCalendars) {
+  const batches: GraphCalendarItemDto[][] = [];
+
+  await runWithConcurrency(targetCalendars, GRAPH_MAX_CONCURRENT_PER_ACCOUNT, async (calendar) => {
     try {
       const response = await graphFetch(
         accountId,
         `/me/calendars/${encodeGraphPathSegment(calendar.graphCalendarId)}/calendarView?${query}`,
       );
       const payload = (await response.json()) as { value?: GraphEvent[] };
-      for (const event of payload.value ?? []) {
-        const dto = mapGraphEventToDto(event, account, {
-          id: calendar.graphCalendarId,
-          name: calendar.name,
-        });
-        const key = `${dto.connectedAccountId}:${dto.externalId}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push(dto);
-      }
+      batches.push(
+        (payload.value ?? []).map((event) =>
+          mapGraphEventToDto(event, account, {
+            id: calendar.graphCalendarId,
+            name: calendar.name,
+          }),
+        ),
+      );
     } catch (error) {
       if (isGraphThrottleError(error)) {
         console.warn(`Calendar throttle — skipping "${calendar.name}" for ${accountId}:`, error);
-        continue;
+        return;
       }
       throw error;
     }
+  });
 
-    await sleep(GRAPH_CALENDAR_GAP_MS);
+  const merged: GraphCalendarItemDto[] = [];
+  const seen = new Set<string>();
+  for (const batch of batches) {
+    for (const dto of batch) {
+      const key = `${dto.connectedAccountId}:${dto.externalId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(dto);
+    }
   }
 
   return merged;
@@ -989,56 +1018,72 @@ interface GraphTodoTask {
   dueDateTime?: { dateTime?: string; timeZone?: string };
 }
 
-export async function fetchMicrosoftTodoTasks(accountId: string): Promise<GraphCalendarItemDto[]> {
+export async function fetchMicrosoftTodoTasks(
+  accountId: string,
+  lists?: GraphTodoListDto[],
+): Promise<GraphCalendarItemDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
-  const lists = await fetchMicrosoftTodoLists(accountId);
-  const merged: GraphCalendarItemDto[] = [];
-  const seen = new Set<string>();
+  const todoLists = lists ?? (await fetchMicrosoftTodoLists(accountId));
+  const batches: GraphCalendarItemDto[][] = [];
   const today = new Date().toISOString().slice(0, 10);
 
-  for (const list of lists) {
+  await runWithConcurrency(todoLists, GRAPH_MAX_CONCURRENT_PER_ACCOUNT, async (list) => {
     try {
       const response = await graphFetch(
         accountId,
         `/me/todo/lists/${encodeGraphPathSegment(list.graphListId)}/tasks`,
       );
       const payload = (await response.json()) as { value?: GraphTodoTask[] };
-
-      for (const task of payload.value ?? []) {
-        const key = `${account.id}:${task.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        const dueDate = task.dueDateTime?.dateTime?.slice(0, 10) ?? today;
-        merged.push({
-          id: `graph-todo-${task.id}`,
-          title: task.title?.trim() || "(No title)",
-          date: dueDate,
-          allDay: true,
-          categoryId: "task",
-          colour: "#4A5A9C",
-          notes: task.body?.content?.trim() || undefined,
-          accountId: list.accountId,
-          externalId: task.id,
-          provider: "microsoft",
-          connectedAccountId: account.id,
-          completed: task.status === "completed",
-        });
-      }
+      batches.push(
+        (payload.value ?? []).map((task) => {
+          const dueDate = task.dueDateTime?.dateTime?.slice(0, 10) ?? today;
+          return {
+            id: `graph-todo-${task.id}`,
+            title: task.title?.trim() || "(No title)",
+            date: dueDate,
+            allDay: true,
+            categoryId: "task",
+            colour: "#4A5A9C",
+            notes: task.body?.content?.trim() || undefined,
+            accountId: list.accountId,
+            externalId: task.id,
+            provider: "microsoft" as const,
+            connectedAccountId: account.id,
+            completed: task.status === "completed",
+          };
+        }),
+      );
     } catch (error) {
       if (isGraphThrottleError(error)) {
         console.warn(`Todo tasks throttle — skipping "${list.name}" for ${accountId}:`, error);
-        continue;
+        return;
       }
       throw error;
     }
+  });
 
-    await sleep(GRAPH_CALENDAR_GAP_MS);
+  const merged: GraphCalendarItemDto[] = [];
+  const seen = new Set<string>();
+  for (const batch of batches) {
+    for (const dto of batch) {
+      const key = `${dto.connectedAccountId}:${dto.externalId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(dto);
+    }
   }
 
   return merged;
+}
+
+export async function fetchMicrosoftTodoListsAndTasks(
+  accountId: string,
+): Promise<{ lists: GraphTodoListDto[]; tasks: GraphCalendarItemDto[] }> {
+  const lists = await fetchMicrosoftTodoLists(accountId);
+  const tasks = await fetchMicrosoftTodoTasks(accountId, lists);
+  return { lists, tasks };
 }
 
 interface GraphContact {

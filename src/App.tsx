@@ -46,8 +46,7 @@ import {
   fetchAllMicrosoftCalendarsList,
   fetchAllMicrosoftContacts,
   fetchAllMicrosoftMail,
-  fetchAllMicrosoftTodoLists,
-  fetchAllMicrosoftTodoTasks,
+  fetchAllMicrosoftTodoListsAndTasks,
   fetchMicrosoftMail,
   fetchMicrosoftNotes,
   fetchMicrosoftStatus,
@@ -258,67 +257,7 @@ export default function App() {
       const status = await fetchMicrosoftStatus()
       setMicrosoftStatus(status)
       const accounts = status.accounts
-      if (accounts.length > 0) {
-        const settle = async <T,>(promise: Promise<T>): Promise<PromiseSettledResult<T>> => {
-          try {
-            return { status: 'fulfilled', value: await promise }
-          } catch (reason) {
-            return { status: 'rejected', reason }
-          }
-        }
-
-        // Serial Graph refresh — parallel bursts hit Microsoft MailboxConcurrency limits.
-        const mailResult = await settle(fetchAllMicrosoftMail(accounts))
-        const calendarsResult = await settle(fetchAllMicrosoftCalendarsList(accounts))
-        const calendarResult = await settle(fetchAllMicrosoftCalendar(accounts))
-        const todoListsResult = await settle(fetchAllMicrosoftTodoLists(accounts))
-        const todoTasksResult = await settle(fetchAllMicrosoftTodoTasks(accounts))
-        const contactsResult = await settle(fetchAllMicrosoftContacts(accounts))
-        const notesResult = await settle(
-          Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
-            batches.flat(),
-          ),
-        )
-
-        const mailBundle =
-          mailResult.status === 'fulfilled' ? mailResult.value : { mail: [], folders: [] }
-        const calendar = calendarResult.status === 'fulfilled' ? calendarResult.value : []
-        const outlookNotes = notesResult.status === 'fulfilled' ? notesResult.value : []
-        const outlookContacts = contactsResult.status === 'fulfilled' ? contactsResult.value : []
-        const calendars = calendarsResult.status === 'fulfilled' ? calendarsResult.value : []
-        const todoLists = todoListsResult.status === 'fulfilled' ? todoListsResult.value : []
-        const todoTasks = todoTasksResult.status === 'fulfilled' ? todoTasksResult.value : []
-
-        for (const result of [
-          mailResult,
-          calendarResult,
-          notesResult,
-          contactsResult,
-          calendarsResult,
-          todoListsResult,
-          todoTasksResult,
-        ]) {
-          if (result.status === 'rejected') console.error(result.reason)
-        }
-        setGraphEmailFolders((prev) => {
-          const other = prev.filter(
-            (folder) => !folder.accountId.startsWith('ms-'),
-          )
-          return [...mailBundle.folders, ...other]
-        })
-        setGraphEmails((prev) => {
-          const other = prev.filter((email) => email.provider !== 'microsoft')
-          return mergeGraphMail([], [...mailBundle.mail, ...other])
-        })
-        setGraphCalendarItems((prev) => {
-          const other = prev.filter((item) => item.provider !== 'microsoft')
-          return mergeGraphCalendar([], [...calendar, ...todoTasks, ...other])
-        })
-        setGraphNotes(outlookNotes)
-        setGraphContacts(outlookContacts)
-        setGraphCalendars(calendars)
-        setGraphTodoLists(todoLists)
-      } else {
+      if (accounts.length === 0) {
         setGraphEmailFolders((prev) => prev.filter((folder) => !folder.accountId.startsWith('ms-')))
         setGraphEmails((prev) => prev.filter((email) => email.provider !== 'microsoft'))
         setGraphCalendarItems((prev) => prev.filter((item) => item.provider !== 'microsoft'))
@@ -326,6 +265,93 @@ export default function App() {
         setGraphContacts([])
         setGraphCalendars([])
         setGraphTodoLists([])
+        return
+      }
+
+      const settle = async <T,>(promise: Promise<T>): Promise<PromiseSettledResult<T>> => {
+        try {
+          return { status: 'fulfilled', value: await promise }
+        } catch (reason) {
+          return { status: 'rejected', reason }
+        }
+      }
+
+      const logRejected = (label: string, result: PromiseSettledResult<unknown>) => {
+        if (result.status === 'rejected') console.error(label, result.reason)
+      }
+
+      const applyMicrosoftItems = (calendar: CalendarItem[], todoTasks: CalendarItem[]) => {
+        setGraphCalendarItems((prev) => {
+          const other = prev.filter((item) => item.provider !== 'microsoft')
+          return mergeGraphCalendar([], [...calendar, ...todoTasks, ...other])
+        })
+      }
+
+      // Default calendar first so week board / planner populate quickly.
+      const quickCalendarResult = await settle(
+        fetchAllMicrosoftCalendar(accounts, { defaultOnly: true }),
+      )
+      if (quickCalendarResult.status === 'fulfilled') {
+        applyMicrosoftItems(quickCalendarResult.value, [])
+      } else {
+        logRejected('Microsoft quick calendar', quickCalendarResult)
+      }
+
+      const [calendarsResult, calendarResult, todoBundleResult] = await Promise.all([
+        settle(fetchAllMicrosoftCalendarsList(accounts)),
+        settle(fetchAllMicrosoftCalendar(accounts)),
+        settle(fetchAllMicrosoftTodoListsAndTasks(accounts)),
+      ])
+
+      logRejected('Microsoft calendars', calendarsResult)
+      logRejected('Microsoft calendar events', calendarResult)
+      logRejected('Microsoft todo bundle', todoBundleResult)
+
+      const calendar = calendarResult.status === 'fulfilled' ? calendarResult.value : []
+      const todoBundle =
+        todoBundleResult.status === 'fulfilled'
+          ? todoBundleResult.value
+          : { lists: [] as GraphTodoListDto[], tasks: [] as CalendarItem[] }
+
+      applyMicrosoftItems(calendar, todoBundle.tasks)
+      if (calendarsResult.status === 'fulfilled') {
+        setGraphCalendars(calendarsResult.value)
+      }
+      setGraphTodoLists(todoBundle.lists)
+
+      setMicrosoftLoading(false)
+
+      // Mail, contacts, and notes continue in the background.
+      const [mailResult, contactsResult, notesResult] = await Promise.all([
+        settle(fetchAllMicrosoftMail(accounts)),
+        settle(fetchAllMicrosoftContacts(accounts)),
+        settle(
+          Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
+            batches.flat(),
+          ),
+        ),
+      ])
+
+      logRejected('Microsoft mail', mailResult)
+      logRejected('Microsoft contacts', contactsResult)
+      logRejected('Microsoft notes', notesResult)
+
+      if (mailResult.status === 'fulfilled') {
+        const mailBundle = mailResult.value
+        setGraphEmailFolders((prev) => {
+          const other = prev.filter((folder) => !folder.accountId.startsWith('ms-'))
+          return [...mailBundle.folders, ...other]
+        })
+        setGraphEmails((prev) => {
+          const other = prev.filter((email) => email.provider !== 'microsoft')
+          return mergeGraphMail([], [...mailBundle.mail, ...other])
+        })
+      }
+      if (contactsResult.status === 'fulfilled') {
+        setGraphContacts(contactsResult.value)
+      }
+      if (notesResult.status === 'fulfilled') {
+        setGraphNotes(notesResult.value)
       }
     } catch (error) {
       console.error(error)
