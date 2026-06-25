@@ -6,21 +6,37 @@ import type {
   EmailAccount,
   IntegrationAccountDefaults,
   IntegrationPreferences,
+  ItemCardDensity,
+  ItemColorStyle,
+  ItemDisplayOptions,
+  ItemDisplayPreset,
+  ItemTimePlacement,
+  ItemTitleSize,
   ListDisplayOptions,
   ListGroupBy,
   ListSortBy,
+  MultiDayAllDayLayout,
   WeekStartsOn,
 } from '../types'
 import {
+  DEFAULT_ITEM_DISPLAY,
   DEFAULT_VIEW_LABELS,
+  ITEM_COLOR_STYLE_LABELS,
+  ITEM_DENSITY_LABELS,
+  ITEM_DISPLAY_PRESET_LABELS,
+  ITEM_TIME_PLACEMENT_LABELS,
+  ITEM_TITLE_SIZE_LABELS,
   LIST_GROUP_LABELS,
   LIST_SORT_LABELS,
+  MULTI_DAY_ALL_DAY_LAYOUT_LABELS,
   SETTINGS_DEFAULT_VIEWS,
   TIME_FORMAT_LABELS,
   WEEK_START_LABELS,
+  applyItemDisplayPreset,
 } from '../types'
 import type { AuthUser } from '../../shared/auth'
 import { APP_NAME } from '../branding'
+import { addDays, getWeekDays, getWeekSpanSegments, startOfWeek, toISODate } from '../dateUtils'
 import { MOCK_HOUSEHOLD_MEMBERS } from '../../shared/householdPermissions'
 import type { HouseholdPermissionsConfig } from '../lib/householdPermissions'
 import type {
@@ -37,6 +53,8 @@ import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
 import { GoogleConnectPanel } from './GoogleConnectPanel'
 import { AppleConnectPanel } from './AppleConnectPanel'
 import { CategoriesManager } from './CategoriesManager'
+import { CalendarItemRow } from './CalendarItem'
+import { MultiDaySpanBar } from './MultiDaySpanBar'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
 import {
@@ -52,6 +70,8 @@ interface SettingsViewProps {
   items: CalendarItem[]
   listOptions: ListDisplayOptions
   onListOptionsChange: (options: ListDisplayOptions) => void
+  itemDisplayOptions: ItemDisplayOptions
+  onItemDisplayOptionsChange: (options: ItemDisplayOptions) => void
   calendarPreferences: CalendarPreferences
   onCalendarPreferencesChange: (prefs: CalendarPreferences) => void
   integrationPreferences: IntegrationPreferences
@@ -89,16 +109,32 @@ interface SettingsViewProps {
   onAuthUserUpdated?: (user: AuthUser) => void
   onLogout?: () => void
   onOpenSuperAdmin?: () => void
+  /** Rendered inside the side panel — hides duplicate page header. */
+  embedded?: boolean
 }
 
 const GROUP_OPTIONS: ListGroupBy[] = ['none', 'category', 'time', 'kind']
 const SORT_OPTIONS: ListSortBy[] = ['time', 'alpha']
+const ITEM_PRESET_OPTIONS: ItemDisplayPreset[] = ['classic', 'minimal', 'dense', 'bold', 'custom']
+const DENSITY_OPTIONS: ItemCardDensity[] = ['comfortable', 'compact', 'minimal']
+const COLOR_STYLE_OPTIONS: ItemColorStyle[] = [
+  'accent-bar',
+  'tinted',
+  'left-border',
+  'dot-only',
+  'filled',
+]
+const TIME_PLACEMENT_OPTIONS: ItemTimePlacement[] = ['above-title', 'inline-title', 'hidden']
+const TITLE_SIZE_OPTIONS: ItemTitleSize[] = ['sm', 'md', 'lg']
+const MULTI_DAY_LAYOUT_OPTIONS: MultiDayAllDayLayout[] = ['span-bar', 'repeat-daily']
 
 export function SettingsView({
   categories,
   items,
   listOptions,
   onListOptionsChange,
+  itemDisplayOptions,
+  onItemDisplayOptionsChange,
   calendarPreferences,
   onCalendarPreferencesChange,
   integrationPreferences,
@@ -136,6 +172,7 @@ export function SettingsView({
   onAuthUserUpdated,
   onLogout,
   onOpenSuperAdmin,
+  embedded = false,
 }: SettingsViewProps) {
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const [showSyncHelp, setShowSyncHelp] = useState(false)
@@ -185,6 +222,73 @@ export function SettingsView({
     return counts
   }, [items])
 
+  const previewCategory = categories.find((c) => c.kind === 'event') ?? categories[0]
+  const previewTaskCategory = categories.find((c) => c.kind === 'task') ?? previewCategory
+  const previewWeekStart = useMemo(() => startOfWeek(new Date(), 1), [])
+  const previewItems = useMemo((): CalendarItem[] => {
+    const eventColour = previewCategory?.colour ?? '#6366f1'
+    const eventCategoryId = previewCategory?.id ?? 'preview-event-cat'
+    const taskColour = previewTaskCategory?.colour ?? '#10b981'
+    const taskCategoryId = previewTaskCategory?.id ?? 'preview-task-cat'
+    const weekDays = getWeekDays(previewWeekStart)
+    const midWeek = weekDays[2] ?? new Date()
+    const endWeek = weekDays[4] ?? addDays(midWeek, 2)
+    return [
+      {
+        id: 'preview-event',
+        title: 'Team standup',
+        categoryId: eventCategoryId,
+        colour: eventColour,
+        date: toISODate(weekDays[1] ?? midWeek),
+        startTime: '09:30',
+        endTime: '10:00',
+        allDay: false,
+        accountId: 'preview',
+      },
+      {
+        id: 'preview-multiday',
+        title: 'Annual leave',
+        categoryId: eventCategoryId,
+        colour: eventColour,
+        date: toISODate(midWeek),
+        endDate: toISODate(endWeek),
+        allDay: true,
+        accountId: 'preview',
+      },
+      {
+        id: 'preview-task',
+        title: 'Send invoice to Henderson',
+        categoryId: taskCategoryId,
+        colour: taskColour,
+        date: toISODate(weekDays[1] ?? midWeek),
+        allDay: true,
+        accountId: 'preview',
+        notes: 'Include Q2 breakdown',
+      },
+    ]
+  }, [previewCategory, previewTaskCategory, previewWeekStart])
+
+  const previewSpanSegments = useMemo(
+    () => getWeekSpanSegments(previewItems, previewWeekStart),
+    [previewItems, previewWeekStart],
+  )
+
+  const changeItemDisplay = (patch: Partial<ItemDisplayOptions>) => {
+    onItemDisplayOptionsChange({
+      ...itemDisplayOptions,
+      ...patch,
+      preset: 'custom',
+    })
+  }
+
+  const changeItemDisplayPreset = (preset: ItemDisplayPreset) => {
+    if (preset === 'custom') {
+      onItemDisplayOptionsChange({ ...itemDisplayOptions, preset: 'custom' })
+      return
+    }
+    onItemDisplayOptionsChange(applyItemDisplayPreset(preset))
+  }
+
   const scrollToOutlook = () => {
     outlookPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
@@ -212,15 +316,26 @@ export function SettingsView({
   }
 
   return (
-    <div className="px-4 pb-6 pt-2 safe-top">
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <SectionHeader title="Settings" />
-        <ListOptionsMenu
-          categories={categories}
-          options={listOptions}
-          onChange={onListOptionsChange}
-        />
-      </div>
+    <div className={embedded ? 'px-2 pb-6 pt-1' : 'px-4 pb-6 pt-2 safe-top'}>
+      {!embedded && (
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <SectionHeader title="Settings" />
+          <ListOptionsMenu
+            categories={categories}
+            options={listOptions}
+            onChange={onListOptionsChange}
+          />
+        </div>
+      )}
+      {embedded && (
+        <div className="mb-3 flex justify-end px-1">
+          <ListOptionsMenu
+            categories={categories}
+            options={listOptions}
+            onChange={onListOptionsChange}
+          />
+        </div>
+      )}
 
       <SettingsGroup title="Categories">
         <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
@@ -258,6 +373,126 @@ export function SettingsView({
           label="Hide completed"
           checked={listOptions.hideCompleted}
           onChange={(hideCompleted) => onListOptionsChange({ ...listOptions, hideCompleted })}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Item appearance">
+        <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
+          How events and tasks look in week board, lists, planner, and today.
+        </p>
+        <div className="mx-4 mb-4 rounded-2xl border border-wf-border bg-wf-bg p-2">
+          {itemDisplayOptions.multiDayAllDayLayout === 'span-bar' && previewSpanSegments.length > 0 && (
+            <div className="mb-2 overflow-hidden rounded-xl border border-wf-border bg-wf-surface">
+              <MultiDaySpanBar
+                segments={previewSpanSegments}
+                weekStart={previewWeekStart}
+                compact
+                seamless
+                showDayLabels={false}
+              />
+            </div>
+          )}
+          {previewItems
+            .filter((item) => item.id !== 'preview-multiday' || itemDisplayOptions.multiDayAllDayLayout === 'repeat-daily')
+            .map((item) => (
+            <CalendarItemRow
+              key={item.id}
+              item={item}
+              categories={categories}
+              displayOptions={itemDisplayOptions}
+              spanPosition={
+                item.id === 'preview-multiday' && itemDisplayOptions.multiDayAllDayLayout === 'repeat-daily'
+                  ? 'start'
+                  : 'single'
+              }
+            />
+          ))}
+        </div>
+        <SettingsSelectRow
+          label="Style preset"
+          value={itemDisplayOptions.preset}
+          options={ITEM_PRESET_OPTIONS.map((key) => ({
+            value: key,
+            label: ITEM_DISPLAY_PRESET_LABELS[key],
+          }))}
+          onChange={changeItemDisplayPreset}
+        />
+        <SettingsSelectRow
+          label="Multi-day all-day"
+          value={itemDisplayOptions.multiDayAllDayLayout}
+          options={MULTI_DAY_LAYOUT_OPTIONS.map((key) => ({
+            value: key,
+            label: MULTI_DAY_ALL_DAY_LAYOUT_LABELS[key],
+          }))}
+          onChange={(multiDayAllDayLayout) => changeItemDisplay({ multiDayAllDayLayout })}
+        />
+        <SettingsSelectRow
+          label="Density"
+          value={itemDisplayOptions.density}
+          options={DENSITY_OPTIONS.map((key) => ({ value: key, label: ITEM_DENSITY_LABELS[key] }))}
+          onChange={(density) => changeItemDisplay({ density })}
+        />
+        <SettingsSelectRow
+          label="Colour style"
+          value={itemDisplayOptions.colorStyle}
+          options={COLOR_STYLE_OPTIONS.map((key) => ({
+            value: key,
+            label: ITEM_COLOR_STYLE_LABELS[key],
+          }))}
+          onChange={(colorStyle) => changeItemDisplay({ colorStyle })}
+        />
+        <SettingsSelectRow
+          label="Time label"
+          value={itemDisplayOptions.timePlacement}
+          options={TIME_PLACEMENT_OPTIONS.map((key) => ({
+            value: key,
+            label: ITEM_TIME_PLACEMENT_LABELS[key],
+          }))}
+          onChange={(timePlacement) => changeItemDisplay({ timePlacement })}
+        />
+        <SettingsSelectRow
+          label="Title size"
+          value={itemDisplayOptions.titleSize}
+          options={TITLE_SIZE_OPTIONS.map((key) => ({
+            value: key,
+            label: ITEM_TITLE_SIZE_LABELS[key],
+          }))}
+          onChange={(titleSize) => changeItemDisplay({ titleSize })}
+        />
+        <SettingsToggleRow
+          label="Category badge"
+          checked={itemDisplayOptions.showCategoryBadge}
+          onChange={(showCategoryBadge) => changeItemDisplay({ showCategoryBadge })}
+        />
+        <SettingsToggleRow
+          label="Notes preview"
+          checked={itemDisplayOptions.showNotesPreview}
+          onChange={(showNotesPreview) => changeItemDisplay({ showNotesPreview })}
+        />
+        <SettingsToggleRow
+          label="Anytime label on tasks"
+          checked={itemDisplayOptions.showTaskAnytimeLabel}
+          onChange={(showTaskAnytimeLabel) => changeItemDisplay({ showTaskAnytimeLabel })}
+        />
+        <SettingsToggleRow
+          label="Strike completed items"
+          checked={itemDisplayOptions.showCompletedStrike}
+          onChange={(showCompletedStrike) => changeItemDisplay({ showCompletedStrike })}
+        />
+        <SettingsToggleRow
+          label="Card shadow"
+          checked={itemDisplayOptions.cardShadow}
+          onChange={(cardShadow) => changeItemDisplay({ cardShadow })}
+        />
+        <SettingsToggleRow
+          label="Card border"
+          checked={itemDisplayOptions.cardBorder}
+          onChange={(cardBorder) => changeItemDisplay({ cardBorder })}
+        />
+        <SettingsActionRow
+          label="Reset item appearance"
+          value="Defaults"
+          onClick={() => onItemDisplayOptionsChange({ ...DEFAULT_ITEM_DISPLAY })}
         />
       </SettingsGroup>
 

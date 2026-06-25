@@ -1,4 +1,4 @@
-import type { CalendarItem, Category, ListDisplayOptions } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
 import { formatDayHeader, getAgendaEntries, parseDate } from '../dateUtils'
 import { GroupedItemList } from './GroupedItemList'
 import { SectionHeader } from './ui/SectionHeader'
@@ -7,11 +7,12 @@ interface AgendaViewProps {
   items: CalendarItem[]
   categories: Category[]
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
 
-export function AgendaView({ items, categories, listOptions, onItemTap, onToggleComplete }: AgendaViewProps) {
+export function AgendaView({ items, categories, listOptions, displayOptions, onItemTap, onToggleComplete }: AgendaViewProps) {
   const entries = getAgendaEntries(items)
 
   const grouped = entries.reduce<Map<string, typeof entries>>((map, entry) => {
@@ -45,6 +46,7 @@ export function AgendaView({ items, categories, listOptions, onItemTap, onToggle
                 viewDate={parseDate(date)}
                 categories={categories}
                 listOptions={listOptions}
+                displayOptions={displayOptions}
                 onItemTap={onItemTap}
                 onToggleComplete={onToggleComplete}
               />

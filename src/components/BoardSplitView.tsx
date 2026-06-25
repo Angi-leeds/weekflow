@@ -3,7 +3,7 @@ import type { BoardPin } from '../../shared/boardPins'
 import type { SharedBoardItem } from '../../shared/boardPins'
 import type { EntityType, ItemLink } from '../../shared/links'
 import type { BoardLayoutMode, KanbanGroupBy } from '../../shared/boardLayout'
-import type { CalendarItem, Category, EmailMessage, ListDisplayOptions } from '../types'
+import type { CalendarItem, Category, EmailMessage, ItemDisplayOptions, ListDisplayOptions } from '../types'
 import {
   loadBoardLayout,
   loadKanbanGroupBy,
@@ -24,6 +24,7 @@ interface BoardSplitViewProps {
   items: CalendarItem[]
   categories: Category[]
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   sharedItems: SharedBoardItem[]
   pins: BoardPin[]
   links: ItemLink[]
@@ -43,6 +44,7 @@ export function BoardSplitView({
   items,
   categories,
   listOptions,
+  displayOptions,
   sharedItems,
   pins,
   links,
@@ -176,6 +178,7 @@ export function BoardSplitView({
                 items={items}
                 categories={categories}
                 listOptions={listOptions}
+                displayOptions={displayOptions}
                 onItemTap={onItemTap}
               />
             </div>

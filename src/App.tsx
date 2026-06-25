@@ -6,7 +6,7 @@ import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder } from './types'
-import { type ListDisplayOptions } from './types'
+import { type ListDisplayOptions, type ItemDisplayOptions } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, getMockCloudFolder, calendarAccountForCategory } from './mockData'
 import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from './dateUtils'
@@ -21,11 +21,15 @@ import {
   loadCalendarPreferences,
   loadIntegrationAccountDefaults,
   loadIntegrationPreferences,
+  loadItemDisplayOptions,
   loadListOptions,
+  loadSettingsPanelPreferences,
   saveCalendarPreferences,
   saveIntegrationAccountDefaults,
   saveIntegrationPreferences,
+  saveItemDisplayOptions,
   saveListOptions,
+  saveSettingsPanelPreferences,
 } from './lib/appSettings'
 import {
   getActiveMember,
@@ -138,6 +142,7 @@ import { PlannerView } from './components/PlannerView'
 import { ContactsView } from './components/ContactsView'
 import { NotesView } from './components/NotesView'
 import { SettingsView } from './components/SettingsView'
+import { SettingsPanel } from './components/SettingsPanel'
 import { SuperAdminView } from './components/SuperAdminView'
 import { useAuth } from './context/AuthContext'
 import { BoardSplitView } from './components/BoardSplitView'
@@ -177,6 +182,13 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<CalendarItem | null>(null)
   const [listOptions, setListOptions] = useState<ListDisplayOptions>(() => loadListOptions())
+  const [itemDisplayOptions, setItemDisplayOptions] = useState<ItemDisplayOptions>(() =>
+    loadItemDisplayOptions(),
+  )
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsExpanded, setSettingsExpanded] = useState(
+    () => loadSettingsPanelPreferences().expanded,
+  )
   const [integrationPreferences, setIntegrationPreferences] = useState(() =>
     loadIntegrationPreferences(),
   )
@@ -497,6 +509,14 @@ export default function App() {
   }, [listOptions])
 
   useEffect(() => {
+    saveItemDisplayOptions(itemDisplayOptions)
+  }, [itemDisplayOptions])
+
+  useEffect(() => {
+    saveSettingsPanelPreferences({ expanded: settingsExpanded })
+  }, [settingsExpanded])
+
+  useEffect(() => {
     saveCalendarPreferences(calendarPreferences)
   }, [calendarPreferences])
 
@@ -549,33 +569,43 @@ export default function App() {
       sectionParam === 'contacts' ||
       sectionParam === 'notes' ||
       sectionParam === 'today' ||
-      sectionParam === 'settings' ||
       sectionParam === 'super-admin'
     ) {
       if (sectionParam === 'super-admin' && !user?.isSuperAdmin) {
-        setSection('settings')
+        setSettingsOpen(true)
+        setSettingsExpanded(true)
       } else {
         setSection(sectionParam)
+        if (sectionParam === 'super-admin') {
+          setSettingsOpen(false)
+        }
       }
+    } else if (sectionParam === 'settings') {
+      setSettingsOpen(true)
+      setSettingsExpanded(true)
     }
 
     const microsoftResult = params.get('microsoft')
     if (microsoftResult === 'connected') {
-      setSection('settings')
+      setSettingsOpen(true)
+      setSettingsExpanded(true)
       setToastMessage(`Connected ${params.get('email') ?? 'Microsoft account'}`)
       void refreshMicrosoft()
     } else if (microsoftResult === 'error') {
-      setSection('settings')
+      setSettingsOpen(true)
+      setSettingsExpanded(true)
       setToastMessage('Microsoft sign-in failed. Check server OAuth settings.')
     }
 
     const googleResult = params.get('google')
     if (googleResult === 'connected') {
-      setSection('settings')
+      setSettingsOpen(true)
+      setSettingsExpanded(true)
       setToastMessage(`Connected ${params.get('email') ?? 'Google account'}`)
       void refreshGoogle()
     } else if (googleResult === 'error') {
-      setSection('settings')
+      setSettingsOpen(true)
+      setSettingsExpanded(true)
       setToastMessage('Google sign-in failed. Check server OAuth settings.')
     }
 
@@ -1477,6 +1507,79 @@ export default function App() {
       section === 'planner' ||
       section === 'today')
 
+  const openSettings = () => {
+    setSettingsOpen(true)
+    setSettingsExpanded(true)
+  }
+
+  const toggleSettings = () => {
+    setSettingsOpen((open) => {
+      if (!open) {
+        setSettingsExpanded(true)
+        return true
+      }
+      return false
+    })
+  }
+
+  const handleSectionChange = (next: AppSection) => {
+    if (next === 'super-admin') {
+      setSettingsOpen(false)
+    }
+    setSection(next)
+  }
+
+  const settingsView = (
+    <SettingsView
+      embedded
+      categories={categories}
+      items={displayCalendarItems}
+      listOptions={listOptions}
+      onListOptionsChange={setListOptions}
+      itemDisplayOptions={itemDisplayOptions}
+      onItemDisplayOptionsChange={setItemDisplayOptions}
+      calendarPreferences={calendarPreferences}
+      onCalendarPreferencesChange={handleCalendarPreferencesChange}
+      integrationPreferences={integrationPreferences}
+      onIntegrationPreferencesChange={setIntegrationPreferences}
+      integrationAccountDefaults={integrationAccountDefaults}
+      onIntegrationAccountDefaultsChange={setIntegrationAccountDefaults}
+      graphCalendars={graphCalendars}
+      graphGoogleCalendars={graphGoogleCalendars}
+      graphTodoLists={graphTodoLists}
+      onSaveCategory={handleSaveCategory}
+      onDeleteCategory={handleDeleteCategory}
+      permissionsConfig={permissionsConfig}
+      onPermissionsChange={setPermissionsConfig}
+      microsoftStatus={microsoftStatus}
+      microsoftLoading={microsoftLoading}
+      onMicrosoftRefresh={refreshMicrosoft}
+      googleStatus={googleStatus}
+      googleLoading={googleLoading}
+      onGoogleRefresh={refreshGoogle}
+      appleStatus={appleStatus}
+      appleLoading={appleLoading}
+      onAppleRefresh={refreshApple}
+      emailAccounts={emailAccounts}
+      calendarAccounts={calendarAccounts}
+      usingRealMicrosoft={usingRealMicrosoft}
+      usingRealGoogle={usingRealGoogle}
+      usingRealApple={usingRealApple}
+      onShowCalendarAccount={handleShowCalendarAccount}
+      onShowToast={setToastMessage}
+      onOpenBoard={() => handleSectionChange('board')}
+      onEnterKiosk={() => setKioskMode(true)}
+      sharedBoardCount={sharedBoardItems.length}
+      authEnabled={config?.enabled ?? false}
+      authUser={user}
+      onAuthUserUpdated={setUser}
+      onLogout={config?.enabled ? logout : undefined}
+      onOpenSuperAdmin={
+        user?.isSuperAdmin ? () => handleSectionChange('super-admin') : undefined
+      }
+    />
+  )
+
   if (kioskMode) {
     return (
       <div className="fixed inset-0 z-40 flex flex-col bg-wf-bg">
@@ -1510,7 +1613,8 @@ export default function App() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-wf-bg">
-      <main className="relative min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
         {section === 'calendar' && (
           <>
             <CalendarNav
@@ -1538,6 +1642,7 @@ export default function App() {
                   categories={categories}
                   viewMode={viewMode}
                   listOptions={listOptions}
+                  displayOptions={itemDisplayOptions}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -1547,6 +1652,7 @@ export default function App() {
                   items={calendarItems}
                   categories={categories}
                   listOptions={listOptions}
+                  displayOptions={itemDisplayOptions}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -1563,6 +1669,7 @@ export default function App() {
                   items={calendarItems}
                   categories={categories}
                   listOptions={listOptions}
+                  displayOptions={itemDisplayOptions}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -1578,6 +1685,7 @@ export default function App() {
             items={displayCalendarItems}
             categories={categories}
             listOptions={listOptions}
+            displayOptions={itemDisplayOptions}
             onListOptionsChange={setListOptions}
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}
@@ -1590,6 +1698,7 @@ export default function App() {
             items={displayCalendarItems}
             categories={categories}
             listOptions={listOptions}
+            displayOptions={itemDisplayOptions}
             sharedItems={sharedBoardItems}
             pins={boardPins}
             links={links}
@@ -1667,7 +1776,7 @@ export default function App() {
             onShareUpdate={handleShareUpdate}
             onSaveNote={handleSaveNote}
             onDeleteNote={handleDeleteNote}
-            onOpenSettings={() => setSection('settings')}
+            onOpenSettings={openSettings}
             onShowToast={setToastMessage}
           />
         )}
@@ -1677,64 +1786,31 @@ export default function App() {
             items={displayCalendarItems}
             categories={categories}
             listOptions={listOptions}
+            displayOptions={itemDisplayOptions}
             onListOptionsChange={setListOptions}
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}
           />
         )}
 
-        {section === 'settings' && (
-          <SettingsView
-            categories={categories}
-            items={displayCalendarItems}
-            listOptions={listOptions}
-            onListOptionsChange={setListOptions}
-            calendarPreferences={calendarPreferences}
-            onCalendarPreferencesChange={handleCalendarPreferencesChange}
-            integrationPreferences={integrationPreferences}
-            onIntegrationPreferencesChange={setIntegrationPreferences}
-            integrationAccountDefaults={integrationAccountDefaults}
-            onIntegrationAccountDefaultsChange={setIntegrationAccountDefaults}
-            graphCalendars={graphCalendars}
-            graphGoogleCalendars={graphGoogleCalendars}
-            graphTodoLists={graphTodoLists}
-            onSaveCategory={handleSaveCategory}
-            onDeleteCategory={handleDeleteCategory}
-            permissionsConfig={permissionsConfig}
-            onPermissionsChange={setPermissionsConfig}
-            microsoftStatus={microsoftStatus}
-            microsoftLoading={microsoftLoading}
-            onMicrosoftRefresh={refreshMicrosoft}
-            googleStatus={googleStatus}
-            googleLoading={googleLoading}
-            onGoogleRefresh={refreshGoogle}
-            appleStatus={appleStatus}
-            appleLoading={appleLoading}
-            onAppleRefresh={refreshApple}
-            emailAccounts={emailAccounts}
-            calendarAccounts={calendarAccounts}
-            usingRealMicrosoft={usingRealMicrosoft}
-            usingRealGoogle={usingRealGoogle}
-            usingRealApple={usingRealApple}
-            onShowCalendarAccount={handleShowCalendarAccount}
-            onShowToast={setToastMessage}
-            onOpenBoard={() => setSection('board')}
-            onEnterKiosk={() => setKioskMode(true)}
-            sharedBoardCount={sharedBoardItems.length}
-            authEnabled={config?.enabled ?? false}
-            authUser={user}
-            onAuthUserUpdated={setUser}
-            onLogout={config?.enabled ? logout : undefined}
-            onOpenSuperAdmin={
-              user?.isSuperAdmin ? () => setSection('super-admin') : undefined
-            }
+        {section === 'super-admin' && user?.isSuperAdmin && (
+          <SuperAdminView
+            onBack={() => {
+              openSettings()
+            }}
           />
         )}
+        </main>
 
-        {section === 'super-admin' && user?.isSuperAdmin && (
-          <SuperAdminView onBack={() => setSection('settings')} />
-        )}
-      </main>
+        <SettingsPanel
+          open={settingsOpen}
+          expanded={settingsExpanded}
+          onExpandedChange={setSettingsExpanded}
+          onClose={() => setSettingsOpen(false)}
+        >
+          {settingsView}
+        </SettingsPanel>
+      </div>
 
       {showFab && (
         <button
@@ -1748,8 +1824,10 @@ export default function App() {
       )}
 
       <BottomNav
-        active={section === 'super-admin' ? 'settings' : section}
-        onChange={setSection}
+        active={section}
+        settingsOpen={settingsOpen}
+        onChange={handleSectionChange}
+        onSettingsToggle={toggleSettings}
         unreadEmails={unreadCount}
       />
 

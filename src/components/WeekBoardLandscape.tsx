@@ -1,4 +1,4 @@
-import type { CalendarItem, Category, ListDisplayOptions } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
 import {
   formatDayColumnHeader,
   formatDayNumber,
@@ -6,6 +6,7 @@ import {
   getWeekDays,
   getWeekSpanSegments,
   isToday,
+  shouldShowMultiDaySpanBar,
 } from '../dateUtils'
 import { GroupedItemList } from './GroupedItemList'
 import { MultiDaySpanBar } from './MultiDaySpanBar'
@@ -15,6 +16,7 @@ interface WeekBoardLandscapeProps {
   items: CalendarItem[]
   categories: Category[]
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
@@ -24,12 +26,14 @@ export function WeekBoardLandscape({
   items,
   categories,
   listOptions,
+  displayOptions,
   onItemTap,
   onToggleComplete,
 }: WeekBoardLandscapeProps) {
   const days = getWeekDays(weekStart)
   const spanSegments = getWeekSpanSegments(items, weekStart)
-  const hasSpans = spanSegments.length > 0
+  const multiDayLayout = displayOptions?.multiDayAllDayLayout ?? 'span-bar'
+  const hasSpans = shouldShowMultiDaySpanBar(spanSegments, multiDayLayout)
 
   return (
     <div className="grid h-full min-h-0 grid-cols-7 grid-rows-[auto_auto_1fr] px-3 pb-4">
@@ -65,7 +69,7 @@ export function WeekBoardLandscape({
       )}
 
       {days.map((day, i) => {
-        const entries = getDayItemEntriesForColumn(items, day)
+        const entries = getDayItemEntriesForColumn(items, day, multiDayLayout)
         const today = isToday(day)
 
         return (
@@ -80,6 +84,7 @@ export function WeekBoardLandscape({
               viewDate={day}
               categories={categories}
               listOptions={listOptions}
+              displayOptions={displayOptions}
               compact
               emptyMessage="—"
               onItemTap={onItemTap}

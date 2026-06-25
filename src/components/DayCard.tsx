@@ -1,6 +1,6 @@
 import type { DayItemEntry } from '../dateUtils'
 import { formatDayHeader, getDayItemEntries, getDayItemEntriesForColumn, isToday, toISODate } from '../dateUtils'
-import type { CalendarItem, Category, ListDisplayOptions } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
 import { GroupedItemList } from './GroupedItemList'
 
 interface DayCardProps {
@@ -8,11 +8,12 @@ interface DayCardProps {
   entries: DayItemEntry[]
   categories: Category[]
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
 
-export function DayCard({ date, entries, categories, listOptions, onItemTap, onToggleComplete }: DayCardProps) {
+export function DayCard({ date, entries, categories, listOptions, displayOptions, onItemTap, onToggleComplete }: DayCardProps) {
   const today = isToday(date)
 
   return (
@@ -42,6 +43,7 @@ export function DayCard({ date, entries, categories, listOptions, onItemTap, onT
           viewDate={date}
           categories={categories}
           listOptions={listOptions}
+          displayOptions={displayOptions}
           onItemTap={onItemTap}
           onToggleComplete={onToggleComplete}
         />
@@ -55,6 +57,7 @@ interface DayCardFromDateProps {
   allItems: CalendarItem[]
   categories: Category[]
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   excludeMultiDayAllDay?: boolean
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
@@ -65,13 +68,14 @@ export function DayCardFromDate({
   allItems,
   categories,
   listOptions,
+  displayOptions,
   excludeMultiDayAllDay,
   ...rest
 }: DayCardFromDateProps) {
   const entries = excludeMultiDayAllDay
-    ? getDayItemEntriesForColumn(allItems, date)
+    ? getDayItemEntriesForColumn(allItems, date, 'span-bar')
     : getDayItemEntries(allItems, date)
-  return <DayCard date={date} entries={entries} categories={categories} listOptions={listOptions} {...rest} />
+  return <DayCard date={date} entries={entries} categories={categories} listOptions={listOptions} displayOptions={displayOptions} {...rest} />
 }
 
 export { toISODate }

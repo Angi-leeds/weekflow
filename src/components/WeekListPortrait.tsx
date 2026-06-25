@@ -1,5 +1,5 @@
-import type { CalendarItem, Category, ListDisplayOptions } from '../types'
-import { getWeekDays, getWeekSpanSegments } from '../dateUtils'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
+import { getWeekDays, getWeekSpanSegments, shouldShowMultiDaySpanBar } from '../dateUtils'
 import { DayCardFromDate } from './DayCard'
 import { MultiDaySpanBar } from './MultiDaySpanBar'
 
@@ -8,6 +8,7 @@ interface WeekListPortraitProps {
   items: CalendarItem[]
   categories: Category[]
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
@@ -17,17 +18,20 @@ export function WeekListPortrait({
   items,
   categories,
   listOptions,
+  displayOptions,
   onItemTap,
   onToggleComplete,
 }: WeekListPortraitProps) {
   const days = getWeekDays(weekStart)
   const spanSegments = getWeekSpanSegments(items, weekStart)
+  const multiDayLayout = displayOptions?.multiDayAllDayLayout ?? 'span-bar'
+  const showSpanBar = shouldShowMultiDaySpanBar(spanSegments, multiDayLayout)
 
   return (
     <div className="space-y-3 px-4 pb-6 pt-1">
       <p className="px-1 text-subhead font-semibold text-wf-text-secondary">This week</p>
 
-      {spanSegments.length > 0 && (
+      {showSpanBar && (
         <div className="overflow-hidden rounded-[var(--radius-lg)] border border-wf-border bg-wf-surface shadow-[var(--shadow-card)]">
           <MultiDaySpanBar
             segments={spanSegments}
@@ -46,7 +50,8 @@ export function WeekListPortrait({
           allItems={items}
           categories={categories}
           listOptions={listOptions}
-          excludeMultiDayAllDay
+          displayOptions={displayOptions}
+          excludeMultiDayAllDay={multiDayLayout === 'span-bar'}
           onItemTap={onItemTap}
           onToggleComplete={onToggleComplete}
         />

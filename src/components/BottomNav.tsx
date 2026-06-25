@@ -13,7 +13,9 @@ import type { AppSection } from '../types'
 
 interface BottomNavProps {
   active: AppSection
+  settingsOpen: boolean
   onChange: (section: AppSection) => void
+  onSettingsToggle: () => void
   unreadEmails: number
 }
 
@@ -28,17 +30,23 @@ const TABS: { id: AppSection; label: string; icon: LucideIcon; activeIcon?: Luci
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
-export function BottomNav({ active, onChange, unreadEmails }: BottomNavProps) {
+export function BottomNav({
+  active,
+  settingsOpen,
+  onChange,
+  onSettingsToggle,
+  unreadEmails,
+}: BottomNavProps) {
   return (
     <nav className="shrink-0 border-t border-wf-border bg-wf-surface/95 backdrop-blur-xl safe-bottom">
       <div className="flex items-stretch justify-around px-1 pt-1.5 pb-1">
         {TABS.map(({ id, label, icon: Icon }) => {
-          const isActive = active === id
+          const isActive = id === 'settings' ? settingsOpen : active === id
           return (
             <button
               key={id}
               type="button"
-              onClick={() => onChange(id)}
+              onClick={() => (id === 'settings' ? onSettingsToggle() : onChange(id))}
               className={`relative flex flex-1 flex-col items-center gap-0.5 rounded-xl py-1.5 transition-colors ${
                 isActive ? 'text-wf-accent' : 'text-wf-text-tertiary'
               }`}

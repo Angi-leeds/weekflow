@@ -3,6 +3,8 @@ import type {
   CalendarViewMode,
   IntegrationAccountDefaults,
   IntegrationPreferences,
+  ItemDisplayOptions,
+  ItemDisplayPreset,
   ListDisplayOptions,
   TimeFormat,
 } from "../types";
@@ -10,13 +12,35 @@ import {
   DEFAULT_CALENDAR_PREFERENCES,
   DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS,
   DEFAULT_INTEGRATION_PREFERENCES,
+  DEFAULT_ITEM_DISPLAY,
   DEFAULT_LIST_OPTIONS,
 } from "../types";
 
 const CALENDAR_PREFS_KEY = "weekflow-calendar-preferences";
 const LIST_OPTIONS_KEY = "weekflow-list-options";
+const ITEM_DISPLAY_KEY = "weekflow-item-display";
 const INTEGRATION_PREFS_KEY = "weekflow-integration-preferences";
 const INTEGRATION_DEFAULTS_KEY = "weekflow-integration-account-defaults";
+const SETTINGS_PANEL_KEY = "weekflow-settings-panel";
+
+export interface SettingsPanelPreferences {
+  expanded: boolean;
+}
+
+export function loadSettingsPanelPreferences(): SettingsPanelPreferences {
+  try {
+    const raw = localStorage.getItem(SETTINGS_PANEL_KEY);
+    if (!raw) return { expanded: true };
+    const parsed = JSON.parse(raw) as Partial<SettingsPanelPreferences>;
+    return { expanded: parsed.expanded !== false };
+  } catch {
+    return { expanded: true };
+  }
+}
+
+export function saveSettingsPanelPreferences(prefs: SettingsPanelPreferences): void {
+  localStorage.setItem(SETTINGS_PANEL_KEY, JSON.stringify(prefs));
+}
 
 let activeTimeFormat: TimeFormat = DEFAULT_CALENDAR_PREFERENCES.timeFormat;
 
@@ -72,6 +96,46 @@ export function loadListOptions(): ListDisplayOptions {
 
 export function saveListOptions(options: ListDisplayOptions): void {
   localStorage.setItem(LIST_OPTIONS_KEY, JSON.stringify(options));
+}
+
+export function loadItemDisplayOptions(): ItemDisplayOptions {
+  try {
+    const raw = localStorage.getItem(ITEM_DISPLAY_KEY);
+    if (!raw) return { ...DEFAULT_ITEM_DISPLAY };
+    const parsed = JSON.parse(raw) as Partial<ItemDisplayOptions>;
+    return {
+      preset: isItemDisplayPreset(parsed.preset) ? parsed.preset : DEFAULT_ITEM_DISPLAY.preset,
+      density: parsed.density ?? DEFAULT_ITEM_DISPLAY.density,
+      colorStyle: parsed.colorStyle ?? DEFAULT_ITEM_DISPLAY.colorStyle,
+      timePlacement: parsed.timePlacement ?? DEFAULT_ITEM_DISPLAY.timePlacement,
+      titleSize: parsed.titleSize ?? DEFAULT_ITEM_DISPLAY.titleSize,
+      multiDayAllDayLayout:
+        parsed.multiDayAllDayLayout === 'repeat-daily' ? 'repeat-daily' : 'span-bar',
+      showCategoryBadge: parsed.showCategoryBadge ?? DEFAULT_ITEM_DISPLAY.showCategoryBadge,
+      showNotesPreview: parsed.showNotesPreview ?? DEFAULT_ITEM_DISPLAY.showNotesPreview,
+      showTaskAnytimeLabel:
+        parsed.showTaskAnytimeLabel ?? DEFAULT_ITEM_DISPLAY.showTaskAnytimeLabel,
+      showCompletedStrike: parsed.showCompletedStrike ?? DEFAULT_ITEM_DISPLAY.showCompletedStrike,
+      cardShadow: parsed.cardShadow ?? DEFAULT_ITEM_DISPLAY.cardShadow,
+      cardBorder: parsed.cardBorder ?? DEFAULT_ITEM_DISPLAY.cardBorder,
+    };
+  } catch {
+    return { ...DEFAULT_ITEM_DISPLAY };
+  }
+}
+
+export function saveItemDisplayOptions(options: ItemDisplayOptions): void {
+  localStorage.setItem(ITEM_DISPLAY_KEY, JSON.stringify(options));
+}
+
+function isItemDisplayPreset(value: unknown): value is ItemDisplayPreset {
+  return (
+    value === "classic" ||
+    value === "minimal" ||
+    value === "dense" ||
+    value === "bold" ||
+    value === "custom"
+  );
 }
 
 export function loadIntegrationPreferences(): IntegrationPreferences {

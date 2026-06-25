@@ -1,4 +1,4 @@
-import type { CalendarItem, CalendarViewMode, Category, ListDisplayOptions } from '../types'
+import type { CalendarItem, CalendarViewMode, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
 import { useIsLandscape } from '../hooks/useMediaQuery'
 import { WeekListPortrait } from './WeekListPortrait'
 import { WeekBoardLandscape } from './WeekBoardLandscape'
@@ -10,6 +10,7 @@ interface WeekViewProps {
   categories: Category[]
   viewMode: CalendarViewMode
   listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
@@ -20,6 +21,7 @@ export function WeekView({
   categories,
   viewMode,
   listOptions,
+  displayOptions,
   onItemTap,
   onToggleComplete,
 }: WeekViewProps) {
@@ -45,6 +47,7 @@ export function WeekView({
         items={items}
         categories={categories}
         listOptions={listOptions}
+        displayOptions={displayOptions}
         onItemTap={onItemTap}
         onToggleComplete={onToggleComplete}
       />
@@ -57,6 +60,7 @@ export function WeekView({
       items={items}
       categories={categories}
       listOptions={listOptions}
+      displayOptions={displayOptions}
       onItemTap={onItemTap}
       onToggleComplete={onToggleComplete}
     />

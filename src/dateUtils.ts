@@ -208,11 +208,25 @@ export function getDayItemEntries(items: CalendarItem[], date: Date): DayItemEnt
   return sortDayItemEntries(entries)
 }
 
-/** Day column/list entries — excludes multi-day all-day (shown as spanning bars). */
-export function getDayItemEntriesForColumn(items: CalendarItem[], date: Date): DayItemEntry[] {
+/** Day column/list entries — optionally excludes multi-day all-day (shown as spanning bars). */
+export function getDayItemEntriesForColumn(
+  items: CalendarItem[],
+  date: Date,
+  multiDayAllDayLayout: 'span-bar' | 'repeat-daily' = 'span-bar',
+): DayItemEntry[] {
+  if (multiDayAllDayLayout === 'repeat-daily') {
+    return getDayItemEntries(items, date)
+  }
   return getDayItemEntries(items, date).filter(
     (e) => !(e.item.allDay && isMultiDay(e.item)),
   )
+}
+
+export function shouldShowMultiDaySpanBar(
+  segments: WeekSpanSegment[],
+  multiDayAllDayLayout: 'span-bar' | 'repeat-daily' = 'span-bar',
+): boolean {
+  return multiDayAllDayLayout === 'span-bar' && segments.length > 0
 }
 
 export function sortItemsForDay(items: CalendarItem[], date: Date): CalendarItem[] {

@@ -50,6 +50,142 @@ export const LIST_SORT_LABELS: Record<ListSortBy, string> = {
   alpha: 'A – Z',
 }
 
+/** Visual style for event/task cards (week board, lists, planner). */
+export type ItemDisplayPreset = 'classic' | 'minimal' | 'dense' | 'bold' | 'custom'
+
+export type ItemCardDensity = 'comfortable' | 'compact' | 'minimal'
+
+export type ItemColorStyle = 'accent-bar' | 'tinted' | 'left-border' | 'dot-only' | 'filled'
+
+export type ItemTimePlacement = 'above-title' | 'inline-title' | 'hidden'
+
+export type ItemTitleSize = 'sm' | 'md' | 'lg'
+
+/** How multi-day all-day events appear in week board / week list. */
+export type MultiDayAllDayLayout = 'span-bar' | 'repeat-daily'
+
+export interface ItemDisplayOptions {
+  preset: ItemDisplayPreset
+  density: ItemCardDensity
+  colorStyle: ItemColorStyle
+  timePlacement: ItemTimePlacement
+  titleSize: ItemTitleSize
+  multiDayAllDayLayout: MultiDayAllDayLayout
+  showCategoryBadge: boolean
+  showNotesPreview: boolean
+  showTaskAnytimeLabel: boolean
+  showCompletedStrike: boolean
+  cardShadow: boolean
+  cardBorder: boolean
+}
+
+export const DEFAULT_ITEM_DISPLAY: ItemDisplayOptions = {
+  preset: 'classic',
+  density: 'compact',
+  colorStyle: 'accent-bar',
+  timePlacement: 'above-title',
+  titleSize: 'md',
+  multiDayAllDayLayout: 'span-bar',
+  showCategoryBadge: true,
+  showNotesPreview: true,
+  showTaskAnytimeLabel: true,
+  showCompletedStrike: true,
+  cardShadow: false,
+  cardBorder: false,
+}
+
+export const ITEM_DISPLAY_PRESET_LABELS: Record<ItemDisplayPreset, string> = {
+  classic: 'Classic',
+  minimal: 'Minimal',
+  dense: 'Dense',
+  bold: 'Bold',
+  custom: 'Custom',
+}
+
+export const ITEM_DENSITY_LABELS: Record<ItemCardDensity, string> = {
+  comfortable: 'Comfortable',
+  compact: 'Compact',
+  minimal: 'Minimal',
+}
+
+export const ITEM_COLOR_STYLE_LABELS: Record<ItemColorStyle, string> = {
+  'accent-bar': 'Colour bar (left)',
+  tinted: 'Soft tint fill',
+  'left-border': 'Thick left edge',
+  'dot-only': 'Dot only',
+  filled: 'Solid fill',
+}
+
+export const ITEM_TIME_PLACEMENT_LABELS: Record<ItemTimePlacement, string> = {
+  'above-title': 'Above title',
+  'inline-title': 'Inline with title',
+  hidden: 'Hidden',
+}
+
+export const ITEM_TITLE_SIZE_LABELS: Record<ItemTitleSize, string> = {
+  sm: 'Small',
+  md: 'Medium',
+  lg: 'Large',
+}
+
+export const MULTI_DAY_ALL_DAY_LAYOUT_LABELS: Record<MultiDayAllDayLayout, string> = {
+  'span-bar': 'Stretch across days',
+  'repeat-daily': 'Repeat on each day',
+}
+
+export const ITEM_DISPLAY_PRESETS: Record<
+  Exclude<ItemDisplayPreset, 'custom'>,
+  ItemDisplayOptions
+> = {
+  classic: { ...DEFAULT_ITEM_DISPLAY, preset: 'classic' },
+  minimal: {
+    preset: 'minimal',
+    density: 'minimal',
+    colorStyle: 'dot-only',
+    timePlacement: 'inline-title',
+    titleSize: 'sm',
+    multiDayAllDayLayout: 'span-bar',
+    showCategoryBadge: false,
+    showNotesPreview: false,
+    showTaskAnytimeLabel: false,
+    showCompletedStrike: true,
+    cardShadow: false,
+    cardBorder: false,
+  },
+  dense: {
+    preset: 'dense',
+    density: 'minimal',
+    colorStyle: 'accent-bar',
+    timePlacement: 'inline-title',
+    titleSize: 'sm',
+    multiDayAllDayLayout: 'span-bar',
+    showCategoryBadge: false,
+    showNotesPreview: false,
+    showTaskAnytimeLabel: true,
+    showCompletedStrike: true,
+    cardShadow: false,
+    cardBorder: false,
+  },
+  bold: {
+    preset: 'bold',
+    density: 'comfortable',
+    colorStyle: 'filled',
+    timePlacement: 'above-title',
+    titleSize: 'lg',
+    multiDayAllDayLayout: 'span-bar',
+    showCategoryBadge: true,
+    showNotesPreview: true,
+    showTaskAnytimeLabel: true,
+    showCompletedStrike: true,
+    cardShadow: true,
+    cardBorder: true,
+  },
+}
+
+export function applyItemDisplayPreset(preset: Exclude<ItemDisplayPreset, 'custom'>): ItemDisplayOptions {
+  return { ...ITEM_DISPLAY_PRESETS[preset] }
+}
+
 export type TimeFormat = '12h' | '24h'
 
 export type WeekStartsOn = 0 | 1
