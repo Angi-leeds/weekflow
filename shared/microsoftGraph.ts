@@ -6,6 +6,7 @@ export const MICROSOFT_GRAPH_SCOPES = [
   "Mail.Read.Shared",
   "MailboxSettings.ReadWrite",
   "Calendars.ReadWrite",
+  "Calendars.Read.Shared",
   "Tasks.ReadWrite",
   "Contacts.ReadWrite",
   "Files.Read.All",
@@ -72,6 +73,8 @@ export interface GraphMailAttachmentDto {
   contentId?: string;
 }
 
+export type GraphCalendarKind = "owned" | "shared" | "subscribed";
+
 export interface GraphCalendarDto {
   id: string;
   graphCalendarId: string;
@@ -79,6 +82,13 @@ export interface GraphCalendarDto {
   accountId: string;
   connectedAccountId: string;
   isDefault?: boolean;
+  colour?: string;
+  canEdit?: boolean;
+  ownerName?: string;
+  ownerEmail?: string;
+  kind?: GraphCalendarKind;
+  /** When loaded from a delegated shared mailbox. */
+  sharedMailboxEmail?: string;
 }
 
 export interface GraphTodoListDto {

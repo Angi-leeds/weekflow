@@ -720,7 +720,51 @@ export type EmailInboxMode = 'merged' | 'account' | 'folder'
 
 export type CalendarFilter =
   | { mode: 'merged' }
+  | { mode: 'preset'; presetId: string }
   | { mode: 'account'; accountId: string }
+
+export type CalendarSourceKind = 'owned' | 'shared' | 'subscribed'
+
+export interface CalendarSourcePreset {
+  id: string
+  label: string
+  calendarIds: string[]
+}
+
+export interface CalendarSourcePreferences {
+  /** Composite calendar source ids; empty = all calendars enabled. */
+  enabledCalendarIds: string[]
+  showMicrosoftTodoTasks: boolean
+  presets: CalendarSourcePreset[]
+}
+
+export const DEFAULT_CALENDAR_SOURCE_PRESETS: CalendarSourcePreset[] = [
+  { id: 'work', label: 'Work set', calendarIds: [] },
+  { id: 'personal', label: 'Personal set', calendarIds: [] },
+]
+
+export const DEFAULT_CALENDAR_SOURCE_PREFERENCES: CalendarSourcePreferences = {
+  enabledCalendarIds: [],
+  showMicrosoftTodoTasks: true,
+  presets: DEFAULT_CALENDAR_SOURCE_PRESETS,
+}
+
+export interface UnifiedCalendarSource {
+  id: string
+  name: string
+  accountId: string
+  connectedAccountId: string
+  provider: 'microsoft' | 'google' | 'mock'
+  providerCalendarId: string
+  colour?: string
+  canEdit?: boolean
+  kind: CalendarSourceKind
+  isDefault?: boolean
+  ownerName?: string
+  ownerEmail?: string
+  sharedMailboxEmail?: string
+  accountLabel?: string
+}
 
 export interface EmailMessage {
   id: string

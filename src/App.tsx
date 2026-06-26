@@ -5,7 +5,7 @@ import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
-import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder, SaveItemOptions } from './types'
+import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, CalendarSourcePreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder, SaveItemOptions } from './types'
 import { type ListDisplayOptions, type ItemDisplayOptions, dateHeaderDisplayFromPreferences } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, getMockCloudFolder, calendarAccountForCategory } from './mockData'
@@ -26,6 +26,7 @@ import {
 } from './lib/calendarNavigation'
 import {
   loadCalendarPreferences,
+  loadCalendarSourcePreferences,
   loadIntegrationAccountDefaults,
   loadIntegrationPreferences,
   loadItemDisplayOptions,
@@ -33,6 +34,7 @@ import {
   loadSettingsPanelPreferences,
   loadTodayHighlightOptions,
   saveCalendarPreferences,
+  saveCalendarSourcePreferences,
   saveIntegrationAccountDefaults,
   saveIntegrationPreferences,
   saveItemDisplayOptions,
@@ -46,7 +48,11 @@ import {
   saveHouseholdPermissions,
   type HouseholdPermissionsConfig,
 } from './lib/householdPermissions'
-import { calendarFilterMatchesItem } from './components/CalendarAccountFilter'
+import {
+  calendarFilterMatchesItem,
+  mergeCalendarSources,
+  pruneCalendarSourcePreferences,
+} from './lib/calendarSources'
 import {
   createMicrosoftNote,
   deleteMicrosoftNote,
@@ -247,6 +253,9 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [clipboardItem, setClipboardItem] = useState<CalendarItem | null>(null)
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>(() => loadCalendarFilter())
+  const [calendarSourcePrefs, setCalendarSourcePrefs] = useState<CalendarSourcePreferences>(() =>
+    loadCalendarSourcePreferences(),
+  )
   const [permissionsConfig, setPermissionsConfig] = useState<HouseholdPermissionsConfig>(() =>
     loadHouseholdPermissions(),
   )
@@ -348,8 +357,13 @@ export default function App() {
       console.info('[MyAxis] Calendar and tasks ready — loading mail and contacts in background')
 
       // Full calendar list + all events continue without blocking the UI.
+      const sharedMailboxEmail = integrationAccountDefaults.sharedMailboxEmail?.trim()
       const [calendarsResult, calendarResult] = await Promise.all([
-        settle(fetchAllMicrosoftCalendarsList(accounts)),
+        settle(
+          fetchAllMicrosoftCalendarsList(accounts, {
+            sharedMailboxEmail: sharedMailboxEmail || undefined,
+          }),
+        ),
         settle(fetchAllMicrosoftCalendar(accounts)),
       ])
 
@@ -394,7 +408,7 @@ export default function App() {
     } finally {
       setMicrosoftLoading(false)
     }
-  }, [])
+  }, [integrationAccountDefaults.sharedMailboxEmail])
 
   const refreshMicrosoftNotes = useCallback(async () => {
     const accounts = microsoftStatus?.accounts ?? []
@@ -553,6 +567,26 @@ export default function App() {
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
   const canManageBoardLayout = memberCan(activeMember, permissionsConfig, 'manageBoardLayout')
 
+  const calendarSources = useMemo(
+    () =>
+      mergeCalendarSources(
+        graphCalendars,
+        graphGoogleCalendars,
+        calendarAccounts,
+        usingRealIntegrations,
+      ),
+    [graphCalendars, graphGoogleCalendars, calendarAccounts, usingRealIntegrations],
+  )
+
+  const effectiveCalendarSourcePrefs = useMemo(
+    () =>
+      pruneCalendarSourcePreferences(
+        calendarSourcePrefs,
+        calendarSources.map((source) => source.id),
+      ),
+    [calendarSourcePrefs, calendarSources],
+  )
+
   const diaryVisibleItems = useMemo(
     () => filterItemsForDiary(displayCalendarItems, categories, calendarPreferences),
     [displayCalendarItems, categories, calendarPreferences],
@@ -564,16 +598,26 @@ export default function App() {
   )
 
   const calendarItems = useMemo(() => {
-    if (calendarFilter.mode === 'merged') return diaryVisibleItems
     return diaryVisibleItems.filter((item) =>
-      calendarFilterMatchesItem(calendarFilter, item.accountId),
+      calendarFilterMatchesItem(
+        calendarFilter,
+        item,
+        effectiveCalendarSourcePrefs,
+        calendarSources,
+      ),
     )
-  }, [diaryVisibleItems, calendarFilter])
+  }, [diaryVisibleItems, calendarFilter, effectiveCalendarSourcePrefs, calendarSources])
 
   useEffect(() => {
     const accountIds = calendarAccounts.map((account) => account.id)
-    setCalendarFilter((prev) => sanitizeCalendarFilter(prev, accountIds))
-  }, [calendarAccounts])
+    setCalendarFilter((prev) =>
+      sanitizeCalendarFilter(prev, accountIds, effectiveCalendarSourcePrefs),
+    )
+  }, [calendarAccounts, effectiveCalendarSourcePrefs])
+
+  useEffect(() => {
+    saveCalendarSourcePreferences(calendarSourcePrefs)
+  }, [calendarSourcePrefs])
 
   useEffect(() => {
     setItems((prev) => {
@@ -2122,6 +2166,9 @@ export default function App() {
       graphCalendars={graphCalendars}
       graphGoogleCalendars={graphGoogleCalendars}
       graphTodoLists={graphTodoLists}
+      calendarSources={calendarSources}
+      calendarSourcePrefs={effectiveCalendarSourcePrefs}
+      onCalendarSourcePrefsChange={setCalendarSourcePrefs}
       onSaveCategory={handleSaveCategory}
       onDeleteCategory={handleDeleteCategory}
       permissionsConfig={permissionsConfig}
@@ -2205,13 +2252,17 @@ export default function App() {
               listOptions={listOptions}
               calendarFilter={calendarFilter}
               calendarAccounts={calendarAccounts}
+              calendarSources={calendarSources}
+              calendarSourcePrefs={effectiveCalendarSourcePrefs}
               onCalendarFilterChange={setCalendarFilter}
+              onCalendarSourcePrefsChange={setCalendarSourcePrefs}
               onListOptionsChange={setListOptions}
               onToday={goToday}
               onViewChange={setViewMode}
               onPrimaryTabChange={handlePrimaryTabChange}
+              showTodoToggle={usingRealMicrosoft}
             />
-            <div className={viewMode === 'week-board' || viewMode === 'week-list' || viewMode === 'week-timeline' || viewMode === 'month' ? 'h-[calc(100%-130px)] min-h-[400px]' : ''}>
+            <div className={viewMode === 'week-board' || viewMode === 'week-list' || viewMode === 'week-timeline' || viewMode === 'month' ? 'h-[calc(100%-170px)] min-h-[400px]' : ''}>
               {viewMode === 'week-list' || viewMode === 'week-board' || viewMode === 'week-timeline' ? (
                 <WeekView
                   weekStartsOn={calendarPreferences.weekStartsOn}

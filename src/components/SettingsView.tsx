@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type {
   CalendarItem,
   CalendarPreferences,
+  CalendarSourcePreferences,
   Category,
   EmailAccount,
   IntegrationAccountDefaults,
@@ -17,6 +18,7 @@ import type {
   ListSortBy,
   MultiDayAllDayLayout,
   TodayHighlightOptions,
+  UnifiedCalendarSource,
   WeekStartsOn,
   WeekViewAnchor,
 } from '../types'
@@ -78,6 +80,7 @@ import {
 import { categoryDiaryStatusLabel, shouldShowInDiary } from '../lib/diaryVisibility'
 import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
 import { TodayHighlightSettingsPanel } from './TodayHighlightSettingsPanel'
+import { CalendarPresetSettingsPanel } from './CalendarPresetSettingsPanel'
 
 interface SettingsViewProps {
   categories: Category[]
@@ -97,6 +100,9 @@ interface SettingsViewProps {
   graphCalendars: GraphCalendarDto[]
   graphGoogleCalendars: GoogleCalendarDto[]
   graphTodoLists: GraphTodoListDto[]
+  calendarSources: UnifiedCalendarSource[]
+  calendarSourcePrefs: CalendarSourcePreferences
+  onCalendarSourcePrefsChange: (prefs: CalendarSourcePreferences) => void
   onSaveCategory: (category: Category) => void
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
@@ -162,6 +168,9 @@ export function SettingsView({
   graphCalendars,
   graphGoogleCalendars,
   graphTodoLists,
+  calendarSources,
+  calendarSourcePrefs,
+  onCalendarSourcePrefsChange,
   onSaveCategory,
   onDeleteCategory,
   permissionsConfig,
@@ -591,18 +600,28 @@ export function SettingsView({
           }
         />
         <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          {usingRealMicrosoft
-            ? 'Tap a calendar to filter the week view to that account.'
-            : 'Demo calendars — tap to preview the account filter.'}
+          {calendarSources.length > 0
+            ? 'Use preset chips on the calendar view, or tap Calendars to show or hide individual sources.'
+            : usingRealMicrosoft
+              ? 'Tap a calendar to filter the week view to that account.'
+              : 'Demo calendars — tap to preview the account filter.'}
         </p>
-        {calendarAccounts.map((account) => (
-          <SettingsActionRow
-            key={account.id}
-            label={account.label}
-            value={usingRealMicrosoft ? account.email : 'Demo · tap to filter'}
-            onClick={() => onShowCalendarAccount(account.id)}
+        {calendarSources.length > 0 ? (
+          <CalendarPresetSettingsPanel
+            sources={calendarSources}
+            prefs={calendarSourcePrefs}
+            onChange={onCalendarSourcePrefsChange}
           />
-        ))}
+        ) : (
+          calendarAccounts.map((account) => (
+            <SettingsActionRow
+              key={account.id}
+              label={account.label}
+              value={usingRealMicrosoft ? account.email : 'Demo · tap to filter'}
+              onClick={() => onShowCalendarAccount(account.id)}
+            />
+          ))
+        )}
       </SettingsGroup>
 
       <SettingsGroup title={DIARY_SETTINGS.sectionTitle}>

@@ -60,8 +60,3 @@ function FilterChip({
     </button>
   );
 }
-
-export function calendarFilterMatchesItem(filter: CalendarFilter, accountId: string): boolean {
-  if (filter.mode === "merged") return true;
-  return filter.accountId === accountId;
-}

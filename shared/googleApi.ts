@@ -65,6 +65,8 @@ export interface GoogleDriveFolderDto {
   parentId?: string;
 }
 
+export type GoogleCalendarKind = "owned" | "shared" | "subscribed";
+
 export interface GoogleCalendarDto {
   id: string;
   googleCalendarId: string;
@@ -72,4 +74,9 @@ export interface GoogleCalendarDto {
   accountId: string;
   connectedAccountId: string;
   isDefault?: boolean;
+  colour?: string;
+  canEdit?: boolean;
+  ownerName?: string;
+  ownerEmail?: string;
+  kind?: GoogleCalendarKind;
 }

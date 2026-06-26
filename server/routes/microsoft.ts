@@ -18,6 +18,7 @@ import {
   respondToMicrosoftCalendarEvent,
   fetchMicrosoftCalendarEvents,
   fetchMicrosoftCalendars,
+  fetchSharedMailboxCalendars,
   deleteMicrosoftContact,
   fetchMicrosoftContacts,
   createMicrosoftContact,
@@ -706,6 +707,24 @@ export function registerMicrosoftRoutes(app: Express): void {
     } catch (error) {
       console.error("GET /api/microsoft/calendars failed:", error);
       const message = error instanceof Error ? error.message : "Failed to fetch calendars";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/microsoft/calendars/shared-mailbox", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const sharedMailboxEmail =
+      typeof req.query.sharedMailboxEmail === "string" ? req.query.sharedMailboxEmail : null;
+    if (!accountId || !sharedMailboxEmail) {
+      res.status(400).json({ message: "accountId and sharedMailboxEmail are required" });
+      return;
+    }
+    try {
+      res.json(await fetchSharedMailboxCalendars(accountId, sharedMailboxEmail));
+    } catch (error) {
+      console.error("GET /api/microsoft/calendars/shared-mailbox failed:", error);
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch shared mailbox calendars";
       res.status(500).json({ message });
     }
   });

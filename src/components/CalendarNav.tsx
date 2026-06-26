@@ -1,9 +1,23 @@
-import type { CalendarFilter, CalendarViewMode, Category, EmailAccount, ListDisplayOptions } from '../types'
+import { useState } from 'react'
+import { CalendarDays } from 'lucide-react'
+import type {
+  CalendarFilter,
+  CalendarSourcePreferences,
+  CalendarViewMode,
+  Category,
+  EmailAccount,
+  ListDisplayOptions,
+  UnifiedCalendarSource,
+} from '../types'
+import { DEFAULT_CALENDAR_SOURCE_PREFERENCES } from '../types'
 import { isToday } from '../dateUtils'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { getPrimaryTab, ViewsMenu, type PrimaryCalendarTab } from './ui/ViewsMenu'
 import { CalendarAccountFilter } from './CalendarAccountFilter'
+import { CalendarPresetChips } from './CalendarPresetChips'
+import { CalendarSourcesPanel } from './CalendarSourcesPanel'
+import { enabledCalendarIdSet } from '../lib/calendarSources'
 
 interface CalendarNavProps {
   viewMode: CalendarViewMode
@@ -12,11 +26,15 @@ interface CalendarNavProps {
   listOptions: ListDisplayOptions
   calendarFilter: CalendarFilter
   calendarAccounts: EmailAccount[]
+  calendarSources: UnifiedCalendarSource[]
+  calendarSourcePrefs: CalendarSourcePreferences
   onCalendarFilterChange: (filter: CalendarFilter) => void
+  onCalendarSourcePrefsChange: (prefs: CalendarSourcePreferences) => void
   onListOptionsChange: (options: ListDisplayOptions) => void
   onToday: () => void
   onViewChange: (mode: CalendarViewMode) => void
   onPrimaryTabChange: (tab: PrimaryCalendarTab) => void
+  showTodoToggle?: boolean
 }
 
 const PRIMARY_SEGMENTS: { id: PrimaryCalendarTab; label: string }[] = [
@@ -32,14 +50,21 @@ export function CalendarNav({
   listOptions,
   calendarFilter,
   calendarAccounts,
+  calendarSources = [],
+  calendarSourcePrefs = DEFAULT_CALENDAR_SOURCE_PREFERENCES,
   onCalendarFilterChange,
+  onCalendarSourcePrefsChange = () => {},
   onListOptionsChange,
   onToday,
   onViewChange,
   onPrimaryTabChange,
+  showTodoToggle = true,
 }: CalendarNavProps) {
+  const [sourcesOpen, setSourcesOpen] = useState(false)
   const isWeekBased = ['week-list', 'week-board', 'week-timeline'].includes(viewMode)
   const primaryTab = getPrimaryTab(viewMode, isToday(selectedDay)) ?? 'week'
+  const useMultiCalendarUi = calendarSources.length > 0
+  const enabledCount = enabledCalendarIdSet(calendarSourcePrefs, calendarSources).size
 
   const title =
     viewMode === 'month' || isWeekBased
@@ -50,7 +75,6 @@ export function CalendarNav({
 
   return (
     <div className="sticky top-0 z-20 border-b border-wf-border bg-wf-bg/90 px-4 pb-3 pt-2 backdrop-blur-xl safe-top">
-      {/* Top row: nav + title + today */}
       <div className="mb-3 flex items-center gap-2">
         <div className="w-[72px]" />
 
@@ -93,7 +117,6 @@ export function CalendarNav({
         </button>
       </div>
 
-      {/* Segmented control + views menu */}
       <div className="flex items-center gap-2">
         <SegmentedControl
           segments={PRIMARY_SEGMENTS}
@@ -105,13 +128,46 @@ export function CalendarNav({
         <ViewsMenu viewMode={viewMode} onViewChange={onViewChange} />
       </div>
 
-      {calendarAccounts.length > 0 && (
-        <CalendarAccountFilter
-          filter={calendarFilter}
-          accounts={calendarAccounts}
-          onChange={onCalendarFilterChange}
-        />
+      {useMultiCalendarUi ? (
+        <div className="mt-2 flex items-start gap-2">
+          <button
+            type="button"
+            onClick={() => setSourcesOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-wf-surface px-3 py-1 text-caption font-semibold text-wf-text-secondary shadow-[var(--shadow-card)]"
+            aria-expanded={sourcesOpen}
+          >
+            <CalendarDays size={14} />
+            Calendars
+            <span className="rounded-full bg-wf-accent-soft px-1.5 py-0.5 text-[10px] font-bold text-wf-accent">
+              {enabledCount}
+            </span>
+          </button>
+          <div className="min-w-0 flex-1">
+            <CalendarPresetChips
+              filter={calendarFilter}
+              prefs={calendarSourcePrefs}
+              onChange={onCalendarFilterChange}
+            />
+          </div>
+        </div>
+      ) : (
+        calendarAccounts.length > 0 && (
+          <CalendarAccountFilter
+            filter={calendarFilter}
+            accounts={calendarAccounts}
+            onChange={onCalendarFilterChange}
+          />
+        )
       )}
+
+      <CalendarSourcesPanel
+        open={sourcesOpen}
+        onClose={() => setSourcesOpen(false)}
+        sources={calendarSources}
+        prefs={calendarSourcePrefs}
+        onChange={onCalendarSourcePrefsChange}
+        showTodoToggle={showTodoToggle}
+      />
     </div>
   )
 }

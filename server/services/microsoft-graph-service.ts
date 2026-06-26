@@ -439,27 +439,97 @@ function mapInviteResponse(
   return "none";
 }
 
-export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphCalendarDto[]> {
-  const account = await getConnectedAccountRecord(accountId);
-  if (!account) throw new Error("Connected account not found");
+interface GraphCalendarRow {
+  id: string;
+  name?: string;
+  isDefaultCalendar?: boolean;
+  hexColor?: string;
+  canEdit?: boolean;
+  owner?: { name?: string; address?: string };
+}
 
-  const response = await graphFetch(
-    accountId,
-    "/me/calendars?$select=id,name,isDefaultCalendar&$top=50",
-  );
-  const payload = (await response.json()) as {
-    value?: Array<{ id: string; name?: string; isDefaultCalendar?: boolean }>;
-  };
+function classifyMicrosoftCalendarKind(
+  calendar: GraphCalendarRow,
+  accountEmail: string,
+): GraphCalendarDto["kind"] {
+  const ownerEmail = calendar.owner?.address?.toLowerCase();
+  const selfEmail = accountEmail.toLowerCase();
+  if (ownerEmail && ownerEmail !== selfEmail) return "shared";
+  if (calendar.canEdit === false) return "subscribed";
+  return "owned";
+}
+
+function mapGraphCalendarRow(
+  calendar: GraphCalendarRow,
+  account: ConnectedAccountRecord,
+  options?: { sharedMailboxEmail?: string },
+): GraphCalendarDto {
   const accountKey = accountKeyFromRecord(account);
-
-  return (payload.value ?? []).map((calendar) => ({
+  return {
     id: `${accountKey}-cal-${calendar.id}`,
     graphCalendarId: calendar.id,
     name: calendar.name ?? "Calendar",
     accountId: accountKey,
     connectedAccountId: account.id,
     isDefault: calendar.isDefaultCalendar,
-  }));
+    colour: calendar.hexColor,
+    canEdit: calendar.canEdit,
+    ownerName: calendar.owner?.name,
+    ownerEmail: calendar.owner?.address,
+    kind: classifyMicrosoftCalendarKind(calendar, account.email),
+    sharedMailboxEmail: options?.sharedMailboxEmail,
+  };
+}
+
+async function fetchGraphCalendarPage(
+  accountId: string,
+  path: string,
+): Promise<GraphCalendarRow[]> {
+  const rows: GraphCalendarRow[] = [];
+  let nextUrl: string | null = path;
+
+  while (nextUrl) {
+    const response = await graphFetch(accountId, nextUrl);
+    const payload = (await response.json()) as {
+      value?: GraphCalendarRow[];
+      "@odata.nextLink"?: string;
+    };
+    rows.push(...(payload.value ?? []));
+    nextUrl = payload["@odata.nextLink"]
+      ? payload["@odata.nextLink"].replace(MICROSOFT_GRAPH_BASE, "")
+      : null;
+  }
+
+  return rows;
+}
+
+export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphCalendarDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const rows = await fetchGraphCalendarPage(
+    accountId,
+    "/me/calendars?$select=id,name,isDefaultCalendar,hexColor,canEdit,owner&$top=50",
+  );
+
+  return rows.map((calendar) => mapGraphCalendarRow(calendar, account));
+}
+
+export async function fetchSharedMailboxCalendars(
+  accountId: string,
+  sharedMailboxEmail: string,
+): Promise<GraphCalendarDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const rows = await fetchGraphCalendarPage(
+    accountId,
+    `/users/${encodeURIComponent(sharedMailboxEmail)}/calendars?$select=id,name,isDefaultCalendar,hexColor,canEdit,owner&$top=50`,
+  );
+
+  return rows.map((calendar) =>
+    mapGraphCalendarRow(calendar, account, { sharedMailboxEmail }),
+  );
 }
 
 export async function fetchMicrosoftCalendarEvents(

@@ -1,5 +1,7 @@
 import type {
   CalendarPreferences,
+  CalendarSourcePreferences,
+  CalendarSourcePreset,
   CalendarViewMode,
   DiaryTasksMode,
   IntegrationAccountDefaults,
@@ -14,6 +16,8 @@ import type {
 } from "../types";
 import {
   DEFAULT_CALENDAR_PREFERENCES,
+  DEFAULT_CALENDAR_SOURCE_PREFERENCES,
+  DEFAULT_CALENDAR_SOURCE_PRESETS,
   DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS,
   DEFAULT_INTEGRATION_PREFERENCES,
   DEFAULT_ITEM_DISPLAY,
@@ -29,6 +33,7 @@ const ITEM_DISPLAY_KEY = "weekflow-item-display";
 const TODAY_HIGHLIGHT_KEY = "weekflow-today-highlight";
 const INTEGRATION_PREFS_KEY = "weekflow-integration-preferences";
 const INTEGRATION_DEFAULTS_KEY = "weekflow-integration-account-defaults";
+const CALENDAR_SOURCES_KEY = "weekflow-calendar-sources";
 const SETTINGS_PANEL_KEY = "weekflow-settings-panel";
 
 export interface SettingsPanelPreferences {
@@ -289,6 +294,49 @@ export function loadIntegrationAccountDefaults(): IntegrationAccountDefaults {
 
 export function saveIntegrationAccountDefaults(defaults: IntegrationAccountDefaults): void {
   localStorage.setItem(INTEGRATION_DEFAULTS_KEY, JSON.stringify(defaults));
+}
+
+function isCalendarSourcePreset(value: unknown): value is CalendarSourcePreset {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<CalendarSourcePreset>;
+  return (
+    typeof entry.id === "string" &&
+    typeof entry.label === "string" &&
+    Array.isArray(entry.calendarIds) &&
+    entry.calendarIds.every((id) => typeof id === "string")
+  );
+}
+
+export function loadCalendarSourcePreferences(): CalendarSourcePreferences {
+  try {
+    const raw = localStorage.getItem(CALENDAR_SOURCES_KEY);
+    if (!raw) return { ...DEFAULT_CALENDAR_SOURCE_PREFERENCES, presets: [...DEFAULT_CALENDAR_SOURCE_PRESETS] };
+    const parsed = JSON.parse(raw) as Partial<CalendarSourcePreferences>;
+    const defaultPresetsById = new Map(DEFAULT_CALENDAR_SOURCE_PRESETS.map((preset) => [preset.id, preset]));
+    const parsedPresets = Array.isArray(parsed.presets)
+      ? parsed.presets.filter(isCalendarSourcePreset)
+      : [];
+    const presets = DEFAULT_CALENDAR_SOURCE_PRESETS.map((defaultPreset) => {
+      const saved = parsedPresets.find((preset) => preset.id === defaultPreset.id);
+      return saved ?? defaultPreset;
+    });
+    for (const preset of parsedPresets) {
+      if (!defaultPresetsById.has(preset.id)) presets.push(preset);
+    }
+    return {
+      enabledCalendarIds: Array.isArray(parsed.enabledCalendarIds)
+        ? parsed.enabledCalendarIds.filter((id) => typeof id === "string")
+        : [],
+      showMicrosoftTodoTasks: parsed.showMicrosoftTodoTasks !== false,
+      presets,
+    };
+  } catch {
+    return { ...DEFAULT_CALENDAR_SOURCE_PREFERENCES, presets: [...DEFAULT_CALENDAR_SOURCE_PRESETS] };
+  }
+}
+
+export function saveCalendarSourcePreferences(prefs: CalendarSourcePreferences): void {
+  localStorage.setItem(CALENDAR_SOURCES_KEY, JSON.stringify(prefs));
 }
 
 function isDiaryTasksMode(value: unknown): value is DiaryTasksMode {

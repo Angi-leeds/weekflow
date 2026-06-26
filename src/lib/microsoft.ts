@@ -255,6 +255,14 @@ export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphC
   );
 }
 
+export async function fetchSharedMailboxCalendars(
+  accountId: string,
+  sharedMailboxEmail: string,
+): Promise<GraphCalendarDto[]> {
+  const params = new URLSearchParams({ accountId, sharedMailboxEmail });
+  return apiFetch<GraphCalendarDto[]>(`/api/microsoft/calendars/shared-mailbox?${params.toString()}`);
+}
+
 export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {
   return apiFetch<GraphTodoListDto[]>(
     `/api/microsoft/todo/lists?accountId=${encodeURIComponent(accountId)}`,
@@ -427,10 +435,21 @@ export async function fetchAllMicrosoftContacts(
 
 export async function fetchAllMicrosoftCalendarsList(
   accounts: MicrosoftIntegrationStatus["accounts"],
+  options?: { sharedMailboxEmail?: string },
 ): Promise<GraphCalendarDto[]> {
   if (accounts.length === 0) return [];
   const batches = await Promise.all(
-    accounts.map((account) => fetchMicrosoftCalendars(account.id)),
+    accounts.map(async (account) => {
+      const own = await fetchMicrosoftCalendars(account.id);
+      if (!options?.sharedMailboxEmail) return own;
+      try {
+        const shared = await fetchSharedMailboxCalendars(account.id, options.sharedMailboxEmail);
+        return [...own, ...shared];
+      } catch (error) {
+        console.error("Shared mailbox calendars failed:", error);
+        return own;
+      }
+    }),
   );
   return batches.flat();
 }

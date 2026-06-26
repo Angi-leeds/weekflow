@@ -295,6 +295,22 @@ interface GoogleCalendarListEntry {
   id: string;
   summary?: string;
   primary?: boolean;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  accessRole?: string;
+  summaryOverride?: string;
+}
+
+function classifyGoogleCalendarKind(entry: GoogleCalendarListEntry): GoogleCalendarDto["kind"] {
+  if (entry.accessRole === "reader" || entry.accessRole === "freeBusyReader") {
+    return "subscribed";
+  }
+  if (entry.accessRole === "owner") return "owned";
+  return "shared";
+}
+
+function googleCalendarCanEdit(entry: GoogleCalendarListEntry): boolean {
+  return entry.accessRole === "owner" || entry.accessRole === "writer";
 }
 
 interface GoogleCalendarEvent {
@@ -376,7 +392,7 @@ export async function fetchGoogleCalendars(accountId: string): Promise<GoogleCal
 
   const response = await googleFetch(
     accountId,
-    `${CALENDAR_API_BASE}/users/me/calendarList?maxResults=50`,
+    `${CALENDAR_API_BASE}/users/me/calendarList?maxResults=250`,
   );
   const payload = (await response.json()) as { items?: GoogleCalendarListEntry[] };
   const accountKey = accountKeyFromRecord(account);
@@ -384,10 +400,13 @@ export async function fetchGoogleCalendars(accountId: string): Promise<GoogleCal
   return (payload.items ?? []).map((calendar) => ({
     id: `${accountKey}-cal-${calendar.id}`,
     googleCalendarId: calendar.id,
-    name: calendar.summary ?? "Calendar",
+    name: calendar.summaryOverride ?? calendar.summary ?? "Calendar",
     accountId: accountKey,
     connectedAccountId: account.id,
     isDefault: calendar.primary,
+    colour: calendar.backgroundColor,
+    canEdit: googleCalendarCanEdit(calendar),
+    kind: classifyGoogleCalendarKind(calendar),
   }));
 }
 

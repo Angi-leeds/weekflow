@@ -1,4 +1,4 @@
-import type { CalendarItem, EmailMessage } from './types'
+import type { CalendarItem, EmailMessage, UnifiedCalendarSource } from './types'
 import { DEFAULT_CATEGORIES } from './categories'
 
 function catColour(id: string): string {
@@ -11,12 +11,113 @@ function calendarAccountForCategory(categoryId: string): string {
   return 'personal-gmail'
 }
 
+const MOCK_CALENDAR_ID_BY_CATEGORY: Record<string, string> = {
+  work: 'mock-cal-field-diary',
+  appointment: 'mock-cal-calendar',
+  task: 'mock-cal-daily-plan',
+  personal: 'mock-personal-primary',
+  family: 'mock-family-primary',
+  holiday: 'mock-family-primary',
+}
+
+export const MOCK_CALENDAR_SOURCES: UnifiedCalendarSource[] = [
+  {
+    id: 'mock-work-outlook-cal-calendar',
+    name: 'Calendar',
+    accountId: 'work-outlook',
+    connectedAccountId: 'mock-work',
+    provider: 'mock',
+    providerCalendarId: 'mock-cal-calendar',
+    colour: '#0078d4',
+    canEdit: true,
+    kind: 'owned',
+    isDefault: true,
+    accountLabel: 'Work calendar',
+  },
+  {
+    id: 'mock-work-outlook-cal-daily-plan',
+    name: 'Daily Plan',
+    accountId: 'work-outlook',
+    connectedAccountId: 'mock-work',
+    provider: 'mock',
+    providerCalendarId: 'mock-cal-daily-plan',
+    colour: '#498205',
+    canEdit: true,
+    kind: 'owned',
+    accountLabel: 'Work calendar',
+  },
+  {
+    id: 'mock-work-outlook-cal-birthdays',
+    name: 'Birthdays',
+    accountId: 'work-outlook',
+    connectedAccountId: 'mock-work',
+    provider: 'mock',
+    providerCalendarId: 'mock-cal-birthdays',
+    colour: '#e3008c',
+    canEdit: false,
+    kind: 'subscribed',
+    accountLabel: 'Work calendar',
+  },
+  {
+    id: 'mock-work-outlook-cal-field-diary',
+    name: 'MyJobFile Field Diary',
+    accountId: 'work-outlook',
+    connectedAccountId: 'mock-work',
+    provider: 'mock',
+    providerCalendarId: 'mock-cal-field-diary',
+    colour: '#ca5010',
+    canEdit: true,
+    kind: 'owned',
+    accountLabel: 'Work calendar',
+  },
+  {
+    id: 'mock-work-outlook-cal-shared-team',
+    name: 'Team Rota',
+    accountId: 'work-outlook',
+    connectedAccountId: 'mock-work',
+    provider: 'mock',
+    providerCalendarId: 'mock-cal-shared-team',
+    colour: '#8764b8',
+    canEdit: false,
+    kind: 'shared',
+    ownerName: 'Operations',
+    accountLabel: 'Work calendar',
+  },
+  {
+    id: 'mock-personal-gmail-cal-primary',
+    name: 'Personal',
+    accountId: 'personal-gmail',
+    connectedAccountId: 'mock-personal',
+    provider: 'mock',
+    providerCalendarId: 'mock-personal-primary',
+    colour: '#ea4335',
+    canEdit: true,
+    kind: 'owned',
+    isDefault: true,
+    accountLabel: 'Personal calendar',
+  },
+  {
+    id: 'mock-family-icloud-cal-primary',
+    name: 'Family',
+    accountId: 'family-icloud',
+    connectedAccountId: 'mock-family',
+    provider: 'mock',
+    providerCalendarId: 'mock-family-primary',
+    colour: '#555555',
+    canEdit: true,
+    kind: 'owned',
+    isDefault: true,
+    accountLabel: 'Family calendar',
+  },
+]
+
 export { calendarAccountForCategory }
 
 function withCalendarAccount(item: Omit<CalendarItem, 'accountId'>): CalendarItem {
   return {
     ...item,
     accountId: calendarAccountForCategory(item.categoryId),
+    calendarId: MOCK_CALENDAR_ID_BY_CATEGORY[item.categoryId] ?? 'mock-cal-calendar',
   }
 }
 
