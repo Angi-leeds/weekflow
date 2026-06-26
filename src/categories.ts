@@ -6,9 +6,23 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'appointment', name: 'Appointment', colour: '#2D6A6A', kind: 'event', isDefault: true },
   { id: 'family', name: 'Family', colour: '#7C5CBF', kind: 'event', isDefault: true },
   { id: 'personal', name: 'Personal', colour: '#30A0B0', kind: 'event', isDefault: true },
-  { id: 'task', name: 'Task', colour: '#4A5A9C', kind: 'task', isDefault: true },
-  { id: 'reminder', name: 'Reminder', colour: '#C47832', kind: 'reminder', isDefault: true },
+  { id: 'task', name: 'Task', colour: '#4A5A9C', kind: 'task', isDefault: true, showInDiary: false },
+  { id: 'reminder', name: 'Reminder', colour: '#C47832', kind: 'reminder', isDefault: true, showInDiary: true },
 ]
+
+export function defaultShowInDiaryForKind(kind: CategoryKind): boolean | undefined {
+  if (kind === 'reminder') return true
+  if (kind === 'task') return false
+  return undefined
+}
+
+export function migrateCategories(categories: Category[]): Category[] {
+  return categories.map((cat) => ({
+    ...cat,
+    showInDiary:
+      cat.showInDiary ?? defaultShowInDiaryForKind(cat.kind),
+  }))
+}
 
 export const COLOUR_PRESETS = [
   '#2D6A6A',
@@ -80,7 +94,7 @@ export function loadStoredCategories(): Category[] | null {
     const raw = localStorage.getItem(CATEGORIES_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Category[]
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null
+    return Array.isArray(parsed) && parsed.length > 0 ? migrateCategories(parsed) : null
   } catch {
     return null
   }

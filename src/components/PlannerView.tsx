@@ -15,6 +15,7 @@ interface PlannerViewProps {
   onListOptionsChange: (options: ListDisplayOptions) => void
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
+  diarySetupHint?: string
 }
 
 export function PlannerView({
@@ -25,6 +26,7 @@ export function PlannerView({
   onListOptionsChange,
   onItemTap,
   onToggleComplete,
+  diarySetupHint,
 }: PlannerViewProps) {
   const tasks = items.filter((item) => isTaskOrReminder(item, categories))
   const pending = tasks.filter((t) => !t.completed)
@@ -46,6 +48,12 @@ export function PlannerView({
           onChange={onListOptionsChange}
         />
       </div>
+
+      {diarySetupHint && (
+        <p className="mb-4 rounded-xl bg-wf-bg px-4 py-3 text-caption text-wf-text-secondary">
+          {diarySetupHint}
+        </p>
+      )}
 
       <section className="mb-4 overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]">
         <h2 className="border-b border-wf-border px-4 py-2.5 text-subhead font-semibold text-wf-text-secondary">

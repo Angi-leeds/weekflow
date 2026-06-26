@@ -1,6 +1,7 @@
 import type {
   CalendarPreferences,
   CalendarViewMode,
+  DiaryTasksMode,
   IntegrationAccountDefaults,
   IntegrationPreferences,
   ItemDisplayOptions,
@@ -67,6 +68,9 @@ export function loadCalendarPreferences(): CalendarPreferences {
       timeFormat: parsed.timeFormat === "12h" ? "12h" : "24h",
       monthViewExpandWeeks: parsed.monthViewExpandWeeks === true,
       weekViewAnchor: parsed.weekViewAnchor === 'today' ? 'today' : 'week-start',
+      diaryTasksMode: isDiaryTasksMode(parsed.diaryTasksMode)
+        ? parsed.diaryTasksMode
+        : DEFAULT_CALENDAR_PREFERENCES.diaryTasksMode,
     };
     applyTimeFormat(prefs.timeFormat);
     return prefs;
@@ -188,6 +192,14 @@ export function loadIntegrationAccountDefaults(): IntegrationAccountDefaults {
 
 export function saveIntegrationAccountDefaults(defaults: IntegrationAccountDefaults): void {
   localStorage.setItem(INTEGRATION_DEFAULTS_KEY, JSON.stringify(defaults));
+}
+
+function isDiaryTasksMode(value: unknown): value is DiaryTasksMode {
+  return (
+    value === "category-rules" ||
+    value === "hide-all-tasks" ||
+    value === "show-all-dated"
+  );
 }
 
 function isCalendarViewMode(value: unknown): value is CalendarViewMode {

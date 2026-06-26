@@ -5,7 +5,7 @@ import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
-import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder } from './types'
+import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder, SaveItemOptions } from './types'
 import { type ListDisplayOptions, type ItemDisplayOptions } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, getMockCloudFolder, calendarAccountForCategory } from './mockData'
@@ -107,6 +107,9 @@ import {
 } from './lib/contacts'
 import { duplicateCalendarItem } from './lib/calendarItemHelpers'
 import { CalendarMenuProvider, type CalendarMenuActions } from './context/CalendarMenuContext'
+import { CalendarLinksProvider } from './context/CalendarLinksContext'
+import { filterItemsForDiary } from './lib/diaryVisibility'
+import { PLANNER_DIARY_HINT } from './lib/diaryHelpCopy'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
@@ -137,6 +140,7 @@ import {
   DEFAULT_CATEGORIES,
   generateCategoryId,
   loadStoredCategories,
+  migrateCategories,
   saveStoredCategories,
 } from './categories'
 import { BottomNav } from './components/BottomNav'
@@ -168,8 +172,8 @@ import { KioskPinGate } from './components/KioskPinGate'
 export default function App() {
   const { user, config, logout, setUser } = useAuth()
   const [section, setSection] = useState<AppSection>('calendar')
-  const [categories, setCategories] = useState<Category[]>(
-    () => loadStoredCategories() ?? DEFAULT_CATEGORIES,
+  const [categories, setCategories] = useState<Category[]>(() =>
+    migrateCategories(loadStoredCategories() ?? DEFAULT_CATEGORIES),
   )
   const [items, setItems] = useState<CalendarItem[]>(() => loadStoredItems() ?? defaultItems())
   const [emails, setEmails] = useState(initialEmails)
@@ -538,12 +542,17 @@ export default function App() {
   const canDismissVoicePins = memberCan(activeMember, permissionsConfig, 'dismissVoicePins')
   const canManageBoardLayout = memberCan(activeMember, permissionsConfig, 'manageBoardLayout')
 
+  const diaryVisibleItems = useMemo(
+    () => filterItemsForDiary(displayCalendarItems, categories, calendarPreferences),
+    [displayCalendarItems, categories, calendarPreferences],
+  )
+
   const calendarItems = useMemo(() => {
-    if (calendarFilter.mode === 'merged') return displayCalendarItems
-    return displayCalendarItems.filter((item) =>
+    if (calendarFilter.mode === 'merged') return diaryVisibleItems
+    return diaryVisibleItems.filter((item) =>
       calendarFilterMatchesItem(calendarFilter, item.accountId),
     )
-  }, [displayCalendarItems, calendarFilter])
+  }, [diaryVisibleItems, calendarFilter])
 
   useEffect(() => {
     const accountIds = calendarAccounts.map((account) => account.id)
@@ -834,6 +843,23 @@ export default function App() {
     },
     [items, categories, links],
   )
+
+  const calendarLinksValue = useMemo(
+    () => ({
+      links,
+      items: displayCalendarItems,
+      onNavigateLink: handleNavigateLink,
+    }),
+    [links, displayCalendarItems, handleNavigateLink],
+  )
+
+  const plannerDiaryHint = useMemo(() => {
+    if ((calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules') return undefined
+    const hasDiaryList = categories.some(
+      (cat) => (cat.kind === 'task' || cat.kind === 'reminder') && cat.showInDiary,
+    )
+    return hasDiaryList ? undefined : PLANNER_DIARY_HINT
+  }, [categories, calendarPreferences.diaryTasksMode])
 
   const handleSharedBoardItemTap = useCallback(
     (item: SharedBoardItem) => {
@@ -1149,7 +1175,7 @@ export default function App() {
   }, [categories])
 
   const handleSaveItem = useCallback(
-    async (item: CalendarItem) => {
+    async (item: CalendarItem, options?: SaveItemOptions) => {
       const microsoftAccounts = microsoftStatus?.accounts ?? []
       const googleAccounts = googleStatus?.accounts ?? []
       const useGoogle =
@@ -1194,6 +1220,65 @@ export default function App() {
       }
 
       upsertLocal(normalized)
+
+      if (options?.createLinkedTask) {
+        const taskCategory =
+          categories.find((entry) => entry.id === options.createLinkedTask!.categoryId) ??
+          categories.find((entry) => entry.kind === 'task') ??
+          categories[0]
+        const taskItem: CalendarItem = {
+          id: generateId(),
+          title: `Follow up: ${normalized.title}`,
+          date: normalized.date,
+          endDate: normalized.endDate,
+          startTime: normalized.startTime,
+          endTime: normalized.endTime,
+          allDay: normalized.allDay,
+          categoryId: taskCategory.id,
+          colour: taskCategory.colour,
+          accountId: normalized.accountId ?? calendarAccountForCategory(taskCategory.id),
+          completed: false,
+          notes: normalized.notes,
+        }
+        upsertLocal(taskItem)
+        await handleCreateLink({
+          fromType: 'calendar',
+          fromId: normalized.id,
+          toType: 'task',
+          toId: taskItem.id,
+          kind: 'follow_up',
+        })
+      }
+
+      if (options?.createLinkedCalendarEvent) {
+        const eventCategory =
+          categories.find((entry) => entry.id === options.createLinkedCalendarEvent!.categoryId) ??
+          categories.find((entry) => entry.id === 'appointment') ??
+          categories[0]
+        const eventItem: CalendarItem = {
+          id: generateId(),
+          title: normalized.title,
+          date: normalized.date,
+          endDate: normalized.endDate,
+          startTime: normalized.startTime,
+          endTime: normalized.endTime,
+          allDay: normalized.allDay,
+          categoryId: eventCategory.id,
+          colour: eventCategory.colour,
+          accountId: normalized.accountId ?? calendarAccountForCategory(eventCategory.id),
+          reminderPreset: normalized.reminderPreset,
+          reminderCustomMinutes: normalized.reminderCustomMinutes,
+          reminderAt: normalized.reminderAt,
+        }
+        upsertLocal(eventItem)
+        await handleCreateLink({
+          fromType: 'calendar',
+          fromId: eventItem.id,
+          toType: 'task',
+          toId: normalized.id,
+          kind: 'follow_up',
+        })
+      }
 
       const connectedAccountId = useGoogle
         ? resolveGoogleConnectedAccountId(
@@ -1276,6 +1361,7 @@ export default function App() {
       microsoftStatus,
       refreshGoogle,
       refreshMicrosoft,
+      handleCreateLink,
     ],
   )
 
@@ -2038,6 +2124,7 @@ export default function App() {
       clipboardItem={clipboardItem}
       actions={calendarMenuActions}
     >
+    <CalendarLinksProvider value={calendarLinksValue}>
     <div className="flex h-full min-h-0 flex-col bg-wf-bg">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -2125,6 +2212,7 @@ export default function App() {
             onListOptionsChange={setListOptions}
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}
+            diarySetupHint={plannerDiaryHint}
           />
         )}
 
@@ -2300,6 +2388,7 @@ export default function App() {
         }
         onShareUpdate={handleShareUpdate}
         onSave={handleSaveItem}
+        calendarPreferences={calendarPreferences}
         onDelete={handleDeleteItem}
         onClose={() => setModalOpen(false)}
         onNavigateLink={handleNavigateLink}
@@ -2347,6 +2436,7 @@ export default function App() {
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
+    </CalendarLinksProvider>
     </CalendarMenuProvider>
   )
 }

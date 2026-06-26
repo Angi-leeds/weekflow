@@ -1,5 +1,6 @@
 import type { CalendarItem, Category, EmailMessage } from '../types'
 import type { EntityType, ItemLink } from '../../shared/links'
+import { getOtherEnd } from './links'
 import { getMockCloudFolder } from '../mockData'
 import { getCategoryById } from '../categories'
 
@@ -79,4 +80,26 @@ export function isAlreadyLinked(
         link.toType === fromType &&
         link.toId === fromId),
   )
+}
+
+/** Direct calendar↔task partner linked via follow_up or relates_to. */
+export function getLinkedPartnerItem(
+  links: ItemLink[],
+  entityType: EntityType,
+  entityId: string,
+  items: CalendarItem[],
+): CalendarItem | undefined {
+  for (const link of links) {
+    const touches =
+      (link.fromType === entityType && link.fromId === entityId) ||
+      (link.toType === entityType && link.toId === entityId)
+    if (!touches) continue
+    if (link.kind !== 'follow_up' && link.kind !== 'relates_to') continue
+
+    const other = getOtherEnd(link, entityType, entityId)
+    if (other.type !== 'task' && other.type !== 'calendar') continue
+    const partner = items.find((entry) => entry.id === other.id)
+    if (partner) return partner
+  }
+  return undefined
 }

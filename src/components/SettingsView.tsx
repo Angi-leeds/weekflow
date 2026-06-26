@@ -22,6 +22,9 @@ import type {
 import {
   DEFAULT_ITEM_DISPLAY,
   DEFAULT_VIEW_LABELS,
+  DIARY_TASKS_MODE_LABELS,
+  DIARY_TASKS_MODE_OPTIONS,
+  DIARY_TASKS_MODE_DESCRIPTIONS,
   ITEM_COLOR_STYLE_LABELS,
   ITEM_DENSITY_LABELS,
   ITEM_DISPLAY_PRESET_LABELS,
@@ -66,10 +69,13 @@ import { SectionHeader } from './ui/SectionHeader'
 import {
   SettingsActionRow,
   SettingsCategoryFilterRow,
+  SettingsInfoCallout,
   SettingsIntegrationRow,
   SettingsSelectRow,
   SettingsToggleRow,
 } from './ui/SettingsControls'
+import { categoryDiaryStatusLabel, shouldShowInDiary } from '../lib/diaryVisibility'
+import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
 
 interface SettingsViewProps {
   categories: Category[]
@@ -343,7 +349,7 @@ export function SettingsView({
         </div>
       )}
 
-      <SettingsGroup title="Categories">
+      <SettingsGroup title="Categories" id="settings-categories">
         <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
           Customise colours and labels. Items inherit their category colour.
         </p>
@@ -568,6 +574,83 @@ export function SettingsView({
             onClick={() => onShowCalendarAccount(account.id)}
           />
         ))}
+      </SettingsGroup>
+
+      <SettingsGroup title={DIARY_SETTINGS.sectionTitle}>
+        <SettingsInfoCallout
+          title={DIARY_SETTINGS.openingTitle}
+          body={DIARY_SETTINGS.openingBody}
+        />
+        <SettingsInfoCallout
+          bullets={DIARY_SETTINGS.howItWorks.map(
+            (entry) => `${entry.label} — ${entry.text}`,
+          )}
+        />
+        <SettingsSelectRow
+          label="Tasks on diary"
+          description={
+            DIARY_TASKS_MODE_DESCRIPTIONS[
+              calendarPreferences.diaryTasksMode ?? 'category-rules'
+            ]
+          }
+          value={calendarPreferences.diaryTasksMode ?? 'category-rules'}
+          options={DIARY_TASKS_MODE_OPTIONS.map((mode) => ({
+            value: mode,
+            label: DIARY_TASKS_MODE_LABELS[mode],
+          }))}
+          onChange={(diaryTasksMode) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, diaryTasksMode })
+          }
+        />
+        <DiaryPreviewPanel
+          categories={categories}
+          calendarPreferences={calendarPreferences}
+          displayOptions={itemDisplayOptions}
+        />
+        <p className="px-4 pb-2 pt-2 text-caption text-wf-text-tertiary">
+          {DIARY_SETTINGS.categoryTableIntro}
+        </p>
+        {categories
+          .filter((cat) => cat.kind === 'task' || cat.kind === 'reminder')
+          .map((cat) => (
+            <SettingsToggleRow
+              key={cat.id}
+              label={cat.name}
+              description={categoryDiaryStatusLabel(cat, calendarPreferences)}
+              checked={cat.showInDiary ?? false}
+              disabled={(calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules'}
+              onChange={(showInDiary) => onSaveCategory({ ...cat, showInDiary })}
+            />
+          ))}
+        <SettingsInfoCallout title="Example setups">
+          <div className="mt-2 space-y-2">
+            {DIARY_SETTINGS.examplePresets.map((row) => (
+              <div key={row.name} className="flex gap-2 text-caption">
+                <span className="min-w-[7rem] font-medium text-wf-text">{row.name}</span>
+                <span className="shrink-0 font-semibold text-wf-accent">{row.suggested}</span>
+                <span className="text-wf-text-tertiary">— {row.why}</span>
+              </div>
+            ))}
+          </div>
+        </SettingsInfoCallout>
+        <SettingsInfoCallout title="Reminders vs linked tasks">
+          <div className="mt-2 space-y-3">
+            {DIARY_SETTINGS.faq.map((entry) => (
+              <div key={entry.q}>
+                <p className="font-semibold text-wf-text">{entry.q}</p>
+                <p className="mt-0.5">{entry.a}</p>
+              </div>
+            ))}
+          </div>
+        </SettingsInfoCallout>
+        <div className="px-4 pb-4">
+          <a
+            href="#settings-categories"
+            className="text-caption font-semibold text-wf-accent"
+          >
+            {DIARY_SETTINGS.manageCategoriesLink}
+          </a>
+        </div>
       </SettingsGroup>
 
       <SettingsGroup title="Household">
@@ -974,9 +1057,17 @@ export function SettingsView({
   )
 }
 
-function SettingsGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function SettingsGroup({
+  title,
+  children,
+  id,
+}: {
+  title: string
+  children: React.ReactNode
+  id?: string
+}) {
   return (
-    <section className="mb-5">
+    <section className="mb-5" id={id}>
       <h2 className="mb-2 px-3 text-subhead font-semibold text-wf-text-secondary">
         {title}
       </h2>
@@ -984,6 +1075,81 @@ function SettingsGroup({ title, children }: { title: string; children: React.Rea
         {children}
       </div>
     </section>
+  )
+}
+
+function DiaryPreviewPanel({
+  categories,
+  calendarPreferences,
+  displayOptions,
+}: {
+  categories: Category[]
+  calendarPreferences: CalendarPreferences
+  displayOptions: ItemDisplayOptions
+}) {
+  const jobsCategory =
+    categories.find((cat) => cat.name.toLowerCase().includes('jobs')) ??
+    categories.find((cat) => cat.kind === 'task' && cat.showInDiary) ??
+    categories.find((cat) => cat.kind === 'task')
+  const shoppingCategory =
+    categories.find((cat) => cat.name.toLowerCase().includes('shopping')) ??
+    categories.find((cat) => cat.kind === 'task' && !cat.showInDiary) ??
+    jobsCategory
+
+  const previewItems = useMemo((): CalendarItem[] => {
+    if (!jobsCategory || !shoppingCategory) return []
+    const today = toISODate(new Date())
+    return [
+      {
+        id: 'diary-preview-jobs',
+        title: 'Fix boiler',
+        date: today,
+        allDay: true,
+        categoryId: jobsCategory.id,
+        colour: jobsCategory.colour,
+        accountId: 'demo',
+        completed: false,
+      },
+      {
+        id: 'diary-preview-shopping',
+        title: 'Milk',
+        date: today,
+        allDay: true,
+        categoryId: shoppingCategory.id,
+        colour: shoppingCategory.colour,
+        accountId: 'demo',
+        completed: false,
+      },
+    ]
+  }, [jobsCategory, shoppingCategory])
+
+  const jobsVisible = previewItems[0]
+    ? shouldShowInDiary(previewItems[0], categories, calendarPreferences)
+    : false
+  const shoppingVisible = previewItems[1]
+    ? shouldShowInDiary(previewItems[1], categories, calendarPreferences)
+    : false
+
+  if (previewItems.length === 0) return null
+
+  return (
+    <div className="mx-4 mb-3 rounded-2xl border border-wf-border bg-wf-bg p-2">
+      <p className="mb-2 px-1 text-caption font-semibold text-wf-text-secondary">Preview</p>
+      <div className="space-y-1">
+        <div>
+          <CalendarItemRow item={previewItems[0]} categories={categories} displayOptions={displayOptions} dense />
+          <p className="px-1 text-caption text-wf-text-tertiary">
+            {jobsVisible ? 'Shows on diary' : 'Planner only'}
+          </p>
+        </div>
+        <div>
+          <CalendarItemRow item={previewItems[1]} categories={categories} displayOptions={displayOptions} dense />
+          <p className="px-1 text-caption text-wf-text-tertiary">
+            {shoppingVisible ? 'Shows on diary' : 'Planner only'}
+          </p>
+        </div>
+      </div>
+    </div>
   )
 }
 

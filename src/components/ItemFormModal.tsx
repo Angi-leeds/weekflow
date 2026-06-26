@@ -5,10 +5,12 @@ import type { EntityType, ItemLink } from '../../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { GraphCalendarDto, GraphTodoListDto } from '../../shared/microsoftGraph'
 import type { GoogleCalendarDto } from '../../shared/googleApi'
-import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset } from '../types'
-import { ITEM_REMINDER_PRESET_LABELS } from '../types'
+import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset, ItemShowInDiaryMode, SaveItemOptions, CalendarPreferences } from '../types'
+import { ITEM_REMINDER_PRESET_LABELS, DEFAULT_CALENDAR_PREFERENCES } from '../types'
 import { isTaskCategory, resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
+import { ITEM_FORM_DIARY } from '../lib/diaryHelpCopy'
+import { resolveItemDiaryVisibility } from '../lib/diaryVisibility'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
 import { getPhotoUrlForItem, uploadAttachment } from '../lib/attachments'
 import { getMicrosoftSchedule, respondToMicrosoftCalendarEvent } from '../lib/microsoft'
@@ -16,6 +18,7 @@ import {
   ITEM_REMINDER_PRESET_OPTIONS,
   joinReminderAt,
   splitReminderAt,
+  hasActiveReminder,
 } from '../lib/reminderHelpers'
 import { isTaskOrReminder } from './itemHelpers'
 import { LinkChips } from './LinkChips'
@@ -33,7 +36,7 @@ interface ItemFormModalProps {
   onAttachmentUploaded: (attachment: Attachment) => void
   itemShare?: ItemShare
   onShareUpdate: (input: UpsertItemShareInput) => void
-  onSave: (item: CalendarItem) => void
+  onSave: (item: CalendarItem, options?: SaveItemOptions) => void
   onDelete?: (id: string) => void
   onClose: () => void
   onNavigateLink: (type: EntityType, id: string) => void
@@ -46,6 +49,7 @@ interface ItemFormModalProps {
   microsoftTodoLists?: GraphTodoListDto[]
   integrationAccountDefaults?: IntegrationAccountDefaults
   connectedAccountEmails?: Record<string, string>
+  calendarPreferences?: CalendarPreferences
 }
 
 const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
@@ -187,30 +191,63 @@ export function ItemFormModal({
   microsoftTodoLists = [],
   integrationAccountDefaults,
   connectedAccountEmails = {},
+  calendarPreferences = DEFAULT_CALENDAR_PREFERENCES,
 }: ItemFormModalProps) {
   const [form, setForm] = useState<CalendarItem>(() => emptyForm(defaultDate, categories))
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [showInDiaryMode, setShowInDiaryMode] = useState<ItemShowInDiaryMode>('category')
+  const [createLinkedTask, setCreateLinkedTask] = useState(false)
+  const [linkedTaskCategoryId, setLinkedTaskCategoryId] = useState('')
+  const [createLinkedCalendarEvent, setCreateLinkedCalendarEvent] = useState(false)
+  const [linkedEventCategoryId, setLinkedEventCategoryId] = useState('appointment')
+
+  const taskCategories = useMemo(
+    () => categories.filter((cat) => cat.kind === 'task' || cat.kind === 'reminder'),
+    [categories],
+  )
+  const eventCategories = useMemo(
+    () => categories.filter((cat) => cat.kind === 'event'),
+    [categories],
+  )
+  const defaultLinkedTaskCategoryId =
+    taskCategories.find((cat) => cat.showInDiary)?.id ?? taskCategories[0]?.id ?? 'task'
+  const defaultLinkedEventCategoryId =
+    eventCategories.find((cat) => cat.id === 'appointment')?.id ??
+    eventCategories[0]?.id ??
+    'appointment'
 
   useEffect(() => {
     if (!open) return
     if (item?.id) {
       setForm({ ...item })
-      return
+      setShowInDiaryMode(
+        item.showInDiary === true
+          ? 'always'
+          : item.showInDiary === false
+            ? 'never'
+            : 'category',
+      )
+    } else {
+      const base = emptyForm(defaultDate, categories)
+      setForm(
+        applyIntegrationDefaults(
+          base,
+          categories,
+          usingRealMicrosoft,
+          usingRealGoogle,
+          microsoftCalendars,
+          googleCalendars,
+          microsoftTodoLists,
+          integrationAccountDefaults,
+        ),
+      )
+      setShowInDiaryMode('category')
     }
-    const base = emptyForm(defaultDate, categories)
-    setForm(
-      applyIntegrationDefaults(
-        base,
-        categories,
-        usingRealMicrosoft,
-        usingRealGoogle,
-        microsoftCalendars,
-        googleCalendars,
-        microsoftTodoLists,
-        integrationAccountDefaults,
-      ),
-    )
+    setCreateLinkedTask(false)
+    setCreateLinkedCalendarEvent(false)
+    setLinkedTaskCategoryId(defaultLinkedTaskCategoryId)
+    setLinkedEventCategoryId(defaultLinkedEventCategoryId)
   }, [
     open,
     item,
@@ -222,6 +259,8 @@ export function ItemFormModal({
     googleCalendars,
     microsoftTodoLists,
     integrationAccountDefaults,
+    defaultLinkedTaskCategoryId,
+    defaultLinkedEventCategoryId,
   ])
 
   const isEdit = Boolean(item?.id)
@@ -294,16 +333,52 @@ export function ItemFormModal({
     if (!form.title.trim()) return
     const endDate =
       form.endDate && form.endDate > form.date ? form.endDate : undefined
-    onSave({
+    const itemIsTask = isTaskOrReminder(form, categories)
+    const showInDiary =
+      showInDiaryMode === 'category' ? null : showInDiaryMode === 'always' ? true : false
+    const savedItem: CalendarItem = {
       ...form,
       id: form.id || generateId(),
       title: form.title.trim(),
       endDate,
       colour: resolveItemColour(categories, form.categoryId),
-      completed: isTaskOrReminder(form, categories) ? form.completed : undefined,
-    })
+      completed: itemIsTask ? form.completed : undefined,
+      showInDiary: itemIsTask ? showInDiary : undefined,
+    }
+    const options: SaveItemOptions = {}
+    if (!isEdit && !isTask && hasActiveReminder(savedItem) && createLinkedTask && linkedTaskCategoryId) {
+      options.createLinkedTask = { categoryId: linkedTaskCategoryId }
+    }
+    if (
+      !isEdit &&
+      isTask &&
+      hasActiveReminder(savedItem) &&
+      createLinkedCalendarEvent &&
+      linkedEventCategoryId
+    ) {
+      options.createLinkedCalendarEvent = { categoryId: linkedEventCategoryId }
+    }
+    onSave(savedItem, Object.keys(options).length > 0 ? options : undefined)
     onClose()
   }
+
+  const selectedCategory = categories.find((cat) => cat.id === form.categoryId)
+  const previewItem: CalendarItem = {
+    ...form,
+    showInDiary:
+      showInDiaryMode === 'category' ? null : showInDiaryMode === 'always' ? true : false,
+  }
+  const resolvedDiaryVisible = resolveItemDiaryVisibility(
+    previewItem,
+    categories,
+    calendarPreferences,
+  )
+  const diaryCategoryHint =
+    showInDiaryMode === 'category' && selectedCategory
+      ? resolvedDiaryVisible
+        ? ITEM_FORM_DIARY.visibilityCategoryOn(selectedCategory.name)
+        : ITEM_FORM_DIARY.visibilityCategoryOff(selectedCategory.name)
+      : null
 
   const selectCategory = (categoryId: string) => {
     const next = {
@@ -557,6 +632,101 @@ export function ItemFormModal({
 
           <ReminderFields form={form} onChange={setForm} defaultDate={form.date} />
 
+          {(isTask || isTaskOrReminder(form, categories)) && (
+            <div className="space-y-2 rounded-xl bg-wf-bg px-4 py-3">
+              <p className="text-subhead font-semibold text-wf-text">{ITEM_FORM_DIARY.visibilityTitle}</p>
+              <select
+                value={showInDiaryMode}
+                onChange={(e) => setShowInDiaryMode(e.target.value as ItemShowInDiaryMode)}
+                className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+              >
+                <option value="category">{ITEM_FORM_DIARY.visibilityCategory}</option>
+                <option value="always">{ITEM_FORM_DIARY.visibilityAlways}</option>
+                <option value="never">{ITEM_FORM_DIARY.visibilityNever}</option>
+              </select>
+              <p className="text-caption text-wf-text-tertiary">
+                {showInDiaryMode === 'category' && diaryCategoryHint}
+                {showInDiaryMode === 'always' && ITEM_FORM_DIARY.visibilityAlwaysHelp}
+                {showInDiaryMode === 'never' && ITEM_FORM_DIARY.visibilityNeverHelp}
+              </p>
+              <p className="text-caption text-wf-text-tertiary">{ITEM_FORM_DIARY.visibilityPlannerNote}</p>
+            </div>
+          )}
+
+          {hasActiveReminder(form) && (
+            <p className="rounded-xl bg-wf-bg px-4 py-3 text-caption text-wf-text-tertiary">
+              {ITEM_FORM_DIARY.reminderNote}
+            </p>
+          )}
+
+          {!isEdit && !isTask && hasActiveReminder(form) && (
+            <div className="space-y-2 rounded-xl bg-wf-bg px-4 py-3">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={createLinkedTask}
+                  onChange={(e) => setCreateLinkedTask(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded accent-wf-accent"
+                />
+                <span>
+                  <span className="block text-[15px] font-medium text-wf-text">
+                    {ITEM_FORM_DIARY.createLinkedTaskLabel}
+                  </span>
+                  <span className="mt-0.5 block text-caption text-wf-text-tertiary">
+                    {ITEM_FORM_DIARY.createLinkedTaskHelp}
+                  </span>
+                </span>
+              </label>
+              {createLinkedTask && (
+                <select
+                  value={linkedTaskCategoryId}
+                  onChange={(e) => setLinkedTaskCategoryId(e.target.value)}
+                  className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+                >
+                  {taskCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {!isEdit && isTask && hasActiveReminder(form) && (
+            <div className="space-y-2 rounded-xl bg-wf-bg px-4 py-3">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={createLinkedCalendarEvent}
+                  onChange={(e) => setCreateLinkedCalendarEvent(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded accent-wf-accent"
+                />
+                <span>
+                  <span className="block text-[15px] font-medium text-wf-text">
+                    {ITEM_FORM_DIARY.createLinkedEventLabel}
+                  </span>
+                  <span className="mt-0.5 block text-caption text-wf-text-tertiary">
+                    {ITEM_FORM_DIARY.createLinkedEventHelp}
+                  </span>
+                </span>
+              </label>
+              {createLinkedCalendarEvent && (
+                <select
+                  value={linkedEventCategoryId}
+                  onChange={(e) => setLinkedEventCategoryId(e.target.value)}
+                  className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+                >
+                  {eventCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
           {usingRealMicrosoft && !isTask && (
             <>
               <Field label="Attendees (emails, comma-separated)">
@@ -691,6 +861,13 @@ export function ItemFormModal({
 
           {entityType && form.id && (
             <div className="space-y-2 rounded-xl bg-wf-bg px-4 py-3">
+              {links.some(
+                (link) =>
+                  (link.fromType === entityType && link.fromId === form.id) ||
+                  (link.toType === entityType && link.toId === form.id),
+              ) && (
+                <p className="text-caption text-wf-text-tertiary">{ITEM_FORM_DIARY.linksCaption}</p>
+              )}
               <LinkChips
                 entityType={entityType}
                 entityId={form.id}

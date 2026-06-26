@@ -12,8 +12,10 @@ import { getCategoryName } from '../categories'
 import { isTaskOrReminder } from './itemHelpers'
 import { Badge } from './ui/Badge'
 import { useOptionalCalendarMenu } from '../context/CalendarMenuContext'
+import { useCalendarLinks } from '../context/CalendarLinksContext'
 import { useItemContextMenu } from '../hooks/useCalendarContextMenu'
 import { formatReminderLabel, hasActiveReminder } from '../lib/reminderHelpers'
+import { getItemLinkType, getLinkedPartnerItem, linkTargetIcon } from '../lib/itemLinkHelpers'
 
 interface CalendarItemRowProps {
   item: CalendarItem
@@ -98,6 +100,11 @@ export function CalendarItemRow({
 
   const menu = useOptionalCalendarMenu()
   const itemMenu = useItemContextMenu(item, viewDate)
+  const linkContext = useCalendarLinks()
+  const entityType = getItemLinkType(item, categories)
+  const linkedPartner =
+    linkContext &&
+    getLinkedPartnerItem(linkContext.links, entityType, item.id, linkContext.items)
   const isCopied = menu?.clipboardItemId === item.id
   const denseChipText = dense ? formatDenseChipText(item, isTask) : null
   const reminderLabel = !dense && hasActiveReminder(item) ? formatReminderLabel(item) : null
@@ -159,6 +166,19 @@ export function CalendarItemRow({
             >
               {denseChipText}
             </span>
+            {linkedPartner && linkContext?.onNavigateLink && (
+              <LinkedPartnerChip
+                partner={linkedPartner}
+                partnerIsTask={isTaskOrReminder(linkedPartner, categories)}
+                dense
+                onNavigate={() =>
+                  linkContext.onNavigateLink!(
+                    isTaskOrReminder(linkedPartner, categories) ? 'task' : 'calendar',
+                    linkedPartner.id,
+                  )
+                }
+              />
+            )}
           </span>
         ) : (
           <>
@@ -233,6 +253,18 @@ export function CalendarItemRow({
                 {reminderLabel}
               </span>
             )}
+            {linkedPartner && linkContext?.onNavigateLink && (
+              <LinkedPartnerChip
+                partner={linkedPartner}
+                partnerIsTask={isTaskOrReminder(linkedPartner, categories)}
+                onNavigate={() =>
+                  linkContext.onNavigateLink!(
+                    isTaskOrReminder(linkedPartner, categories) ? 'task' : 'calendar',
+                    linkedPartner.id,
+                  )
+                }
+              />
+            )}
             {!dense && item.onlineMeetingUrl && (
               <a
                 href={item.onlineMeetingUrl}
@@ -249,6 +281,36 @@ export function CalendarItemRow({
           </>
         )}
       </span>
+    </button>
+  )
+}
+
+function LinkedPartnerChip({
+  partner,
+  partnerIsTask,
+  dense = false,
+  onNavigate,
+}: {
+  partner: CalendarItem
+  partnerIsTask: boolean
+  dense?: boolean
+  onNavigate: () => void
+}) {
+  const icon = linkTargetIcon(partnerIsTask ? 'task' : 'calendar')
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation()
+        onNavigate()
+      }}
+      className={`inline-flex max-w-full items-center gap-1 truncate rounded-full bg-wf-accent-soft px-2 py-0.5 font-semibold text-wf-accent ${
+        dense ? 'mt-0.5 text-[10px]' : 'mt-1 text-[11px]'
+      }`}
+      title={partner.title}
+    >
+      <span aria-hidden>{icon}</span>
+      <span className="truncate">{partner.title}</span>
     </button>
   )
 }

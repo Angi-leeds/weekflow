@@ -1,29 +1,36 @@
 import { ChevronRight } from "lucide-react";
 
 interface SettingsSelectRowProps<T extends string | number> {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
+  label: string
+  description?: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
 }
 
 export function SettingsSelectRow<T extends string | number>({
   label,
+  description,
   value,
   options,
   onChange,
 }: SettingsSelectRowProps<T>) {
   return (
     <label className="flex items-center justify-between gap-3 border-b border-wf-border/50 px-4 py-3.5 last:border-0">
-      <span className="text-body font-medium text-wf-text">{label}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-body font-medium text-wf-text">{label}</span>
+        {description && (
+          <span className="mt-0.5 block text-caption text-wf-text-tertiary">{description}</span>
+        )}
+      </span>
       <select
         value={String(value)}
         onChange={(event) => {
-          const raw = event.target.value;
-          const match = options.find((option) => String(option.value) === raw);
-          if (match) onChange(match.value);
+          const raw = event.target.value
+          const match = options.find((option) => String(option.value) === raw)
+          if (match) onChange(match.value)
         }}
-        className="max-w-[52%] truncate rounded-lg border border-wf-border bg-wf-bg px-2.5 py-1.5 text-body text-wf-text-secondary outline-none focus:border-wf-accent"
+        className="max-w-[52%] shrink-0 truncate rounded-lg border border-wf-border bg-wf-bg px-2.5 py-1.5 text-body text-wf-text-secondary outline-none focus:border-wf-accent"
       >
         {options.map((option) => (
           <option key={String(option.value)} value={String(option.value)}>
@@ -32,7 +39,7 @@ export function SettingsSelectRow<T extends string | number>({
         ))}
       </select>
     </label>
-  );
+  )
 }
 
 interface SettingsToggleRowProps {
@@ -218,4 +225,33 @@ export function SettingsIntegrationRow({
       </label>
     </div>
   );
+}
+
+interface SettingsInfoCalloutProps {
+  title?: string
+  body?: string
+  bullets?: string[]
+  children?: React.ReactNode
+}
+
+export function SettingsInfoCallout({
+  title,
+  body,
+  bullets,
+  children,
+}: SettingsInfoCalloutProps) {
+  return (
+    <div className="mx-4 mb-3 rounded-xl bg-wf-bg px-4 py-3 text-caption text-wf-text-secondary">
+      {title && <p className="font-semibold text-wf-text">{title}</p>}
+      {body && <p className={title ? 'mt-1' : ''}>{body}</p>}
+      {bullets && bullets.length > 0 && (
+        <ul className={`list-disc space-y-1 pl-4 ${title || body ? 'mt-2' : ''}`}>
+          {bullets.map((entry) => (
+            <li key={entry}>{entry}</li>
+          ))}
+        </ul>
+      )}
+      {children}
+    </div>
+  )
 }

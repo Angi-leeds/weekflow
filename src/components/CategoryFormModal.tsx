@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Category, CategoryKind } from '../types'
-import { CATEGORY_KIND_LABELS, COLOUR_PRESETS } from '../categories'
+import { CATEGORY_KIND_LABELS, COLOUR_PRESETS, defaultShowInDiaryForKind } from '../categories'
+import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
 
 interface CategoryFormModalProps {
   open: boolean
@@ -13,6 +14,7 @@ const emptyForm = (): Omit<Category, 'id'> => ({
   name: '',
   colour: COLOUR_PRESETS[0],
   kind: 'event',
+  showInDiary: undefined,
 })
 
 export function CategoryFormModal({ open, category, onSave, onClose }: CategoryFormModalProps) {
@@ -23,7 +25,12 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
     if (open) {
       setForm(
         category
-          ? { name: category.name, colour: category.colour, kind: category.kind }
+          ? {
+              name: category.name,
+              colour: category.colour,
+              kind: category.kind,
+              showInDiary: category.showInDiary,
+            }
           : emptyForm(),
       )
     }
@@ -41,6 +48,10 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
       colour: form.colour,
       kind: form.kind,
       isDefault: category?.isDefault,
+      showInDiary:
+        form.kind === 'event'
+          ? undefined
+          : form.showInDiary ?? defaultShowInDiaryForKind(form.kind),
     })
     onClose()
   }
@@ -84,7 +95,15 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
           <Field label="Kind">
             <select
               value={form.kind}
-              onChange={(e) => setForm({ ...form, kind: e.target.value as CategoryKind })}
+              onChange={(e) => {
+                const kind = e.target.value as CategoryKind
+                setForm({
+                  ...form,
+                  kind,
+                  showInDiary:
+                    kind === 'event' ? undefined : defaultShowInDiaryForKind(kind),
+                })
+              }}
               className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
             >
               {(Object.keys(CATEGORY_KIND_LABELS) as CategoryKind[]).map((k) => (
@@ -124,6 +143,25 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
               />
             </div>
           </Field>
+
+          {(form.kind === 'task' || form.kind === 'reminder') && (
+            <label className="flex items-start gap-3 rounded-xl bg-wf-bg px-4 py-3">
+              <input
+                type="checkbox"
+                checked={form.showInDiary ?? defaultShowInDiaryForKind(form.kind) ?? false}
+                onChange={(e) => setForm({ ...form, showInDiary: e.target.checked })}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded accent-wf-accent"
+              />
+              <span>
+                <span className="block text-[15px] font-medium text-wf-text">
+                  {DIARY_SETTINGS.categoryToggleLabel}
+                </span>
+                <span className="mt-0.5 block text-caption text-wf-text-tertiary">
+                  {DIARY_SETTINGS.categoryToggleDescription}
+                </span>
+              </span>
+            </label>
+          )}
 
           <button
             type="submit"

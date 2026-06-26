@@ -21,6 +21,8 @@ export interface Category {
   colour: string
   kind: CategoryKind
   isDefault?: boolean
+  /** When true, dated tasks/reminders in this category appear on the calendar diary. */
+  showInDiary?: boolean
 }
 
 export interface ListDisplayOptions {
@@ -279,6 +281,28 @@ export const SETTINGS_DEFAULT_VIEWS: CalendarViewMode[] = [
   'agenda',
 ]
 
+export type DiaryTasksMode = 'category-rules' | 'hide-all-tasks' | 'show-all-dated'
+
+export const DIARY_TASKS_MODE_OPTIONS: DiaryTasksMode[] = [
+  'category-rules',
+  'hide-all-tasks',
+  'show-all-dated',
+]
+
+export const DIARY_TASKS_MODE_LABELS: Record<DiaryTasksMode, string> = {
+  'category-rules': 'Use category rules',
+  'hide-all-tasks': 'Hide all tasks from diary',
+  'show-all-dated': 'Show all dated tasks',
+}
+
+export const DIARY_TASKS_MODE_DESCRIPTIONS: Record<DiaryTasksMode, string> = {
+  'category-rules':
+    'Recommended. Each list below controls whether dated tasks show on your diary.',
+  'hide-all-tasks': 'Events and reminders only — a clean diary. Tasks stay in Planner.',
+  'show-all-dated':
+    'Every task with a date appears on the diary. Good if you want everything visible.',
+}
+
 export interface CalendarPreferences {
   defaultView: CalendarViewMode
   weekStartsOn: WeekStartsOn
@@ -287,6 +311,8 @@ export interface CalendarPreferences {
   monthViewExpandWeeks: boolean
   /** Default left edge of the 7-day rolling week view window. */
   weekViewAnchor: WeekViewAnchor
+  /** How dated tasks appear on the calendar diary (Planner always shows all tasks). */
+  diaryTasksMode?: DiaryTasksMode
 }
 
 export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
@@ -295,6 +321,14 @@ export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
   timeFormat: '24h',
   monthViewExpandWeeks: false,
   weekViewAnchor: 'week-start',
+  diaryTasksMode: 'category-rules',
+}
+
+export type ItemShowInDiaryMode = 'category' | 'always' | 'never'
+
+export interface SaveItemOptions {
+  createLinkedTask?: { categoryId: string }
+  createLinkedCalendarEvent?: { categoryId: string }
 }
 
 export interface IntegrationPreferences {
@@ -361,6 +395,8 @@ export interface CalendarItem {
   reminderCustomMinutes?: number
   /** Local datetime (YYYY-MM-DDTHH:mm) when reminderPreset is 'datetime'. */
   reminderAt?: string
+  /** null = follow category; true/false = pin to diary or hide from diary. */
+  showInDiary?: boolean | null
 }
 
 export interface EmailAccount {
