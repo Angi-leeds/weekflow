@@ -1,8 +1,8 @@
 import type { TodayHighlightOptions } from '../types'
 import {
   shouldShowTodayBadge,
-  todayBadgeClass,
   todayBadgeLabel,
+  todayBadgePresentation,
 } from '../lib/todayHighlight'
 
 interface TodayHighlightBadgeProps {
@@ -14,10 +14,13 @@ interface TodayHighlightBadgeProps {
 export function TodayHighlightBadge({ isToday, options, className = '' }: TodayHighlightBadgeProps) {
   if (!shouldShowTodayBadge(isToday, options)) return null
 
+  const badge = todayBadgePresentation(options)
+
   if (options.badge === 'dot') {
     return (
       <span
-        className={`${todayBadgeClass(options)} ${className}`}
+        className={`${badge.className} ${className}`}
+        style={badge.style}
         aria-label="Today"
         title="Today"
       />
@@ -25,7 +28,7 @@ export function TodayHighlightBadge({ isToday, options, className = '' }: TodayH
   }
 
   return (
-    <span className={`${todayBadgeClass(options)} ${className}`}>
+    <span className={`${badge.className} ${className}`} style={badge.style}>
       {todayBadgeLabel(options)}
     </span>
   )

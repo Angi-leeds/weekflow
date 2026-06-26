@@ -1,8 +1,6 @@
 import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, MultiDayAllDayLayout, TodayHighlightOptions } from '../types'
 import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
-  formatDayColumnHeader,
-  formatDayNumber,
   formatTime,
   getDayItemEntriesForColumn,
   getItemsForDate,
@@ -11,13 +9,11 @@ import {
 } from '../dateUtils'
 import {
   mergeHighlightStyle,
-  resolveTodayDateClass,
   resolveTodayHighlight,
-  resolveTodayWeekdayClass,
 } from '../lib/todayHighlight'
 import { DayCardFromDate } from './DayCard'
+import { TodayDayHeader } from './TodayDayHeader'
 import { GroupedItemList } from './GroupedItemList'
-import { TodayHighlightBadge } from './TodayHighlightBadge'
 import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
 
 const TIMELINE_HOURS = Array.from({ length: 14 }, (_, i) => i + 7)
@@ -101,18 +97,10 @@ export function WeekRollingDayColumn({
         style={{ width: dayWidth, ...columnHighlight.style }}
       >
         <div
-          className={`relative shrink-0 border-b border-wf-border px-1 py-2 text-center ${headerHighlight.className}`}
+          className={`relative shrink-0 border-b border-wf-border px-1 py-2 ${headerHighlight.className}`}
           style={headerHighlight.style}
         >
-          <p className={resolveTodayWeekdayClass(today, todayHighlight, 'xs')}>
-            {formatDayColumnHeader(date)}
-          </p>
-          <p className={resolveTodayDateClass(today, todayHighlight, 'sm')}>
-            {formatDayNumber(date)}
-          </p>
-          {todayHighlight.badge === 'corner' && (
-            <TodayHighlightBadge isToday={today} options={todayHighlight} />
-          )}
+          <TodayDayHeader date={date} options={todayHighlight} size="xs" showBadge />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {TIMELINE_HOURS.map((hour) => {
@@ -152,20 +140,12 @@ export function WeekRollingDayColumn({
       style={{ width: dayWidth, ...(today ? columnHighlight.style : undefined) }}
     >
       <header
-        className={`relative shrink-0 border-b border-wf-border px-0.5 py-2.5 text-center ${
+        className={`relative shrink-0 border-b border-wf-border px-0.5 py-2.5 ${
           today ? headerHighlight.className : 'bg-wf-surface'
         }`}
         style={today ? headerHighlight.style : undefined}
       >
-        <p className={resolveTodayWeekdayClass(today, todayHighlight, 'md')}>
-          {formatDayColumnHeader(date)}
-        </p>
-        <p className={resolveTodayDateClass(today, todayHighlight, 'md')}>
-          {formatDayNumber(date)}
-        </p>
-        {todayHighlight.badge === 'corner' && (
-          <TodayHighlightBadge isToday={today} options={todayHighlight} />
-        )}
+        <TodayDayHeader date={date} options={todayHighlight} size="md" showBadge />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-0.5">
         <GroupedItemList

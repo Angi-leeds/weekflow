@@ -449,7 +449,7 @@ export const DEFAULT_TODAY_HIGHLIGHT: TodayHighlightOptions = {
   pulse: 'off',
   badge: 'pill',
   tintColumn: true,
-  tintMonthCell: false,
+  tintMonthCell: true,
   showWeekdayAccent: true,
 }
 
@@ -465,7 +465,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'none',
     tintColumn: true,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: true,
   },
   bold: {
@@ -477,7 +477,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'pill',
     tintColumn: true,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: true,
   },
   outline: {
@@ -489,7 +489,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'none',
     tintColumn: false,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: true,
   },
   pill: {
@@ -501,7 +501,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'none',
     tintColumn: false,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: false,
   },
   'pulse-soft': {
@@ -537,7 +537,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'none',
     tintColumn: true,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: true,
   },
   'dashed-frame': {
@@ -549,7 +549,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'none',
     tintColumn: false,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: true,
   },
   'high-contrast': {
@@ -573,7 +573,7 @@ export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'cust
     pulse: 'off',
     badge: 'dot',
     tintColumn: false,
-    tintMonthCell: false,
+    tintMonthCell: true,
     showWeekdayAccent: false,
   },
 }

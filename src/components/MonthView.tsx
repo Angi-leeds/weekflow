@@ -19,7 +19,8 @@ import type { CalendarItem, ItemDisplayOptions, TodayHighlightOptions, WeekStart
 import { DEFAULT_ITEM_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
   mergeHighlightStyle,
-  resolveTodayDateClass,
+  monthCellSelectionClass,
+  resolveTodayDatePresentation,
   resolveTodayHighlight,
 } from '../lib/todayHighlight'
 
@@ -557,13 +558,14 @@ function MonthDateHeader({
 }) {
   const today = isToday(day)
   const dayMenu = useDayContextMenu(day)
-  const cellHighlight = mergeHighlightStyle(
-    resolveTodayHighlight(today, todayHighlight, 'month-cell'),
-    resolveTodayHighlight(today, todayHighlight, 'month-date-button'),
-  )
+  const cellHighlight = mergeHighlightStyle(resolveTodayHighlight(today, todayHighlight, 'month-cell'))
+
+  const datePresentation = today
+    ? resolveTodayDatePresentation(true, todayHighlight, 'xs', todayHighlight.backgroundMode === 'solid')
+    : null
 
   const dateButtonClass = today
-    ? resolveTodayDateClass(true, todayHighlight, 'xs')
+    ? `${datePresentation!.className} text-caption font-semibold`
     : inMonth
       ? 'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-caption font-semibold text-wf-text hover:bg-black/[0.06]'
       : 'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-caption font-semibold text-wf-text-tertiary hover:bg-black/[0.04]'
@@ -572,13 +574,14 @@ function MonthDateHeader({
     <div
       style={{ ...style, ...cellHighlight.style }}
       {...dayMenu}
-      className={`group ${monthCellBorderClass(colIndex, inMonth, selected ? 'ring-1 ring-inset ring-wf-accent/35' : '')} ${cellHighlight.className}`}
+      className={`group ${monthCellBorderClass(colIndex, inMonth, monthCellSelectionClass(selected, today))} ${cellHighlight.className}`}
     >
       <div className="flex items-start justify-between gap-1">
         <button
           type="button"
           onClick={() => onDaySelect(day)}
           className={dateButtonClass}
+          style={datePresentation?.style}
           aria-label={`Open ${formatMonthDayLabel(day)}`}
         >
           {formatMonthDayLabel(day)}
@@ -639,7 +642,7 @@ function MonthDayEventsCell({
       className={`${monthCellBorderClass(
         colIndex,
         inMonth,
-        `${selected ? 'ring-1 ring-inset ring-wf-accent/35' : ''} ${expandWeekRows ? '' : 'min-h-[4.5rem]'}`,
+        `${monthCellSelectionClass(selected, today)} ${expandWeekRows ? '' : 'min-h-[4.5rem]'}`,
       )} ${cellHighlight.className}`}
     >
       <div className="space-y-0.5">

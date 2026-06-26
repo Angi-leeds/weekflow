@@ -4,7 +4,7 @@ import { formatDayHeader, getDayItemEntries, isToday } from '../dateUtils'
 import {
   mergeHighlightStyle,
   resolveTodayHighlight,
-  resolveTodayTitleClass,
+  resolveTodayTitlePresentation,
 } from '../lib/todayHighlight'
 import { GroupedItemList } from './GroupedItemList'
 import { TodayHighlightBadge } from './TodayHighlightBadge'
@@ -43,6 +43,7 @@ export function TodayView({
     resolveTodayHighlight(today, todayHighlight, 'day-card-header'),
   )
   const onSolid = todayHighlight.backgroundMode === 'solid' && today
+  const title = resolveTodayTitlePresentation(today, todayHighlight, onSolid)
 
   return (
     <div className="px-4 pb-6 pt-2 safe-top">
@@ -68,7 +69,7 @@ export function TodayView({
             className="flex items-center justify-between border-b border-wf-border px-4 py-2"
             style={resolveTodayHighlight(true, todayHighlight, 'day-card-header').style}
           >
-            <span className={resolveTodayTitleClass(true, todayHighlight, onSolid)}>Today</span>
+            <span className={title.className} style={title.style}>Today</span>
             <TodayHighlightBadge isToday options={todayHighlight} />
           </div>
         )}

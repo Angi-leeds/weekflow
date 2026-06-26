@@ -6,8 +6,8 @@ export type TodayHighlightTarget =
   | 'day-card-header'
   | 'column-header'
   | 'column-root'
-  | 'month-date-button'
   | 'month-cell'
+  | 'month-date-button'
 
 export interface TodayHighlightSlice {
   className: string
@@ -15,6 +15,11 @@ export interface TodayHighlightSlice {
 }
 
 export type TodayDateSize = 'xs' | 'sm' | 'md' | 'lg' | 'title'
+
+export interface TodayTextPresentation {
+  className: string
+  style?: CSSProperties
+}
 
 const DATE_SIZE_CLASS: Record<TodayDateSize, string> = {
   xs: 'text-[10px]',
@@ -41,7 +46,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-function accentCssVars(options: TodayHighlightOptions): CSSProperties {
+export function accentCssVars(options: TodayHighlightOptions): CSSProperties {
   const opacity = options.backgroundOpacity / 100
   return {
     '--wf-today-accent': options.accentColor,
@@ -66,13 +71,8 @@ function pulseClass(pulse: TodayPulseMode): string {
   }
 }
 
-function borderWidthPx(width: TodayHighlightOptions['borderWidth']): number {
-  return width
-}
-
 function borderStyle(options: TodayHighlightOptions): CSSProperties | undefined {
-  const w = borderWidthPx(options.borderWidth)
-  const color = 'var(--wf-today-border)'
+  const w = options.borderWidth
   switch (options.borderMode) {
     case 'ring':
       return { boxShadow: `inset 0 0 0 ${w}px ${options.accentColor}` }
@@ -90,19 +90,43 @@ function borderStyle(options: TodayHighlightOptions): CSSProperties | undefined 
 }
 
 function backgroundStyle(options: TodayHighlightOptions): CSSProperties | undefined {
+  const opacity = options.backgroundOpacity / 100
   switch (options.backgroundMode) {
     case 'soft':
-      return { backgroundColor: 'var(--wf-today-bg)' }
+      return { backgroundColor: hexToRgba(options.accentColor, opacity * 0.55) }
     case 'strong':
-      return { backgroundColor: 'var(--wf-today-bg-strong)' }
+      return { backgroundColor: hexToRgba(options.accentColor, Math.min(1, opacity * 0.85)) }
     case 'solid':
-      return { backgroundColor: 'var(--wf-today-solid)' }
+      return { backgroundColor: options.accentColor }
     default:
       return undefined
   }
 }
 
-/** Container / column / cell backgrounds and borders */
+/** Unified container styling — same rules in week, month, list, agenda, and Today tab. */
+export function todayContainerStyle(options: TodayHighlightOptions): CSSProperties {
+  return {
+    ...accentCssVars(options),
+    ...backgroundStyle(options),
+    ...borderStyle(options),
+  }
+}
+
+/** Header areas always get at least a soft tint when background is "none" so today is visible. */
+function todayHeaderStyle(options: TodayHighlightOptions): CSSProperties {
+  const opacity = options.backgroundOpacity / 100
+  const bg =
+    backgroundStyle(options) ??
+    (options.backgroundMode === 'none'
+      ? { backgroundColor: hexToRgba(options.accentColor, opacity * 0.35) }
+      : undefined)
+  return {
+    ...accentCssVars(options),
+    ...bg,
+    ...borderStyle(options),
+  }
+}
+
 export function resolveTodayHighlight(
   isToday: boolean,
   options: TodayHighlightOptions,
@@ -110,143 +134,172 @@ export function resolveTodayHighlight(
 ): TodayHighlightSlice {
   if (!isToday) return { className: '' }
 
-  const vars = accentCssVars(options)
   const pulse = pulseClass(options.pulse)
-  const border = borderStyle(options)
 
-  if (target === 'day-card') {
+  if (target === 'day-card-header' || target === 'column-header' || target === 'month-date-button') {
     return {
-      className: pulse,
-      style: { ...vars, ...backgroundStyle(options), ...border },
-    }
-  }
-
-  if (target === 'day-card-header') {
-    const headerBg =
-      options.backgroundMode === 'none'
-        ? { backgroundColor: 'var(--wf-today-bg)' }
-        : backgroundStyle(options)
-    return {
-      className: pulse,
-      style: {
-        ...vars,
-        ...headerBg,
-        ...(options.borderMode === 'left-bar' ? border : undefined),
-      },
-    }
-  }
-
-  if (target === 'column-header') {
-    const bg =
-      options.backgroundMode === 'none'
-        ? { backgroundColor: 'var(--wf-today-bg)' }
-        : backgroundStyle(options)
-    return {
-      className: [pulse, options.pulse !== 'off' ? 'relative' : ''].filter(Boolean).join(' '),
-      style: { ...vars, ...bg, ...border },
+      className: [pulse, target === 'column-header' && options.pulse !== 'off' ? 'relative' : '']
+        .filter(Boolean)
+        .join(' '),
+      style: todayHeaderStyle(options),
     }
   }
 
   if (target === 'column-root') {
-    if (!options.tintColumn) return { className: '', style: vars }
-    return {
-      className: '',
-      style: { ...vars, backgroundColor: 'var(--wf-today-bg)' },
-    }
-  }
-
-  if (target === 'month-cell') {
-    if (!options.tintMonthCell) return { className: '', style: vars }
+    const colBg =
+      backgroundStyle(options) ??
+      (options.backgroundMode === 'none'
+        ? { backgroundColor: hexToRgba(options.accentColor, (options.backgroundOpacity / 100) * 0.2) }
+        : undefined)
     return {
       className: pulse,
-      style: { ...vars, ...backgroundStyle(options), ...border },
+      style: { ...accentCssVars(options), ...colBg },
     }
   }
 
-  if (target === 'month-date-button') {
-    return { className: pulse, style: vars }
+  return {
+    className: pulse,
+    style: todayContainerStyle(options),
   }
-
-  return { className: '', style: vars }
 }
 
+export function resolveTodayWeekdayPresentation(
+  isToday: boolean,
+  options: TodayHighlightOptions,
+  size: TodayDateSize,
+): TodayTextPresentation {
+  const base = `${WEEKDAY_SIZE_CLASS[size]} font-semibold truncate`
+  if (!isToday) return { className: `${base} text-wf-text-secondary` }
+  if (!options.showWeekdayAccent) return { className: `${base} text-wf-text-secondary` }
+  return {
+    className: base,
+    style: { color: options.accentColor },
+  }
+}
+
+export function resolveTodayDatePresentation(
+  isToday: boolean,
+  options: TodayHighlightOptions,
+  size: TodayDateSize,
+  onSolidBackground = false,
+): TodayTextPresentation {
+  const base = `${DATE_SIZE_CLASS[size]} font-bold leading-none font-display tabular-nums`
+  if (!isToday) return { className: `${base} text-wf-text` }
+
+  switch (options.dateStyle) {
+    case 'accent-text':
+      return { className: base, style: { color: options.accentColor } }
+    case 'filled-circle':
+      return {
+        className: `${base} inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1`,
+        style: { backgroundColor: options.accentColor, color: '#ffffff' },
+      }
+    case 'filled-pill':
+      return {
+        className: `${base} inline-flex items-center justify-center rounded-full px-2.5 py-0.5`,
+        style: { backgroundColor: options.accentColor, color: '#ffffff' },
+      }
+    case 'outlined-circle':
+      return {
+        className: `${base} inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1`,
+        style: { border: `2px solid ${options.accentColor}`, color: options.accentColor },
+      }
+    case 'scaled':
+      return {
+        className: `${base} inline-block scale-110`,
+        style: { color: options.accentColor },
+      }
+    case 'default':
+    default:
+      return {
+        className: base,
+        style: { color: onSolidBackground ? '#ffffff' : undefined },
+      }
+  }
+}
+
+export function resolveTodayTitlePresentation(
+  isToday: boolean,
+  options: TodayHighlightOptions,
+  onSolidBackground = false,
+): TodayTextPresentation {
+  const base = 'font-display text-body font-bold tracking-tight'
+  if (!isToday) return { className: `${base} text-wf-text` }
+  if (options.dateStyle === 'default' && !options.showWeekdayAccent) {
+    return { className: `${base} text-wf-text` }
+  }
+  if (onSolidBackground && options.backgroundMode === 'solid') {
+    return { className: base, style: { color: '#ffffff' } }
+  }
+  return { className: base, style: { color: options.accentColor } }
+}
+
+/** @deprecated Use resolveTodayWeekdayPresentation — kept for gradual migration */
 export function resolveTodayWeekdayClass(
   isToday: boolean,
   options: TodayHighlightOptions,
   size: TodayDateSize,
 ): string {
-  const base = `${WEEKDAY_SIZE_CLASS[size]} font-semibold`
-  if (!isToday) return `${base} text-wf-text-secondary`
-  if (options.showWeekdayAccent) return `${base} text-[var(--wf-today-accent)]`
-  return `${base} text-wf-text-secondary`
+  return resolveTodayWeekdayPresentation(isToday, options, size).className
 }
 
+/** @deprecated Use resolveTodayDatePresentation */
 export function resolveTodayDateClass(
   isToday: boolean,
   options: TodayHighlightOptions,
   size: TodayDateSize,
   onSolidBackground = false,
 ): string {
-  const base = `${DATE_SIZE_CLASS[size]} font-bold leading-none font-display tabular-nums`
-  if (!isToday) return `${base} text-wf-text`
-
-  switch (options.dateStyle) {
-    case 'accent-text':
-      return `${base} text-[var(--wf-today-accent)]`
-    case 'filled-circle':
-      return `${base} inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[var(--wf-today-solid)] px-1 text-white`
-    case 'filled-pill':
-      return `${base} inline-flex items-center justify-center rounded-full bg-[var(--wf-today-solid)] px-2.5 py-0.5 text-white`
-    case 'outlined-circle':
-      return `${base} inline-flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-[var(--wf-today-accent)] px-1 text-[var(--wf-today-accent)]`
-    case 'scaled':
-      return `${base} scale-110 text-[var(--wf-today-accent)]`
-    case 'default':
-    default:
-      return onSolidBackground ? `${base} text-white` : `${base} text-wf-text`
-  }
+  return resolveTodayDatePresentation(isToday, options, size, onSolidBackground).className
 }
 
+/** @deprecated Use resolveTodayTitlePresentation */
 export function resolveTodayTitleClass(
   isToday: boolean,
   options: TodayHighlightOptions,
   onSolidBackground = false,
 ): string {
-  const base = 'font-display text-body font-bold tracking-tight'
-  if (!isToday) return `${base} text-wf-text`
-  if (options.dateStyle === 'default' && !options.showWeekdayAccent) return `${base} text-wf-text`
-  if (onSolidBackground && options.backgroundMode === 'solid') return `${base} text-white`
-  return `${base} text-[var(--wf-today-accent)]`
+  return resolveTodayTitlePresentation(isToday, options, onSolidBackground).className
 }
 
 export function shouldShowTodayBadge(isToday: boolean, options: TodayHighlightOptions): boolean {
   return isToday && options.badge !== 'none'
 }
 
-export function todayBadgeClass(options: TodayHighlightOptions): string {
+export function todayBadgePresentation(options: TodayHighlightOptions): TodayTextPresentation {
   switch (options.badge) {
     case 'pill':
-      return 'rounded-full bg-[var(--wf-today-solid)] px-2.5 py-0.5 text-caption font-semibold text-white'
+      return {
+        className: 'rounded-full px-2.5 py-0.5 text-caption font-semibold',
+        style: { backgroundColor: options.accentColor, color: '#ffffff' },
+      }
     case 'dot':
-      return 'h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--wf-today-solid)]'
+      return {
+        className: 'h-2.5 w-2.5 shrink-0 rounded-full',
+        style: { backgroundColor: options.accentColor },
+      }
     case 'label':
-      return 'text-caption font-bold uppercase tracking-wider text-[var(--wf-today-accent)]'
+      return {
+        className: 'text-caption font-bold uppercase tracking-wider',
+        style: { color: options.accentColor },
+      }
     case 'corner':
-      return 'absolute -right-1 -top-1 rounded-bl-lg rounded-tr-lg bg-[var(--wf-today-solid)] px-1.5 py-0.5 text-[9px] font-bold uppercase text-white'
+      return {
+        className:
+          'absolute -right-1 -top-1 rounded-bl-lg rounded-tr-lg px-1.5 py-0.5 text-[9px] font-bold uppercase',
+        style: { backgroundColor: options.accentColor, color: '#ffffff' },
+      }
     default:
-      return ''
+      return { className: '' }
   }
 }
 
+export function todayBadgeClass(options: TodayHighlightOptions): string {
+  return todayBadgePresentation(options).className
+}
+
 export function todayBadgeLabel(options: TodayHighlightOptions): string {
-  switch (options.badge) {
-    case 'label':
-      return 'Today'
-    case 'corner':
-      return 'Today'
-    default:
-      return 'Today'
-  }
+  return 'Today'
 }
 
 export function mergeHighlightStyle(
@@ -261,4 +314,10 @@ export function mergeHighlightStyle(
     return { ...acc, ...slice.style }
   }, undefined)
   return { className, style }
+}
+
+/** Month grid: skip the generic selected ring when today styling already draws a border. */
+export function monthCellSelectionClass(selected: boolean, isTodayDate: boolean): string {
+  if (!selected || isTodayDate) return ''
+  return 'ring-1 ring-inset ring-wf-accent/35'
 }

@@ -5,7 +5,7 @@ import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
   mergeHighlightStyle,
   resolveTodayHighlight,
-  resolveTodayTitleClass,
+  resolveTodayTitlePresentation,
 } from '../lib/todayHighlight'
 import { GroupedItemList } from './GroupedItemList'
 import { TodayHighlightBadge } from './TodayHighlightBadge'
@@ -43,6 +43,7 @@ export function DayCard({
   const mergedCard = mergeHighlightStyle(cardHighlight)
   const mergedHeader = mergeHighlightStyle(headerHighlight)
   const onSolid = todayHighlight.backgroundMode === 'solid' && today
+  const title = resolveTodayTitlePresentation(today, todayHighlight, onSolid)
 
   return (
     <article
@@ -54,7 +55,7 @@ export function DayCard({
         className={`relative flex items-center justify-between border-b border-wf-border px-4 py-3 ${mergedHeader.className}`}
         style={mergedHeader.style}
       >
-        <h3 className={resolveTodayTitleClass(today, todayHighlight, onSolid)}>
+        <h3 className={title.className} style={title.style}>
           {formatDayHeader(date)}
         </h3>
         <TodayHighlightBadge isToday={today} options={todayHighlight} />

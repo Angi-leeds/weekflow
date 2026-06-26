@@ -177,14 +177,8 @@ export function loadTodayHighlightOptions(): TodayHighlightOptions {
       badge: isTodayBadgeMode(parsed.badge)
         ? parsed.badge
         : presetDefaults.badge ?? DEFAULT_TODAY_HIGHLIGHT.badge,
-      tintColumn:
-        typeof parsed.tintColumn === "boolean"
-          ? parsed.tintColumn
-          : presetDefaults.tintColumn ?? DEFAULT_TODAY_HIGHLIGHT.tintColumn,
-      tintMonthCell:
-        typeof parsed.tintMonthCell === "boolean"
-          ? parsed.tintMonthCell
-          : presetDefaults.tintMonthCell ?? DEFAULT_TODAY_HIGHLIGHT.tintMonthCell,
+      tintColumn: true,
+      tintMonthCell: true,
       showWeekdayAccent:
         typeof parsed.showWeekdayAccent === "boolean"
           ? parsed.showWeekdayAccent

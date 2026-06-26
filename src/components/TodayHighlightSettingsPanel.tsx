@@ -12,10 +12,11 @@ import {
 } from '../types'
 import {
   mergeHighlightStyle,
-  resolveTodayDateClass,
+  resolveTodayDatePresentation,
   resolveTodayHighlight,
-  resolveTodayTitleClass,
-  resolveTodayWeekdayClass,
+  resolveTodayTitlePresentation,
+  resolveTodayWeekdayPresentation,
+  todayContainerStyle,
 } from '../lib/todayHighlight'
 import { TodayHighlightBadge } from './TodayHighlightBadge'
 import {
@@ -54,13 +55,18 @@ export function TodayHighlightSettingsPanel({
     resolveTodayHighlight(true, options, 'day-card-header'),
   )
   const previewColumn = mergeHighlightStyle(resolveTodayHighlight(true, options, 'column-header'))
+  const previewMonth = mergeHighlightStyle(resolveTodayHighlight(true, options, 'month-cell'))
   const onSolid = options.backgroundMode === 'solid'
+  const title = resolveTodayTitlePresentation(true, options, onSolid)
+  const weekday = resolveTodayWeekdayPresentation(true, options, 'md')
+  const dateNum = resolveTodayDatePresentation(true, options, 'md', onSolid)
+  const monthDate = resolveTodayDatePresentation(true, options, 'xs', onSolid)
 
   return (
     <>
       <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
-        Make today impossible to miss — colours, borders, pulses, and badges apply across week,
-        month, and list views.
+        Every option below applies to <strong className="font-semibold text-wf-text-secondary">all calendar views</strong>{' '}
+        — week list, week board, week timeline, month, day, agenda, and the Today tab.
       </p>
 
       <div className="mx-4 mb-4 grid gap-3 rounded-2xl border border-wf-border bg-wf-bg p-3 sm:grid-cols-3">
@@ -72,29 +78,35 @@ export function TodayHighlightSettingsPanel({
             className={`flex items-center justify-between border-b border-wf-border px-3 py-2 ${previewColumn.className}`}
             style={previewColumn.style}
           >
-            <span className={resolveTodayTitleClass(true, options, onSolid)}>Today</span>
+            <span className={title.className} style={title.style}>
+              Today
+            </span>
             <TodayHighlightBadge isToday options={options} />
           </div>
-          <div className="px-3 py-2 text-caption text-wf-text-tertiary">Day list preview</div>
+          <div className="px-3 py-2 text-caption text-wf-text-tertiary">List / agenda / day</div>
         </div>
 
         <div
           className={`rounded-xl border border-wf-border bg-wf-surface px-2 py-2 text-center ${previewColumn.className}`}
           style={previewColumn.style}
         >
-          <p className={resolveTodayWeekdayClass(true, options, 'md')}>Wed</p>
-          <p className={resolveTodayDateClass(true, options, 'md')}>18</p>
+          <p className={weekday.className} style={weekday.style}>
+            Wed
+          </p>
+          <p className={dateNum.className} style={dateNum.style}>
+            18
+          </p>
           <p className="mt-1 text-[10px] text-wf-text-tertiary">Week column</p>
         </div>
 
-        <div className="flex flex-col items-center justify-center rounded-xl border border-wf-border bg-wf-surface p-3">
-          <span
-            className={`${resolveTodayDateClass(true, options, 'sm')} text-caption font-semibold`}
-            style={resolveTodayHighlight(true, options, 'month-date-button').style}
-          >
+        <div
+          className={`flex min-h-[88px] flex-col rounded-xl border border-wf-border p-2 ${previewMonth.className}`}
+          style={{ ...todayContainerStyle(options), ...previewMonth.style }}
+        >
+          <span className={`${monthDate.className} self-start text-caption font-semibold`} style={monthDate.style}>
             18
           </span>
-          <p className="mt-2 text-[10px] text-wf-text-tertiary">Month date</p>
+          <div className="mt-auto text-[10px] text-wf-text-tertiary">Month cell</div>
         </div>
       </div>
 
@@ -216,22 +228,8 @@ export function TodayHighlightSettingsPanel({
       />
 
       <SettingsToggleRow
-        label="Tint week column"
-        description="Apply a background wash to the full day column in week views."
-        checked={options.tintColumn}
-        onChange={(tintColumn) => change({ tintColumn })}
-      />
-
-      <SettingsToggleRow
-        label="Tint month cell"
-        description="Highlight the whole day cell in month view, not just the date."
-        checked={options.tintMonthCell}
-        onChange={(tintMonthCell) => change({ tintMonthCell })}
-      />
-
-      <SettingsToggleRow
         label="Accent weekday label"
-        description="Colour Mon, Tue, Wed… on today's column header."
+        description="Colour Mon, Tue, Wed… on today's column header in all views."
         checked={options.showWeekdayAccent}
         onChange={(showWeekdayAccent) => change({ showWeekdayAccent })}
       />
