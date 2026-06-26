@@ -673,10 +673,19 @@ export async function copyEmailToGoogleDriveFolder(
 
 const MYAXIS_LOCAL_ITEM_PROPERTY = "myaxisLocalItemId";
 
-function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string, unknown> {
-  const timeZone = process.env.GOOGLE_CALENDAR_TIMEZONE ?? "Europe/London";
+function hasExplicitScheduleTime(input: {
+  startTime?: string;
+  endTime?: string;
+}): boolean {
+  return Boolean(input.startTime?.trim() || input.endTime?.trim());
+}
 
-  if (input.allDay) {
+function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string, unknown> {
+  const timeZone =
+    input.timeZone ?? process.env.GOOGLE_CALENDAR_TIMEZONE ?? "Europe/London";
+  const allDay = input.allDay || !hasExplicitScheduleTime(input);
+
+  if (allDay) {
     const exclusiveEnd =
       input.endDate && input.endDate >= input.date
         ? addDaysIso(input.endDate, 1)
@@ -697,8 +706,8 @@ function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string,
     };
   }
 
-  const startTime = input.startTime ?? "09:00";
-  const endTime = input.endTime ?? input.startTime ?? "10:00";
+  const startTime = input.startTime!;
+  const endTime = input.endTime ?? input.startTime ?? startTime;
   const endDate = input.endDate && input.endDate > input.date ? input.endDate : input.date;
 
   const payload: Record<string, unknown> = {

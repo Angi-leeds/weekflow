@@ -11,6 +11,7 @@ import { isTaskCategory, resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
 import { ITEM_FORM_DIARY } from '../lib/diaryHelpCopy'
 import { resolveItemDiaryVisibility } from '../lib/diaryVisibility'
+import { deriveAllDayFromTimes, normalizeItemSchedule } from '../lib/itemTimeHelpers'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
 import { getPhotoUrlForItem, uploadAttachment } from '../lib/attachments'
 import { getMicrosoftSchedule, respondToMicrosoftCalendarEvent } from '../lib/microsoft'
@@ -54,11 +55,12 @@ interface ItemFormModalProps {
 
 const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
   const defaultCat = categories.find((c) => c.id === 'appointment') ?? categories[0]
+  const isEvent = defaultCat.kind === 'event'
   return {
     id: '',
     title: '',
     date: toISODate(date),
-    allDay: false,
+    allDay: isEvent,
     categoryId: defaultCat.id,
     colour: defaultCat.colour,
     notes: '',
@@ -220,7 +222,7 @@ export function ItemFormModal({
   useEffect(() => {
     if (!open) return
     if (item?.id) {
-      setForm({ ...item })
+      setForm(normalizeItemSchedule({ ...item }, categories))
       setShowInDiaryMode(
         item.showInDiary === true
           ? 'always'
@@ -336,15 +338,18 @@ export function ItemFormModal({
     const itemIsTask = isTaskOrReminder(form, categories)
     const showInDiary =
       showInDiaryMode === 'category' ? null : showInDiaryMode === 'always' ? true : false
-    const savedItem: CalendarItem = {
-      ...form,
-      id: form.id || generateId(),
-      title: form.title.trim(),
-      endDate,
-      colour: resolveItemColour(categories, form.categoryId),
-      completed: itemIsTask ? form.completed : undefined,
-      showInDiary: itemIsTask ? showInDiary : undefined,
-    }
+    const savedItem = normalizeItemSchedule(
+      {
+        ...form,
+        id: form.id || generateId(),
+        title: form.title.trim(),
+        endDate,
+        colour: resolveItemColour(categories, form.categoryId),
+        completed: itemIsTask ? form.completed : undefined,
+        showInDiary: itemIsTask ? showInDiary : undefined,
+      },
+      categories,
+    )
     const options: SaveItemOptions = {}
     if (!isEdit && !isTask && hasActiveReminder(savedItem) && createLinkedTask && linkedTaskCategoryId) {
       options.createLinkedTask = { categoryId: linkedTaskCategoryId }
@@ -390,15 +395,18 @@ export function ItemFormModal({
       todoListId: undefined,
     }
     setForm(
-      applyIntegrationDefaults(
-        next,
+      normalizeItemSchedule(
+        applyIntegrationDefaults(
+          next,
+          categories,
+          usingRealMicrosoft,
+          usingRealGoogle,
+          microsoftCalendars,
+          googleCalendars,
+          microsoftTodoLists,
+          integrationAccountDefaults,
+        ),
         categories,
-        usingRealMicrosoft,
-        usingRealGoogle,
-        microsoftCalendars,
-        googleCalendars,
-        microsoftTodoLists,
-        integrationAccountDefaults,
       ),
     )
   }
@@ -586,7 +594,7 @@ export function ItemFormModal({
             </Field>
           )}
 
-          {form.allDay && !form.endDate && (
+          {deriveAllDayFromTimes(form, categories, form.allDay) && !form.endDate && (
             <p className="text-caption text-wf-text-tertiary">
               Leave end date empty for a single-day event, or set it to span multiple days.
             </p>
@@ -595,27 +603,46 @@ export function ItemFormModal({
           <label className="flex items-center gap-3 rounded-xl bg-wf-bg px-4 py-3">
             <input
               type="checkbox"
-              checked={form.allDay}
+              checked={deriveAllDayFromTimes(form, categories, form.allDay)}
               onChange={(e) =>
                 setForm({
                   ...form,
                   allDay: e.target.checked,
                   startTime: e.target.checked ? undefined : form.startTime,
+                  endTime: e.target.checked ? undefined : form.endTime,
                   endDate: e.target.checked ? form.endDate : undefined,
                 })
               }
               className="h-5 w-5 rounded accent-wf-accent"
             />
-            <span className="text-[15px] font-medium">All day</span>
+            <span>
+              <span className="block text-[15px] font-medium">All day</span>
+              {!isTask && (
+                <span className="mt-0.5 block text-caption text-wf-text-tertiary">
+                  Leave times blank below and this stays on — syncs as all-day to Outlook and Google.
+                </span>
+              )}
+            </span>
           </label>
 
-          {!form.allDay && (
+          {!deriveAllDayFromTimes(form, categories, form.allDay) && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Start">
                 <input
                   type="time"
                   value={form.startTime ?? ''}
-                  onChange={(e) => setForm({ ...form, startTime: e.target.value || undefined })}
+                  onChange={(e) => {
+                    const startTime = e.target.value || undefined
+                    setForm((prev) => ({
+                      ...prev,
+                      startTime,
+                      allDay: deriveAllDayFromTimes(
+                        { ...prev, startTime },
+                        categories,
+                        prev.allDay,
+                      ),
+                    }))
+                  }}
                   className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-[15px] outline-none focus:border-wf-accent"
                 />
               </Field>
@@ -623,7 +650,18 @@ export function ItemFormModal({
                 <input
                   type="time"
                   value={form.endTime ?? ''}
-                  onChange={(e) => setForm({ ...form, endTime: e.target.value || undefined })}
+                  onChange={(e) => {
+                    const endTime = e.target.value || undefined
+                    setForm((prev) => ({
+                      ...prev,
+                      endTime,
+                      allDay: deriveAllDayFromTimes(
+                        { ...prev, endTime },
+                        categories,
+                        prev.allDay,
+                      ),
+                    }))
+                  }}
                   className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-[15px] outline-none focus:border-wf-accent"
                 />
               </Field>

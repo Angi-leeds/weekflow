@@ -144,6 +144,7 @@ export interface CalendarSyncInput {
   reminderPreset?: string;
   reminderCustomMinutes?: number;
   reminderAt?: string;
+  timeZone?: string;
 }
 
 export interface TodoSyncInput {
@@ -1307,12 +1308,21 @@ export async function deleteMicrosoftNote(
   });
 }
 
+function hasExplicitScheduleTime(input: {
+  startTime?: string;
+  endTime?: string;
+}): boolean {
+  return Boolean(input.startTime?.trim() || input.endTime?.trim());
+}
+
 function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
-  const timeZone = process.env.MICROSOFT_CALENDAR_TIMEZONE ?? "Europe/London";
+  const timeZone =
+    input.timeZone ?? process.env.MICROSOFT_CALENDAR_TIMEZONE ?? "Europe/London";
+  const allDay = input.allDay || !hasExplicitScheduleTime(input);
 
   let payload: Record<string, unknown>;
 
-  if (input.allDay) {
+  if (allDay) {
     const end =
       input.endDate && input.endDate > input.date
         ? input.endDate
@@ -1325,8 +1335,8 @@ function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
       isAllDay: true,
     };
   } else {
-    const startTime = input.startTime ?? "09:00";
-    const endTime = input.endTime ?? input.startTime ?? "10:00";
+    const startTime = input.startTime!;
+    const endTime = input.endTime ?? input.startTime ?? startTime;
     payload = {
       subject: input.title,
       body: { contentType: "text", content: input.notes ?? "" },

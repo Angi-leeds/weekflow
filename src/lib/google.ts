@@ -1,5 +1,6 @@
 import type { GoogleCalendarDto, GoogleIntegrationStatus } from "../../shared/googleApi";
 import type { CalendarItem, EmailFolder, EmailMessage } from "../types";
+import { getClientTimeZone } from "./itemTimeHelpers";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -200,6 +201,7 @@ export async function syncCalendarToGoogle(
         reminderPreset: item.reminderPreset,
         reminderCustomMinutes: item.reminderCustomMinutes,
         reminderAt: item.reminderAt,
+        timeZone: getClientTimeZone(),
       },
     }),
   });

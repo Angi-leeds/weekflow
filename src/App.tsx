@@ -117,6 +117,7 @@ import { duplicateCalendarItem } from './lib/calendarItemHelpers'
 import { CalendarMenuProvider, type CalendarMenuActions } from './context/CalendarMenuContext'
 import { CalendarLinksProvider } from './context/CalendarLinksContext'
 import { filterItemsForDiary } from './lib/diaryVisibility'
+import { normalizeItemSchedule } from './lib/itemTimeHelpers'
 import { PLANNER_DIARY_HINT } from './lib/diaryHelpCopy'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
@@ -566,6 +567,24 @@ export default function App() {
     const accountIds = calendarAccounts.map((account) => account.id)
     setCalendarFilter((prev) => sanitizeCalendarFilter(prev, accountIds))
   }, [calendarAccounts])
+
+  useEffect(() => {
+    setItems((prev) => {
+      let changed = false
+      const next = prev.map((item) => {
+        const normalized = normalizeItemSchedule(item, categories)
+        if (
+          normalized.allDay !== item.allDay ||
+          normalized.startTime !== item.startTime ||
+          normalized.endTime !== item.endTime
+        ) {
+          changed = true
+        }
+        return normalized
+      })
+      return changed ? next : prev
+    })
+  }, [categories])
 
   useEffect(() => {
     if (microsoftLoading && googleLoading) return
@@ -1199,10 +1218,13 @@ export default function App() {
         : microsoftAccounts[0]
           ? microsoftAccountKey(microsoftAccounts[0].id)
           : calendarAccountForCategory(item.categoryId)
-      const normalized = {
-        ...item,
-        accountId: item.accountId ?? fallbackAccountKey,
-      }
+      const normalized = normalizeItemSchedule(
+        {
+          ...item,
+          accountId: item.accountId ?? fallbackAccountKey,
+        },
+        categories,
+      )
 
       const upsertLocal = (next: CalendarItem) => {
         setItems((prev) => {

@@ -7,6 +7,7 @@ import type {
   MicrosoftIntegrationStatus,
 } from "../../shared/microsoftGraph";
 import type { CalendarItem, Contact, EmailMessage, EmailFolder, Note } from "../types";
+import { getClientTimeZone } from "./itemTimeHelpers";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -553,6 +554,7 @@ export async function syncCalendarToMicrosoft(
         reminderPreset: item.reminderPreset,
         reminderCustomMinutes: item.reminderCustomMinutes,
         reminderAt: item.reminderAt,
+        timeZone: getClientTimeZone(),
         photoStorageKey: photo?.storageKey,
         photoMimeType: photo?.mimeType,
         photoFilename: photo?.filename,
@@ -583,6 +585,7 @@ export async function syncMicrosoftTodo(
         reminderPreset: item.reminderPreset,
         reminderCustomMinutes: item.reminderCustomMinutes,
         reminderAt: item.reminderAt,
+        timeZone: getClientTimeZone(),
       },
     }),
   });

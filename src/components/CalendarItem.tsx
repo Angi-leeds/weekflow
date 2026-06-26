@@ -16,6 +16,7 @@ import { useCalendarLinks } from '../context/CalendarLinksContext'
 import { useItemContextMenu } from '../hooks/useCalendarContextMenu'
 import { formatReminderLabel, hasActiveReminder } from '../lib/reminderHelpers'
 import { getItemLinkType, getLinkedPartnerItem, linkTargetIcon } from '../lib/itemLinkHelpers'
+import { isEffectivelyAllDay } from '../lib/itemTimeHelpers'
 
 interface CalendarItemRowProps {
   item: CalendarItem
@@ -88,6 +89,7 @@ export function CalendarItemRow({
   const timeLabel = hideTime ? null : (
     <TimeLabel
       item={item}
+      categories={categories}
       spanPosition={spanPosition}
       isTask={isTask}
       compact={isCompactDensity}
@@ -106,7 +108,7 @@ export function CalendarItemRow({
     linkContext &&
     getLinkedPartnerItem(linkContext.links, entityType, item.id, linkContext.items)
   const isCopied = menu?.clipboardItemId === item.id
-  const denseChipText = dense ? formatDenseChipText(item, isTask) : null
+  const denseChipText = dense ? formatDenseChipText(item, isTask, categories) : null
   const reminderLabel = !dense && hasActiveReminder(item) ? formatReminderLabel(item) : null
 
   return (
@@ -315,15 +317,16 @@ function LinkedPartnerChip({
   )
 }
 
-function formatDenseChipText(item: CalendarItem, isTask: boolean): string {
-  if (!item.allDay && item.startTime && !isTask) {
+function formatDenseChipText(item: CalendarItem, isTask: boolean, categories: Category[]): string {
+  const allDay = isEffectivelyAllDay(item, categories)
+  if (!allDay && item.startTime && !isTask) {
     const time = item.endTime
       ? formatTimeRange(item.startTime, item.endTime)
       : formatTime(item.startTime)
     return `${time} ${item.title}`
   }
 
-  if (!item.allDay && item.startTime && isTask) {
+  if (!allDay && item.startTime && isTask) {
     return `${formatTime(item.startTime)} ${item.title}`
   }
 
@@ -367,6 +370,7 @@ function buildCardStyle(
 
 function TimeLabel({
   item,
+  categories,
   spanPosition,
   isTask,
   compact,
@@ -376,6 +380,7 @@ function TimeLabel({
   showAnytimeLabel,
 }: {
   item: CalendarItem
+  categories: Category[]
   spanPosition: SpanPosition
   isTask: boolean
   compact: boolean
@@ -388,7 +393,9 @@ function TimeLabel({
     timeSizeClass ??
     (dense ? 'text-[10px]' : compact ? 'text-[11px]' : 'text-subhead')
 
-  if (isMultiDay(item) && item.allDay && !isTask) {
+  const allDay = isEffectivelyAllDay(item, categories)
+
+  if (isMultiDay(item) && allDay && !isTask) {
     return (
       <span className={`tabular-nums font-semibold text-wf-text-secondary ${sizeClass}`}>
         {formatDateRangeShort(item.date, getItemEndDate(item))}
@@ -396,7 +403,7 @@ function TimeLabel({
     )
   }
 
-  if (item.allDay && !isTask) {
+  if (allDay && !isTask) {
     return (
       <span className={`tabular-nums font-medium text-wf-text-secondary ${sizeClass}`}>
         All day
@@ -404,7 +411,7 @@ function TimeLabel({
     )
   }
 
-  if (item.startTime && spanPosition === 'start' && isMultiDay(item) && !item.allDay) {
+  if (item.startTime && spanPosition === 'start' && isMultiDay(item) && !allDay) {
     return (
       <span className={`tabular-nums font-semibold text-wf-text-secondary ${sizeClass}`}>
         {formatTime(item.startTime)} → {formatDateRangeShort(item.date, getItemEndDate(item))}

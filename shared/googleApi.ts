@@ -24,6 +24,7 @@ export interface GoogleCalendarSyncInput {
   reminderPreset?: string;
   reminderCustomMinutes?: number;
   reminderAt?: string;
+  timeZone?: string;
 }
 
 export interface GoogleCalendarEventResult {
