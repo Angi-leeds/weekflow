@@ -558,7 +558,7 @@ function MonthDateHeader({
 }) {
   const today = isToday(day)
   const dayMenu = useDayContextMenu(day)
-  const cellHighlight = mergeHighlightStyle(resolveTodayHighlight(today, todayHighlight, 'month-cell'))
+  const cellHighlight = mergeHighlightStyle(resolveTodayHighlight(today, todayHighlight, 'month-header'))
 
   const datePresentation = today
     ? resolveTodayDatePresentation(true, todayHighlight, 'xs', todayHighlight.backgroundMode === 'solid')

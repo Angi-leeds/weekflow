@@ -2,7 +2,6 @@ import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, To
 import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import { formatDayHeader, getDayItemEntries, isToday } from '../dateUtils'
 import {
-  mergeHighlightStyle,
   resolveTodayHighlight,
   resolveTodayTitlePresentation,
 } from '../lib/todayHighlight'
@@ -38,10 +37,8 @@ export function TodayView({
   const entries = getDayItemEntries(items, date)
   const dayMenu = useDayContextMenu(date)
   const today = isToday(date)
-  const cardHighlight = mergeHighlightStyle(
-    resolveTodayHighlight(today, todayHighlight, 'day-card'),
-    resolveTodayHighlight(today, todayHighlight, 'day-card-header'),
-  )
+  const cardHighlight = resolveTodayHighlight(today, todayHighlight, 'day-card')
+  const headerHighlight = resolveTodayHighlight(today, todayHighlight, 'day-card-header')
   const onSolid = todayHighlight.backgroundMode === 'solid' && today
   const title = resolveTodayTitlePresentation(today, todayHighlight, onSolid)
 
@@ -61,13 +58,13 @@ export function TodayView({
 
       <section
         {...dayMenu}
-        className={`relative overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] ${cardHighlight.className}`}
+        className="relative overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]"
         style={cardHighlight.style}
       >
         {today && (
           <div
-            className="flex items-center justify-between border-b border-wf-border px-4 py-2"
-            style={resolveTodayHighlight(true, todayHighlight, 'day-card-header').style}
+            className={`flex items-center justify-between border-b border-wf-border px-4 py-2 ${headerHighlight.className}`}
+            style={headerHighlight.style}
           >
             <span className={title.className} style={title.style}>Today</span>
             <TodayHighlightBadge isToday options={todayHighlight} />

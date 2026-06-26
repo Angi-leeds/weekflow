@@ -6,8 +6,18 @@ export type TodayHighlightTarget =
   | 'day-card-header'
   | 'column-header'
   | 'column-root'
+  | 'month-header'
   | 'month-cell'
   | 'month-date-button'
+
+function isPulseTarget(target: TodayHighlightTarget): boolean {
+  return (
+    target === 'day-card-header' ||
+    target === 'column-header' ||
+    target === 'month-header' ||
+    target === 'month-date-button'
+  )
+}
 
 export interface TodayHighlightSlice {
   className: string
@@ -134,9 +144,14 @@ export function resolveTodayHighlight(
 ): TodayHighlightSlice {
   if (!isToday) return { className: '' }
 
-  const pulse = pulseClass(options.pulse)
+  const pulse = isPulseTarget(target) ? pulseClass(options.pulse) : ''
 
-  if (target === 'day-card-header' || target === 'column-header' || target === 'month-date-button') {
+  if (
+    target === 'day-card-header' ||
+    target === 'column-header' ||
+    target === 'month-header' ||
+    target === 'month-date-button'
+  ) {
     return {
       className: [pulse, target === 'column-header' && options.pulse !== 'off' ? 'relative' : '']
         .filter(Boolean)
@@ -152,13 +167,13 @@ export function resolveTodayHighlight(
         ? { backgroundColor: hexToRgba(options.accentColor, (options.backgroundOpacity / 100) * 0.2) }
         : undefined)
     return {
-      className: pulse,
+      className: '',
       style: { ...accentCssVars(options), ...colBg },
     }
   }
 
   return {
-    className: pulse,
+    className: '',
     style: todayContainerStyle(options),
   }
 }

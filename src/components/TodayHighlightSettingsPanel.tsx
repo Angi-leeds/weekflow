@@ -11,12 +11,10 @@ import {
   applyTodayHighlightPreset,
 } from '../types'
 import {
-  mergeHighlightStyle,
   resolveTodayDatePresentation,
   resolveTodayHighlight,
   resolveTodayTitlePresentation,
   resolveTodayWeekdayPresentation,
-  todayContainerStyle,
 } from '../lib/todayHighlight'
 import { TodayHighlightBadge } from './TodayHighlightBadge'
 import {
@@ -50,12 +48,10 @@ export function TodayHighlightSettingsPanel({
     onChange(applyTodayHighlightPreset(preset, options.accentColor))
   }
 
-  const previewCard = mergeHighlightStyle(
-    resolveTodayHighlight(true, options, 'day-card'),
-    resolveTodayHighlight(true, options, 'day-card-header'),
-  )
-  const previewColumn = mergeHighlightStyle(resolveTodayHighlight(true, options, 'column-header'))
-  const previewMonth = mergeHighlightStyle(resolveTodayHighlight(true, options, 'month-cell'))
+  const previewCardBody = resolveTodayHighlight(true, options, 'day-card')
+  const previewCardHeader = resolveTodayHighlight(true, options, 'day-card-header')
+  const previewColumn = resolveTodayHighlight(true, options, 'column-header')
+  const previewMonth = resolveTodayHighlight(true, options, 'month-header')
   const onSolid = options.backgroundMode === 'solid'
   const title = resolveTodayTitlePresentation(true, options, onSolid)
   const weekday = resolveTodayWeekdayPresentation(true, options, 'md')
@@ -71,12 +67,12 @@ export function TodayHighlightSettingsPanel({
 
       <div className="mx-4 mb-4 grid gap-3 rounded-2xl border border-wf-border bg-wf-bg p-3 sm:grid-cols-3">
         <div
-          className={`relative overflow-hidden rounded-xl bg-wf-surface shadow-[var(--shadow-card)] ${previewCard.className}`}
-          style={previewCard.style}
+          className="relative overflow-hidden rounded-xl bg-wf-surface shadow-[var(--shadow-card)]"
+          style={previewCardBody.style}
         >
           <div
-            className={`flex items-center justify-between border-b border-wf-border px-3 py-2 ${previewColumn.className}`}
-            style={previewColumn.style}
+            className={`flex items-center justify-between border-b border-wf-border px-3 py-2 ${previewCardHeader.className}`}
+            style={previewCardHeader.style}
           >
             <span className={title.className} style={title.style}>
               Today
@@ -100,8 +96,8 @@ export function TodayHighlightSettingsPanel({
         </div>
 
         <div
-          className={`flex min-h-[88px] flex-col rounded-xl border border-wf-border p-2 ${previewMonth.className}`}
-          style={{ ...todayContainerStyle(options), ...previewMonth.style }}
+          className={`flex min-h-[88px] flex-col rounded-xl border border-wf-border p-2 bg-wf-surface ${previewMonth.className}`}
+          style={previewMonth.style}
         >
           <span className={`${monthDate.className} self-start text-caption font-semibold`} style={monthDate.style}>
             18
