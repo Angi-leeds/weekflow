@@ -1,7 +1,8 @@
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
-import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
-import { getAgendaEntries, parseDate } from '../dateUtils'
+import type { CalendarItem, Category, DateHeaderDisplayOptions, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions, WeekStartsOn } from '../types'
+import { DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import { getAgendaEntries, isSameDay, parseDate } from '../dateUtils'
 import { DayCard } from './DayCard'
+import { ViewDateHeaderExtras } from './ViewDateTitle'
 import { SectionHeader } from './ui/SectionHeader'
 
 interface AgendaViewProps {
@@ -10,6 +11,11 @@ interface AgendaViewProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
+  weekStartsOn?: WeekStartsOn
+  referenceDate: Date
+  onJumpToDate?: (date: Date) => void
+  onSelectDate?: (date: Date) => void
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
@@ -20,6 +26,11 @@ export function AgendaView({
   listOptions,
   displayOptions,
   todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  dateHeaderDisplay = DEFAULT_DATE_HEADER_DISPLAY,
+  weekStartsOn,
+  referenceDate,
+  onJumpToDate,
+  onSelectDate,
   onItemTap,
   onToggleComplete,
 }: AgendaViewProps) {
@@ -37,24 +48,40 @@ export function AgendaView({
 
   return (
     <div className="space-y-3 px-4 pb-6 pt-2">
-      <SectionHeader title="Agenda" subtitle={`${groups.length} days`} />
+      <SectionHeader
+        title="Agenda"
+        subtitle={`${groups.length} days`}
+        titleExtra={
+          <ViewDateHeaderExtras
+            referenceDate={referenceDate}
+            onJumpToDate={onJumpToDate}
+            weekStartsOn={weekStartsOn}
+          />
+        }
+      />
 
       {groups.length === 0 ? (
         <p className="py-8 text-center text-subhead text-wf-text-tertiary">No upcoming items</p>
       ) : (
-        groups.map(([date, dayEntries]) => (
+        groups.map(([date, dayEntries]) => {
+          const day = parseDate(date)
+          const selected = isSameDay(day, referenceDate)
+          return (
           <DayCard
             key={date}
-            date={parseDate(date)}
+            date={day}
             entries={dayEntries}
             categories={categories}
             listOptions={listOptions}
             displayOptions={displayOptions}
             todayHighlight={todayHighlight}
+            dateHeaderDisplay={dateHeaderDisplay}
+            selected={selected}
+            onSelectDate={onSelectDate}
             onItemTap={onItemTap}
             onToggleComplete={onToggleComplete}
           />
-        ))
+        )})
       )}
     </div>
   )

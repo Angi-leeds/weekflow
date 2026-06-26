@@ -313,6 +313,10 @@ export interface CalendarPreferences {
   weekViewAnchor: WeekViewAnchor
   /** How dated tasks appear on the calendar diary (Planner always shows all tasks). */
   diaryTasksMode?: DiaryTasksMode
+  /** Show ISO week number on the left of day headers. */
+  showWeekNumber?: boolean
+  /** Show day-of-year number on the left of day headers. */
+  showDayOfYear?: boolean
 }
 
 export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
@@ -322,6 +326,27 @@ export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
   monthViewExpandWeeks: false,
   weekViewAnchor: 'week-start',
   diaryTasksMode: 'category-rules',
+  showWeekNumber: false,
+  showDayOfYear: false,
+}
+
+export interface DateHeaderDisplayOptions {
+  showWeekNumber: boolean
+  showDayOfYear: boolean
+}
+
+export const DEFAULT_DATE_HEADER_DISPLAY: DateHeaderDisplayOptions = {
+  showWeekNumber: false,
+  showDayOfYear: false,
+}
+
+export function dateHeaderDisplayFromPreferences(
+  prefs: CalendarPreferences,
+): DateHeaderDisplayOptions {
+  return {
+    showWeekNumber: prefs.showWeekNumber === true,
+    showDayOfYear: prefs.showDayOfYear === true,
+  }
 }
 
 /** Visual preset for highlighting the current day across calendar views. */

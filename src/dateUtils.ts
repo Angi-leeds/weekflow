@@ -103,6 +103,12 @@ export function addWeeks(date: Date, weeks: number): Date {
   return addDays(date, weeks * 7)
 }
 
+export function addMonths(date: Date, months: number): Date {
+  const d = new Date(date)
+  d.setMonth(d.getMonth() + months)
+  return d
+}
+
 export function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -133,6 +139,21 @@ export function formatDayColumnHeader(date: Date): string {
 
 export function formatDayNumber(date: Date): string {
   return String(date.getDate())
+}
+
+/** ISO 8601 week number (1–53). */
+export function getISOWeekNumber(date: Date): number {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7))
+  const yearStart = new Date(d.getFullYear(), 0, 1)
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86_400_000) + 1) / 7)
+}
+
+/** Day of year (1–366). */
+export function getDayOfYear(date: Date): number {
+  const start = new Date(date.getFullYear(), 0, 0)
+  return Math.floor((date.getTime() - start.getTime()) / 86_400_000)
 }
 
 export function formatMonthYear(date: Date): string {

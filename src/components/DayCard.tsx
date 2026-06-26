@@ -1,12 +1,14 @@
 import type { DayItemEntry } from '../dateUtils'
 import { formatDayHeader, getDayItemEntries, getDayItemEntriesForColumn, isToday, toISODate } from '../dateUtils'
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
-import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, DateHeaderDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
+import { DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
+  daySelectionClass,
   mergeHighlightStyle,
   resolveTodayHighlight,
   resolveTodayTitlePresentation,
 } from '../lib/todayHighlight'
+import { DayHeaderMetaLabels } from './DayHeaderMetaLabels'
 import { GroupedItemList } from './GroupedItemList'
 import { TodayHighlightBadge } from './TodayHighlightBadge'
 import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
@@ -18,6 +20,9 @@ interface DayCardProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
+  selected?: boolean
+  onSelectDate?: (date: Date) => void
   compact?: boolean
   dense?: boolean
   onItemTap?: (item: CalendarItem) => void
@@ -31,6 +36,9 @@ export function DayCard({
   listOptions,
   displayOptions,
   todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  dateHeaderDisplay = DEFAULT_DATE_HEADER_DISPLAY,
+  selected = false,
+  onSelectDate,
   compact = false,
   dense = false,
   onItemTap,
@@ -44,20 +52,30 @@ export function DayCard({
   const mergedHeader = mergeHighlightStyle(headerHighlight)
   const onSolid = todayHighlight.backgroundMode === 'solid' && today
   const title = resolveTodayTitlePresentation(today, todayHighlight, onSolid)
+  const selectionClass = daySelectionClass(selected, today)
 
   return (
     <article
       {...dayMenu}
-      className={`relative overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)] ${mergedCard.className}`}
+      className={`relative overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)] ${mergedCard.className} ${selectionClass}`}
       style={mergedCard.style}
     >
       <header
-        className={`relative flex items-center justify-between border-b border-wf-border px-4 py-3 ${mergedHeader.className}`}
+        className={`relative flex items-center justify-between gap-2 border-b border-wf-border px-4 py-3 ${mergedHeader.className} ${selectionClass}`}
         style={mergedHeader.style}
       >
-        <h3 className={title.className} style={title.style}>
-          {formatDayHeader(date)}
-        </h3>
+        <button
+          type="button"
+          onClick={() => onSelectDate?.(date)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-label={`Select ${formatDayHeader(date)}`}
+          aria-pressed={selected}
+        >
+          <DayHeaderMetaLabels date={date} display={dateHeaderDisplay} />
+          <h3 className={title.className} style={title.style}>
+            {formatDayHeader(date)}
+          </h3>
+        </button>
         <TodayHighlightBadge isToday={today} options={todayHighlight} />
       </header>
 
@@ -85,6 +103,9 @@ interface DayCardFromDateProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
+  selected?: boolean
+  onSelectDate?: (date: Date) => void
   excludeMultiDayAllDay?: boolean
   compact?: boolean
   dense?: boolean

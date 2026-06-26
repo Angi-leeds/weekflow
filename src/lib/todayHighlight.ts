@@ -333,6 +333,14 @@ export function mergeHighlightStyle(
 
 /** Month grid: skip the generic selected ring when today styling already draws a border. */
 export function monthCellSelectionClass(selected: boolean, isTodayDate: boolean): string {
-  if (!selected || isTodayDate) return ''
-  return 'ring-1 ring-inset ring-wf-accent/35'
+  if (!selected) return ''
+  if (isTodayDate) return 'ring-2 ring-inset ring-wf-accent/60'
+  return 'ring-2 ring-inset ring-wf-accent/70 bg-wf-accent-soft/25'
+}
+
+/** Week/day column header or card when explicitly selected. */
+export function daySelectionClass(selected: boolean, isTodayDate: boolean): string {
+  if (!selected) return ''
+  if (isTodayDate) return 'ring-2 ring-inset ring-wf-accent/60'
+  return 'ring-2 ring-inset ring-wf-accent/70 bg-wf-accent-soft/30'
 }

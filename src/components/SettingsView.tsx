@@ -574,6 +574,22 @@ export function SettingsView({
             onCalendarPreferencesChange({ ...calendarPreferences, monthViewExpandWeeks })
           }
         />
+        <SettingsToggleRow
+          label="Show week number"
+          description="ISO week number on the left of day headers (e.g. W26)."
+          checked={calendarPreferences.showWeekNumber === true}
+          onChange={(showWeekNumber) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, showWeekNumber })
+          }
+        />
+        <SettingsToggleRow
+          label="Show day of year"
+          description="Day-of-year number on the left of day headers (e.g. D177)."
+          checked={calendarPreferences.showDayOfYear === true}
+          onChange={(showDayOfYear) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, showDayOfYear })
+          }
+        />
         <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
           {usingRealMicrosoft
             ? 'Tap a calendar to filter the week view to that account.'

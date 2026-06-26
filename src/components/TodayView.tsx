@@ -1,12 +1,14 @@
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
-import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import type { CalendarItem, Category, DateHeaderDisplayOptions, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions, WeekStartsOn } from '../types'
+import { DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import { formatDayHeader, getDayItemEntries, isToday } from '../dateUtils'
 import {
   resolveTodayHighlight,
   resolveTodayTitlePresentation,
 } from '../lib/todayHighlight'
+import { DayHeaderMetaLabels } from './DayHeaderMetaLabels'
 import { GroupedItemList } from './GroupedItemList'
 import { TodayHighlightBadge } from './TodayHighlightBadge'
+import { ViewDateHeaderExtras } from './ViewDateTitle'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
 import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
@@ -17,7 +19,10 @@ interface TodayViewProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
+  weekStartsOn?: WeekStartsOn
   onListOptionsChange: (options: ListDisplayOptions) => void
+  onJumpToDate?: (date: Date) => void
   date?: Date
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
@@ -29,7 +34,10 @@ export function TodayView({
   listOptions,
   displayOptions,
   todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  dateHeaderDisplay = DEFAULT_DATE_HEADER_DISPLAY,
+  weekStartsOn,
   onListOptionsChange,
+  onJumpToDate,
   date = new Date(),
   onItemTap,
   onToggleComplete,
@@ -48,6 +56,16 @@ export function TodayView({
         <SectionHeader
           subtitle={today ? 'Today' : 'Focus'}
           title={formatDayHeader(date)}
+          titleExtra={
+            <>
+              <DayHeaderMetaLabels date={date} display={dateHeaderDisplay} />
+              <ViewDateHeaderExtras
+                referenceDate={date}
+                onJumpToDate={onJumpToDate}
+                weekStartsOn={weekStartsOn}
+              />
+            </>
+          }
         />
         <ListOptionsMenu
           categories={categories}

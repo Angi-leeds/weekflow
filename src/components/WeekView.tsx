@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type {
   CalendarItem,
   CalendarViewMode,
   Category,
+  DateHeaderDisplayOptions,
   ItemDisplayOptions,
   ListDisplayOptions,
   TodayHighlightOptions,
@@ -24,6 +24,7 @@ import {
 import { useHorizontalWheelChain, useScrollPan } from '../hooks/useScrollPan'
 import { useIsLandscape } from '../hooks/useMediaQuery'
 import { MultiDaySpanBar } from './MultiDaySpanBar'
+import { CalendarViewHeader } from './CalendarViewHeader'
 import {
   listRollingDays,
   WeekRollingDayColumn,
@@ -35,7 +36,10 @@ interface WeekViewProps {
   weekViewAnchor: WeekViewAnchor
   scrollToDate?: Date | null
   initialScrollDate?: Date
-  onFocusDateChange?: (date: Date) => void
+  referenceDate: Date
+  selectedDate?: Date
+  onSelectDate?: (date: Date) => void
+  onJumpToDate?: (date: Date) => void
   onScrollToDateApplied?: () => void
   items: CalendarItem[]
   categories: Category[]
@@ -43,6 +47,7 @@ interface WeekViewProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
   onWeekChange: (weekStart: Date) => void
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
@@ -64,7 +69,10 @@ export function WeekView({
   weekViewAnchor,
   scrollToDate,
   initialScrollDate,
-  onFocusDateChange,
+  referenceDate,
+  selectedDate,
+  onSelectDate,
+  onJumpToDate,
   onScrollToDateApplied,
   items,
   categories,
@@ -72,6 +80,7 @@ export function WeekView({
   listOptions,
   displayOptions = DEFAULT_ITEM_DISPLAY,
   todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  dateHeaderDisplay,
   onWeekChange,
   onItemTap,
   onToggleComplete,
@@ -139,8 +148,7 @@ export function WeekView({
     const index = daysBetween(rangeStartRef.current, normalized)
     root.scrollTo({ left: index * width, behavior })
     setVisibleStart((prev) => (toISODate(prev) === toISODate(normalized) ? prev : normalized))
-    onFocusDateChange?.(normalized)
-  }, [onFocusDateChange])
+  }, [])
 
   const applyInitialScrollPosition = useCallback(
     (behavior: ScrollBehavior = 'auto') => {
@@ -178,12 +186,8 @@ export function WeekView({
 
     const index = Math.max(0, Math.floor(root.scrollLeft / width))
     const next = addDays(rangeStart, index)
-    setVisibleStart((prev) => {
-      if (toISODate(prev) === toISODate(next)) return prev
-      onFocusDateChange?.(next)
-      return next
-    })
-  }, [onFocusDateChange, rangeStart])
+    setVisibleStart((prev) => (toISODate(prev) === toISODate(next) ? prev : next))
+  }, [rangeStart])
 
   const navigateByDays = useCallback(
     (deltaDays: number) => {
@@ -290,31 +294,16 @@ export function WeekView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="sticky top-0 z-10 shrink-0 border-b border-wf-border/60 bg-wf-bg/95 px-4 py-2 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigateByDays(-VISIBLE_DAYS)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wf-surface text-wf-accent shadow-[var(--shadow-card)] transition-transform active:scale-95"
-            aria-label="Previous week"
-          >
-            <ChevronLeft size={20} strokeWidth={1.75} />
-          </button>
-
-          <div className="min-w-0 flex-1 text-center">
-            <h2 className="truncate font-display text-title font-bold tracking-tight">
-              {formatVisibleDayRange(visibleStart, visibleEnd)}
-            </h2>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigateByDays(VISIBLE_DAYS)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wf-surface text-wf-accent shadow-[var(--shadow-card)] transition-transform active:scale-95"
-            aria-label="Next week"
-          >
-            <ChevronRight size={20} strokeWidth={1.75} />
-          </button>
-        </div>
+        <CalendarViewHeader
+          title={formatVisibleDayRange(visibleStart, visibleEnd)}
+          referenceDate={referenceDate}
+          onJumpToDate={onJumpToDate}
+          weekStartsOn={weekStartsOn}
+          onPrevious={() => navigateByDays(-VISIBLE_DAYS)}
+          onNext={() => navigateByDays(VISIBLE_DAYS)}
+          previousAriaLabel="Previous week"
+          nextAriaLabel="Next week"
+        />
       </div>
 
       {showSpanBar && (
@@ -352,6 +341,9 @@ export function WeekView({
                 listOptions={listOptions}
                 displayOptions={displayOptions}
                 todayHighlight={todayHighlight}
+                dateHeaderDisplay={dateHeaderDisplay}
+                selectedDate={selectedDate}
+                onSelectDate={onSelectDate}
                 multiDayLayout={multiDayLayout}
                 showRightBorder={index < days.length - 1}
                 onItemTap={onItemTap}

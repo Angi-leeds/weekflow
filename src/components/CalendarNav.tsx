@@ -58,6 +58,30 @@ export function CalendarNav({
           <p className="truncate font-display text-body font-bold tracking-tight text-wf-text">
             {title}
           </p>
+          {(isWeekBased || viewMode === 'month') && (
+            <p className="mt-0.5 truncate text-[11px] text-wf-text-secondary">
+              Selected{' '}
+              <span className="font-semibold text-wf-accent">
+                {selectedDay.toLocaleDateString('en-GB', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </span>
+              {!isToday(selectedDay) && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={onToday}
+                    className="font-semibold text-wf-accent underline-offset-2 hover:underline"
+                  >
+                    Today
+                  </button>
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         <button

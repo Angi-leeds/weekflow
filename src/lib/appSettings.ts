@@ -76,6 +76,8 @@ export function loadCalendarPreferences(): CalendarPreferences {
       diaryTasksMode: isDiaryTasksMode(parsed.diaryTasksMode)
         ? parsed.diaryTasksMode
         : DEFAULT_CALENDAR_PREFERENCES.diaryTasksMode,
+      showWeekNumber: parsed.showWeekNumber === true,
+      showDayOfYear: parsed.showDayOfYear === true,
     };
     applyTimeFormat(prefs.timeFormat);
     return prefs;

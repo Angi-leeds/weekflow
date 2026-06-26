@@ -1,5 +1,5 @@
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
-import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import type { CalendarItem, Category, DateHeaderDisplayOptions, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
+import { DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import { getWeekDays, getWeekSpanSegments, shouldShowMultiDaySpanBar } from '../dateUtils'
 import { DayCardFromDate } from './DayCard'
 import { MultiDaySpanBar } from './MultiDaySpanBar'
@@ -11,6 +11,7 @@ interface WeekListPortraitProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
   showHeading?: boolean
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
@@ -23,6 +24,7 @@ export function WeekListPortrait({
   listOptions,
   displayOptions,
   todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  dateHeaderDisplay = DEFAULT_DATE_HEADER_DISPLAY,
   showHeading = true,
   onItemTap,
   onToggleComplete,
@@ -59,6 +61,7 @@ export function WeekListPortrait({
           listOptions={listOptions}
           displayOptions={displayOptions}
           todayHighlight={todayHighlight}
+          dateHeaderDisplay={dateHeaderDisplay}
           excludeMultiDayAllDay={multiDayLayout === 'span-bar'}
           onItemTap={onItemTap}
           onToggleComplete={onToggleComplete}

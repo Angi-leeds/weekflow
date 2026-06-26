@@ -1,5 +1,5 @@
-import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, UnfoldVertical } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { Plus, UnfoldVertical } from 'lucide-react'
 import type { DayItemEntry, WeekSpanSegment } from '../dateUtils'
 import {
   formatMonthDayLabel,
@@ -15,8 +15,10 @@ import {
 } from '../dateUtils'
 import { useScrollPan } from '../hooks/useScrollPan'
 import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
-import type { CalendarItem, ItemDisplayOptions, TodayHighlightOptions, WeekStartsOn } from '../types'
-import { DEFAULT_ITEM_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import { CalendarViewHeader } from './CalendarViewHeader'
+import { DayHeaderMetaLabels } from './DayHeaderMetaLabels'
+import type { CalendarItem, DateHeaderDisplayOptions, ItemDisplayOptions, TodayHighlightOptions, WeekStartsOn } from '../types'
+import { DEFAULT_ITEM_DISPLAY, DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
   mergeHighlightStyle,
   monthCellSelectionClass,
@@ -30,12 +32,14 @@ interface MonthViewProps {
   items: CalendarItem[]
   displayOptions?: ItemDisplayOptions
   todayHighlight?: TodayHighlightOptions
+  dateHeaderDisplay?: DateHeaderDisplayOptions
   weekStartsOn?: WeekStartsOn
   expandWeekRows?: boolean
   onExpandWeekRowsChange?: (expand: boolean) => void
   onDaySelect: (date: Date) => void
   onDayAdd?: (date: Date) => void
-  onMonthChange: (date: Date) => void
+  onMonthChange?: (date: Date) => void
+  onJumpToDate?: (date: Date) => void
   onItemTap?: (item: CalendarItem) => void
 }
 
@@ -104,12 +108,14 @@ export function MonthView({
   items,
   displayOptions = DEFAULT_ITEM_DISPLAY,
   todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  dateHeaderDisplay = DEFAULT_DATE_HEADER_DISPLAY,
   weekStartsOn = 1,
   expandWeekRows = false,
   onExpandWeekRowsChange,
   onDaySelect,
   onDayAdd,
   onMonthChange,
+  onJumpToDate,
   onItemTap,
 }: MonthViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -155,7 +161,7 @@ export function MonthView({
     const key = monthKey(visibleMonth)
     if (key === lastExternalMonthKey.current) return
     lastExternalMonthKey.current = key
-    onMonthChange(visibleMonth)
+    onMonthChange?.(visibleMonth)
   }, [visibleMonth, onMonthChange])
 
   const prependMonths = useCallback((count: number) => {
@@ -272,51 +278,42 @@ export function MonthView({
 
   const { cursorClassName: monthScrollCursor } = useScrollPan(scrollRef, { axis: 'vertical' })
 
+  const referenceDate = selectedDay ?? currentDate
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="sticky top-0 z-10 shrink-0 border-b border-wf-border/60 bg-wf-bg/95 backdrop-blur-sm">
-        <div className="flex items-center gap-2 px-4 py-2">
-          <button
-            type="button"
-            onClick={() => navigateMonth(-1)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wf-surface text-wf-accent shadow-[var(--shadow-card)] transition-transform active:scale-95"
-            aria-label="Previous month"
-          >
-            <ChevronLeft size={20} strokeWidth={1.75} />
-          </button>
-
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-            <h2 className="truncate font-display text-title font-bold tracking-tight">
-              {formatMonthYear(visibleMonth)}
-            </h2>
-            {onExpandWeekRowsChange && (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={expandWeekRows}
-                aria-label="Expand month weeks to show all events"
-                title={expandWeekRows ? 'Showing all events' : 'Expand to show all events'}
-                onClick={() => onExpandWeekRowsChange(!expandWeekRows)}
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold shadow-[var(--shadow-card)] transition-colors active:scale-[0.98] ${
-                  expandWeekRows
-                    ? 'bg-wf-accent text-white'
-                    : 'bg-wf-surface text-wf-text-secondary hover:bg-wf-accent-soft hover:text-wf-accent'
-                }`}
-              >
-                <UnfoldVertical size={12} strokeWidth={2.25} aria-hidden />
-                {expandWeekRows ? 'All' : 'Show all'}
-              </button>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigateMonth(1)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wf-surface text-wf-accent shadow-[var(--shadow-card)] transition-transform active:scale-95"
-            aria-label="Next month"
-          >
-            <ChevronRight size={20} strokeWidth={1.75} />
-          </button>
+        <div className="px-4 py-2">
+          <CalendarViewHeader
+            title={formatMonthYear(visibleMonth)}
+            referenceDate={referenceDate}
+            onJumpToDate={onJumpToDate}
+            weekStartsOn={weekStartsOn}
+            onPrevious={() => navigateMonth(-1)}
+            onNext={() => navigateMonth(1)}
+            previousAriaLabel="Previous month"
+            nextAriaLabel="Next month"
+            trailing={
+              onExpandWeekRowsChange ? (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={expandWeekRows}
+                  aria-label="Expand month weeks to show all events"
+                  title={expandWeekRows ? 'Showing all events' : 'Expand to show all events'}
+                  onClick={() => onExpandWeekRowsChange(!expandWeekRows)}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold shadow-[var(--shadow-card)] transition-colors active:scale-[0.98] ${
+                    expandWeekRows
+                      ? 'bg-wf-accent text-white'
+                      : 'bg-wf-surface text-wf-text-secondary hover:bg-wf-accent-soft hover:text-wf-accent'
+                  }`}
+                >
+                  <UnfoldVertical size={12} strokeWidth={2.25} aria-hidden />
+                  {expandWeekRows ? 'All' : 'Show all'}
+                </button>
+              ) : undefined
+            }
+          />
         </div>
 
         <div className="grid grid-cols-7 border-t border-wf-border/60 bg-wf-bg/60">
@@ -356,6 +353,7 @@ export function MonthView({
                 selectedDay={selectedDay}
                 multiDayLayout={multiDayLayout}
                 todayHighlight={todayHighlight}
+                dateHeaderDisplay={dateHeaderDisplay}
                 weekStartsOn={weekStartsOn}
                 expandWeekRows={expandWeekRows}
                 onDaySelect={onDaySelect}
@@ -379,6 +377,7 @@ function MonthGrid({
   selectedDay,
   multiDayLayout,
   todayHighlight,
+  dateHeaderDisplay,
   weekStartsOn,
   expandWeekRows,
   onDaySelect,
@@ -391,6 +390,7 @@ function MonthGrid({
   selectedDay?: Date
   multiDayLayout: 'span-bar' | 'repeat-daily'
   todayHighlight: TodayHighlightOptions
+  dateHeaderDisplay: DateHeaderDisplayOptions
   weekStartsOn: WeekStartsOn
   expandWeekRows: boolean
   onDaySelect: (date: Date) => void
@@ -410,6 +410,7 @@ function MonthGrid({
           selectedDay={selectedDay}
           multiDayLayout={multiDayLayout}
           todayHighlight={todayHighlight}
+          dateHeaderDisplay={dateHeaderDisplay}
           weekStartsOn={weekStartsOn}
           expandWeekRows={expandWeekRows}
           onDaySelect={onDaySelect}
@@ -428,6 +429,7 @@ function MonthWeekRow({
   selectedDay,
   multiDayLayout,
   todayHighlight,
+  dateHeaderDisplay,
   weekStartsOn,
   expandWeekRows,
   onDaySelect,
@@ -440,6 +442,7 @@ function MonthWeekRow({
   selectedDay?: Date
   multiDayLayout: 'span-bar' | 'repeat-daily'
   todayHighlight: TodayHighlightOptions
+  dateHeaderDisplay: DateHeaderDisplayOptions
   weekStartsOn: WeekStartsOn
   expandWeekRows: boolean
   onDaySelect: (date: Date) => void
@@ -474,6 +477,7 @@ function MonthWeekRow({
             inMonth={inMonth}
             selected={selected}
             todayHighlight={todayHighlight}
+            dateHeaderDisplay={dateHeaderDisplay}
             style={{ gridRow: 1, gridColumn: colIndex + 1 }}
             onDaySelect={onDaySelect}
             onDayAdd={onDayAdd}
@@ -543,6 +547,7 @@ function MonthDateHeader({
   inMonth,
   selected,
   todayHighlight,
+  dateHeaderDisplay,
   style,
   onDaySelect,
   onDayAdd,
@@ -552,6 +557,7 @@ function MonthDateHeader({
   inMonth: boolean
   selected: boolean
   todayHighlight: TodayHighlightOptions
+  dateHeaderDisplay: DateHeaderDisplayOptions
   style: CSSProperties
   onDaySelect: (date: Date) => void
   onDayAdd?: (date: Date) => void
@@ -576,13 +582,16 @@ function MonthDateHeader({
       {...dayMenu}
       className={`group ${monthCellBorderClass(colIndex, inMonth, monthCellSelectionClass(selected, today))} ${cellHighlight.className}`}
     >
-      <div className="flex items-start justify-between gap-1">
+      <div className="flex items-start gap-1">
+        <DayHeaderMetaLabels date={day} display={dateHeaderDisplay} className="pt-0.5" />
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-1">
         <button
           type="button"
           onClick={() => onDaySelect(day)}
           className={dateButtonClass}
           style={datePresentation?.style}
-          aria-label={`Open ${formatMonthDayLabel(day)}`}
+          aria-label={`Select ${formatMonthDayLabel(day)}`}
+          aria-pressed={selected}
         >
           {formatMonthDayLabel(day)}
         </button>
@@ -600,6 +609,7 @@ function MonthDateHeader({
             <Plus size={12} strokeWidth={2.25} />
           </button>
         )}
+        </div>
       </div>
     </div>
   )

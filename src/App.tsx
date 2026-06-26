@@ -6,7 +6,7 @@ import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
 import type { Attachment } from '../shared/attachments'
 import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, EmailMessage, CalendarFilter, CalendarPreferences, IntegrationAccountDefaults, IntegrationPreferences, Note, EmailFolder, SaveItemOptions } from './types'
-import { type ListDisplayOptions, type ItemDisplayOptions } from './types'
+import { type ListDisplayOptions, type ItemDisplayOptions, dateHeaderDisplayFromPreferences } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, getMockCloudFolder, calendarAccountForCategory } from './mockData'
 import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate, getDefaultWeekViewStart } from './dateUtils'
@@ -18,7 +18,6 @@ import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { fetchAllAttachments } from './lib/attachments'
 import { loadCalendarFilter, saveCalendarFilter, sanitizeCalendarFilter } from './lib/calendarSettings'
 import {
-  clampDateToMonth,
   initialFocusDate,
   loadCalendarNavigation,
   normalizeCalendarDate,
@@ -557,6 +556,11 @@ export default function App() {
   const diaryVisibleItems = useMemo(
     () => filterItemsForDiary(displayCalendarItems, categories, calendarPreferences),
     [displayCalendarItems, categories, calendarPreferences],
+  )
+
+  const dateHeaderDisplay = useMemo(
+    () => dateHeaderDisplayFromPreferences(calendarPreferences),
+    [calendarPreferences.showWeekNumber, calendarPreferences.showDayOfYear],
   )
 
   const calendarItems = useMemo(() => {
@@ -1525,13 +1529,30 @@ export default function App() {
     setModalOpen(true)
   }, [])
 
-  const handleFocusDateFromWeek = useCallback((date: Date) => {
+  const handleSelectDate = useCallback((date: Date) => {
     setFocusDate(normalizeCalendarDate(date))
   }, [])
 
-  const handleMonthFocusChange = useCallback((month: Date) => {
-    setFocusDate((prev) => clampDateToMonth(prev, month))
+  const handleGoToDayView = useCallback((date: Date) => {
+    setFocusDate(normalizeCalendarDate(date))
+    setViewMode('day')
   }, [])
+
+  const jumpToDate = useCallback(
+    (date: Date) => {
+      const normalized = normalizeCalendarDate(date)
+      setWeekViewScrollDate(
+        getDefaultWeekViewStart(
+          calendarPreferences.weekViewAnchor,
+          calendarPreferences.weekStartsOn,
+          normalized,
+        ),
+      )
+      setWeekStart(startOfWeek(normalized, calendarPreferences.weekStartsOn))
+      setFocusDate(normalized)
+    },
+    [calendarPreferences.weekViewAnchor, calendarPreferences.weekStartsOn],
+  )
 
   const handleSaveContact = useCallback(
     async (contact: Contact) => {
@@ -2014,10 +2035,7 @@ export default function App() {
     [calendarPreferences.defaultView],
   )
 
-  const handleDaySelect = (date: Date) => {
-    setFocusDate(normalizeCalendarDate(date))
-    setViewMode('day')
-  }
+  const handleDaySelect = handleSelectDate
 
   const calendarMenuActions = useMemo(
     (): CalendarMenuActions => ({
@@ -2027,7 +2045,7 @@ export default function App() {
       onDeleteItem: (id) => void handleDeleteItem(id),
       onToggleComplete: (id) => void handleToggleComplete(id),
       onNewEvent: handleNewEventOnDay,
-      onGoToDay: handleDaySelect,
+      onGoToDay: handleGoToDayView,
       onPasteToDay: handlePasteToDay,
     }),
     [
@@ -2035,6 +2053,7 @@ export default function App() {
       handleDeleteItem,
       handleDuplicateItem,
       handleNewEventOnDay,
+      handleGoToDayView,
       handlePasteToDay,
       handleToggleComplete,
     ],
@@ -2199,7 +2218,10 @@ export default function App() {
                   weekViewAnchor={calendarPreferences.weekViewAnchor}
                   scrollToDate={weekViewScrollDate}
                   initialScrollDate={focusDate}
-                  onFocusDateChange={handleFocusDateFromWeek}
+                  referenceDate={focusDate}
+                  selectedDate={focusDate}
+                  onSelectDate={handleSelectDate}
+                  onJumpToDate={jumpToDate}
                   onScrollToDateApplied={() => setWeekViewScrollDate(null)}
                   items={calendarItems}
                   categories={categories}
@@ -2207,6 +2229,7 @@ export default function App() {
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
                   todayHighlight={todayHighlight}
+                  dateHeaderDisplay={dateHeaderDisplay}
                   onWeekChange={setWeekStart}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
@@ -2219,6 +2242,9 @@ export default function App() {
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
                   todayHighlight={todayHighlight}
+                  dateHeaderDisplay={dateHeaderDisplay}
+                  weekStartsOn={calendarPreferences.weekStartsOn}
+                  onJumpToDate={jumpToDate}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -2229,16 +2255,17 @@ export default function App() {
                   items={calendarItems}
                   displayOptions={itemDisplayOptions}
                   todayHighlight={todayHighlight}
+                  dateHeaderDisplay={dateHeaderDisplay}
                   weekStartsOn={calendarPreferences.weekStartsOn}
                   expandWeekRows={calendarPreferences.monthViewExpandWeeks}
                   onExpandWeekRowsChange={handleMonthViewExpandChange}
+                  onJumpToDate={jumpToDate}
                   onDaySelect={handleDaySelect}
                   onDayAdd={(date) => {
-                    setFocusDate(normalizeCalendarDate(date))
+                    handleSelectDate(date)
                     setEditingItem(null)
                     setModalOpen(true)
                   }}
-                  onMonthChange={handleMonthFocusChange}
                   onItemTap={openEditModal}
                 />
               ) : viewMode === 'agenda' ? (
@@ -2248,6 +2275,11 @@ export default function App() {
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
                   todayHighlight={todayHighlight}
+                  dateHeaderDisplay={dateHeaderDisplay}
+                  weekStartsOn={calendarPreferences.weekStartsOn}
+                  referenceDate={focusDate}
+                  onJumpToDate={jumpToDate}
+                  onSelectDate={handleSelectDate}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -2372,7 +2404,10 @@ export default function App() {
             listOptions={listOptions}
             displayOptions={itemDisplayOptions}
             todayHighlight={todayHighlight}
+            dateHeaderDisplay={dateHeaderDisplay}
+            weekStartsOn={calendarPreferences.weekStartsOn}
             onListOptionsChange={setListOptions}
+            onJumpToDate={jumpToDate}
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}
           />
