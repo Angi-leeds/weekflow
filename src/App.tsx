@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
@@ -40,11 +40,13 @@ import {
 import { calendarFilterMatchesItem } from './components/CalendarAccountFilter'
 import {
   createMicrosoftNote,
-  createMicrosoftTodo,
   deleteMicrosoftNote,
   fetchAllMicrosoftCalendar,
   fetchAllMicrosoftCalendarsList,
   fetchAllMicrosoftContacts,
+  createMicrosoftContact,
+  updateMicrosoftContact,
+  deleteMicrosoftContact,
   fetchAllMicrosoftMail,
   fetchAllMicrosoftTodoListsAndTasks,
   fetchMicrosoftMail,
@@ -57,10 +59,21 @@ import {
   replyMicrosoftMail,
   sendMicrosoftMail,
   deleteMicrosoftMail,
+  forwardMicrosoftMail,
+  moveMicrosoftMail,
+  saveMicrosoftMailDraft,
+  searchMicrosoftMail,
+  updateMicrosoftMailReadState,
   copyEmailToOneDriveFolder,
-  syncCalendarToMicrosoft,
   updateMicrosoftNote,
 } from './lib/microsoft'
+import {
+  deleteItemFromProvider,
+  findCalendarItemById,
+  isGraphSourcedItem,
+  syncItemToProvider,
+  toggleTaskCompleteOnProvider,
+} from './lib/graphMutations'
 import {
   copyEmailToGoogleDriveFolder,
   deleteGoogleMail,
@@ -458,6 +471,9 @@ export default function App() {
     () => mergeGraphCalendar(items, graphCalendarItems),
     [items, graphCalendarItems],
   )
+
+  const displayCalendarItemsRef = useRef(displayCalendarItems)
+  displayCalendarItemsRef.current = displayCalendarItems
 
   const displayNotes = useMemo(
     () => mergeGraphNotes(notes, graphNotes),
@@ -1109,68 +1125,47 @@ export default function App() {
         ...item,
         accountId: item.accountId ?? fallbackAccountKey,
       }
-      setItems((prev) => {
-        const idx = prev.findIndex((i) => i.id === normalized.id)
-        if (idx >= 0) {
-          const next = [...prev]
-          next[idx] = normalized
-          return next
+
+      const upsertLocal = (next: CalendarItem) => {
+        setItems((prev) => {
+          const idx = prev.findIndex((i) => i.id === next.id)
+          if (idx >= 0) {
+            const copy = [...prev]
+            copy[idx] = next
+            return copy
+          }
+          return [...prev, next]
+        })
+        if (isGraphSourcedItem(next)) {
+          setGraphCalendarItems((prev) => {
+            const idx = prev.findIndex(
+              (entry) =>
+                entry.id === next.id ||
+                (next.externalId && entry.externalId === next.externalId),
+            )
+            if (idx >= 0) {
+              const copy = [...prev]
+              copy[idx] = { ...copy[idx], ...next }
+              return copy
+            }
+            return prev
+          })
         }
-        return [...prev, normalized]
-      })
-
-      const category = categories.find((entry) => entry.id === normalized.categoryId)
-
-      if (useGoogle) {
-        const connectedAccountId = resolveGoogleConnectedAccountId(
-          googleAccounts,
-          integrationAccountDefaults,
-          normalized.accountId,
-        )
-        if (!connectedAccountId) return
-
-        if (category?.kind === 'task') {
-          setToastMessage('Tasks sync to Microsoft To Do only')
-          return
-        }
-
-        const defaultCalendarId =
-          normalized.calendarId ?? integrationAccountDefaults.googleCalendar?.defaultCalendarId
-
-        try {
-          const result = await syncCalendarToGoogle(
-            connectedAccountId,
-            normalized,
-            defaultCalendarId,
-          )
-          setItems((prev) =>
-            prev.map((entry) =>
-              entry.id === normalized.id
-                ? {
-                    ...entry,
-                    externalId: result.externalId,
-                    provider: 'google',
-                    connectedAccountId,
-                  }
-                : entry,
-            ),
-          )
-          await refreshGoogle()
-          setToastMessage('Synced to Google Calendar')
-        } catch (error) {
-          console.error(error)
-          setToastMessage(
-            error instanceof Error ? error.message : 'Saved locally; Google Calendar sync failed',
-          )
-        }
-        return
       }
 
-      const connectedAccountId = resolveConnectedAccountId(
-        microsoftAccounts,
-        integrationAccountDefaults,
-        normalized.accountId,
-      )
+      upsertLocal(normalized)
+
+      const connectedAccountId = useGoogle
+        ? resolveGoogleConnectedAccountId(
+            googleAccounts,
+            integrationAccountDefaults,
+            normalized.accountId,
+          )
+        : resolveConnectedAccountId(
+            microsoftAccounts,
+            integrationAccountDefaults,
+            normalized.accountId,
+          )
       if (!connectedAccountId) return
 
       const linkType = getItemLinkType(normalized, categories)
@@ -1181,84 +1176,151 @@ export default function App() {
           entry.kind === 'photo',
       )
 
-      const defaultCalendarId =
-        normalized.calendarId ?? integrationAccountDefaults.calendar?.defaultCalendarId
+      const defaultCalendarId = useGoogle
+        ? normalized.calendarId ?? integrationAccountDefaults.googleCalendar?.defaultCalendarId
+        : normalized.calendarId ?? integrationAccountDefaults.calendar?.defaultCalendarId
       const defaultTodoListId = integrationAccountDefaults.tasks?.defaultTodoListId
 
       try {
-        if (category?.kind === 'task') {
-          const result = await createMicrosoftTodo(connectedAccountId, {
-            title: normalized.title,
-            dueDate: normalized.date,
-            notes: normalized.notes,
-            todoListId: normalized.todoListId ?? defaultTodoListId,
-          })
-          setItems((prev) =>
-            prev.map((entry) =>
-              entry.id === normalized.id
-                ? {
-                    ...entry,
-                    externalId: result.externalId,
-                    provider: 'microsoft',
-                    connectedAccountId,
-                  }
-                : entry,
-            ),
-          )
-          setToastMessage('Task synced to Microsoft To Do')
-          return
-        }
-
-        const result = await syncCalendarToMicrosoft(
+        const result = await syncItemToProvider(normalized, categories, {
           connectedAccountId,
-          normalized,
-          photoAttachment
+          defaultCalendarId,
+          defaultTodoListId,
+          useGoogle,
+          photo: photoAttachment
             ? {
                 storageKey: photoAttachment.storageKey,
                 mimeType: photoAttachment.mimeType,
                 filename: photoAttachment.filename,
               }
             : undefined,
-          defaultCalendarId,
-        )
-        setItems((prev) =>
-          prev.map((entry) =>
-            entry.id === normalized.id
-              ? {
-                  ...entry,
-                  externalId: result.externalId,
-                  provider: 'microsoft',
-                  connectedAccountId,
-                }
-              : entry,
-          ),
-        )
-        setToastMessage(
-          result.photoAttached
-            ? 'Synced to Outlook calendar with photo'
-            : photoAttachment
-              ? 'Synced to Outlook calendar (photo upload skipped)'
-              : 'Synced to Outlook calendar',
-        )
+        })
+
+        const synced: CalendarItem = {
+          ...normalized,
+          externalId: result.externalId,
+          provider: useGoogle ? 'google' : 'microsoft',
+          connectedAccountId,
+          todoListId: result.todoListId ?? normalized.todoListId,
+        }
+        upsertLocal(synced)
+
+        if (useGoogle) {
+          await refreshGoogle()
+        } else {
+          void refreshMicrosoft()
+        }
+
+        const category = categories.find((entry) => entry.id === normalized.categoryId)
+        if (category?.kind === 'task') {
+          setToastMessage('Task synced to Microsoft To Do')
+        } else if (result.photoAttached) {
+          setToastMessage('Synced to Outlook calendar with photo')
+        } else if (photoAttachment) {
+          setToastMessage('Synced to Outlook calendar (photo upload skipped)')
+        } else {
+          setToastMessage(useGoogle ? 'Synced to Google Calendar' : 'Synced to Outlook calendar')
+        }
       } catch (error) {
         console.error(error)
         setToastMessage(
-          error instanceof Error ? error.message : 'Saved locally; Outlook sync failed',
+          error instanceof Error ? error.message : 'Saved locally; sync failed',
         )
       }
     },
-    [attachments, categories, googleStatus, integrationAccountDefaults, microsoftStatus, refreshGoogle],
+    [
+      attachments,
+      categories,
+      googleStatus,
+      integrationAccountDefaults,
+      microsoftStatus,
+      refreshGoogle,
+      refreshMicrosoft,
+    ],
   )
 
-  const handleDeleteItem = useCallback((id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id))
-  }, [])
+  const handleDeleteItem = useCallback(
+    async (id: string) => {
+      const item = findCalendarItemById(
+        id,
+        items,
+        graphCalendarItems,
+      ) ?? displayCalendarItemsRef.current.find((entry) => entry.id === id)
+      if (!item) return
 
-  const handleToggleComplete = useCallback((id: string) => {
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, completed: !i.completed } : i)),
-    )
-  }, [])
+      const category = categories.find((entry) => entry.id === item.categoryId)
+      const isTask = category?.kind === 'task' || item.categoryId === 'task'
+      const confirmMessage =
+        item.externalId && item.provider === 'microsoft'
+          ? isTask
+            ? 'Delete this task from Microsoft To Do?'
+            : 'Delete this event from Outlook calendar?'
+          : 'Delete this item?'
+      if (!window.confirm(confirmMessage)) return
+
+      setItems((prev) => prev.filter((i) => i.id !== id))
+      setGraphCalendarItems((prev) =>
+        prev.filter(
+          (entry) =>
+            entry.id !== id &&
+            !(item.externalId && entry.externalId === item.externalId),
+        ),
+      )
+
+      if (!item.externalId || !item.connectedAccountId) return
+
+      try {
+        await deleteItemFromProvider(item, categories)
+        if (item.provider === 'microsoft') {
+          void refreshMicrosoft()
+        }
+        setToastMessage(isTask ? 'Task deleted from To Do' : 'Event deleted from Outlook')
+      } catch (error) {
+        console.error(error)
+        setToastMessage(error instanceof Error ? error.message : 'Failed to delete from Outlook')
+      }
+    },
+    [categories, graphCalendarItems, items, refreshMicrosoft],
+  )
+
+  const handleToggleComplete = useCallback(
+    async (id: string) => {
+      const item = findCalendarItemById(id, items, graphCalendarItems) ??
+        displayCalendarItemsRef.current.find((entry) => entry.id === id)
+      if (!item) return
+
+      const nextCompleted = !item.completed
+      const applyComplete = (entry: CalendarItem): CalendarItem =>
+        entry.id === id || (item.externalId && entry.externalId === item.externalId)
+          ? { ...entry, completed: nextCompleted }
+          : entry
+
+      setItems((prev) => prev.map(applyComplete))
+      setGraphCalendarItems((prev) => prev.map(applyComplete))
+
+      if (!item.externalId || !item.connectedAccountId || item.provider !== 'microsoft') return
+
+      try {
+        await toggleTaskCompleteOnProvider(
+          { ...item, completed: nextCompleted },
+          categories,
+          nextCompleted,
+        )
+      } catch (error) {
+        console.error(error)
+        setToastMessage(error instanceof Error ? error.message : 'Failed to sync task completion')
+        setItems((prev) => prev.map((entry) => (entry.id === id ? item : entry)))
+        setGraphCalendarItems((prev) =>
+          prev.map((entry) =>
+            entry.id === id || (item.externalId && entry.externalId === item.externalId)
+              ? item
+              : entry,
+          ),
+        )
+      }
+    },
+    [categories, graphCalendarItems, items],
+  )
 
   const openAddModal = () => {
     setEditingItem(null)
@@ -1270,41 +1332,90 @@ export default function App() {
     setModalOpen(true)
   }
 
-  const handleSaveContact = useCallback((contact: Contact) => {
-    if (contact.source === 'microsoft' && contact.externalId) {
-      setContactOverlays((prev) => ({
-        ...prev,
-        [contact.externalId!]: {
-          ...prev[contact.externalId!],
-          notes: contact.notes,
-          starred: contact.starred,
-        },
-      }))
-      return
-    }
-
-    setContacts((prev) => {
-      const index = prev.findIndex((entry) => entry.id === contact.id)
-      if (index >= 0) {
-        const next = [...prev]
-        next[index] = contact
-        return next
+  const handleSaveContact = useCallback(
+    async (contact: Contact) => {
+      if (contact.source === 'microsoft' && contact.externalId && contact.connectedAccountId) {
+        try {
+          await updateMicrosoftContact(
+            contact.connectedAccountId,
+            contact.externalId,
+            contact,
+          )
+          setGraphContacts((prev) =>
+            prev.map((entry) => (entry.id === contact.id ? contact : entry)),
+          )
+          setToastMessage('Contact updated in Outlook')
+        } catch (error) {
+          console.error(error)
+          setContactOverlays((prev) => ({
+            ...prev,
+            [contact.externalId!]: {
+              ...prev[contact.externalId!],
+              notes: contact.notes,
+              starred: contact.starred,
+            },
+          }))
+          setToastMessage(
+            error instanceof Error ? error.message : 'Saved notes locally; Outlook sync failed',
+          )
+        }
+        return
       }
-      return [...prev, contact]
-    })
-  }, [])
 
-  const handleDeleteContact = useCallback((contact: Contact) => {
-    if (contact.source === 'microsoft' && contact.externalId) {
-      setContactOverlays((prev) => ({
-        ...prev,
-        [contact.externalId!]: { ...prev[contact.externalId!], hidden: true },
-      }))
-      return
-    }
+      if (usingRealMicrosoft && contact.source !== 'microsoft') {
+        const account = microsoftStatus?.accounts[0]
+        if (account) {
+          try {
+            const result = await createMicrosoftContact(account.id, contact)
+            await refreshMicrosoft()
+            setToastMessage('Contact saved to Outlook')
+            return
+          } catch (error) {
+            console.error(error)
+            setToastMessage(
+              error instanceof Error ? error.message : 'Saved locally; Outlook sync failed',
+            )
+          }
+        }
+      }
 
-    setContacts((prev) => prev.filter((entry) => entry.id !== contact.id))
-  }, [])
+      setContacts((prev) => {
+        const index = prev.findIndex((entry) => entry.id === contact.id)
+        if (index >= 0) {
+          const next = [...prev]
+          next[index] = contact
+          return next
+        }
+        return [...prev, contact]
+      })
+    },
+    [microsoftStatus, refreshMicrosoft, usingRealMicrosoft],
+  )
+
+  const handleDeleteContact = useCallback(
+    async (contact: Contact) => {
+      if (contact.source === 'microsoft' && contact.externalId && contact.connectedAccountId) {
+        if (
+          !window.confirm('Delete this contact from Outlook People? This cannot be undone.')
+        ) {
+          return
+        }
+        try {
+          await deleteMicrosoftContact(contact.connectedAccountId, contact.externalId)
+          setGraphContacts((prev) => prev.filter((entry) => entry.id !== contact.id))
+          setToastMessage('Contact deleted from Outlook')
+          return
+        } catch (error) {
+          console.error(error)
+          setToastMessage(error instanceof Error ? error.message : 'Failed to delete contact')
+          return
+        }
+      }
+
+      setContacts((prev) => prev.filter((entry) => entry.id !== contact.id))
+    },
+    [],
+  )
 
   const handleToggleContactStar = useCallback((contact: Contact) => {
     if (contact.source === 'microsoft' && contact.externalId) {
@@ -1339,11 +1450,34 @@ export default function App() {
       body: string
       replyToExternalId?: string
       replyAll?: boolean
+      forwardToExternalId?: string
+      saveAsDraft?: boolean
+      draftId?: string
     }) => {
       setEmailSending(true)
       try {
         const useGoogle = isGoogleConnectedAccount(payload.connectedAccountId)
-        if (payload.replyToExternalId) {
+        if (payload.saveAsDraft && !useGoogle) {
+          const to = payload.to?.split(/[,;]/).map((entry) => entry.trim()).filter(Boolean) ?? []
+          await saveMicrosoftMailDraft(payload.connectedAccountId, {
+            to,
+            subject: payload.subject ?? '',
+            body: payload.body,
+            draftId: payload.draftId,
+          })
+          setEmailCompose(null)
+          setToastMessage('Draft saved to Outlook')
+          await refreshMicrosoft()
+          return
+        }
+
+        if (payload.forwardToExternalId && !useGoogle) {
+          const to = payload.to?.split(/[,;]/).map((entry) => entry.trim()).filter(Boolean) ?? []
+          await forwardMicrosoftMail(payload.connectedAccountId, payload.forwardToExternalId, {
+            comment: payload.body,
+            to,
+          })
+        } else if (payload.replyToExternalId) {
           if (useGoogle) {
             await replyGoogleMail(payload.connectedAccountId, payload.replyToExternalId, {
               comment: payload.body,
@@ -1362,14 +1496,16 @@ export default function App() {
             body: payload.body,
           })
         } else {
+          const signature = integrationAccountDefaults.emailSignature?.trim();
+          const body = signature ? `${payload.body}\n\n--\n${signature}` : payload.body;
           await sendMicrosoftMail(payload.connectedAccountId, {
             to: payload.to ?? '',
             subject: payload.subject ?? '',
-            body: payload.body,
-          })
+            body,
+          });
         }
         setEmailCompose(null)
-        setToastMessage('Email sent')
+        setToastMessage(payload.forwardToExternalId ? 'Message forwarded' : 'Email sent')
         if (useGoogle) {
           await refreshGoogle()
         } else {
@@ -1382,7 +1518,71 @@ export default function App() {
         setEmailSending(false)
       }
     },
-    [isGoogleConnectedAccount, refreshGoogle, refreshMicrosoft],
+    [isGoogleConnectedAccount, integrationAccountDefaults.emailSignature, refreshGoogle, refreshMicrosoft],
+  )
+
+  const handleToggleEmailRead = useCallback(
+    async (id: string, isRead: boolean) => {
+      const email =
+        displayEmails.find((entry) => entry.id === id) ??
+        graphEmails.find((entry) => entry.id === id) ??
+        emails.find((entry) => entry.id === id)
+      if (!email) return
+
+      const applyRead = (entry: EmailMessage): EmailMessage =>
+        entry.id === id ? { ...entry, unread: !isRead } : entry
+
+      setEmails((prev) => prev.map(applyRead))
+      setGraphEmails((prev) => prev.map(applyRead))
+
+      if (!email.externalId || !email.connectedAccountId || email.provider !== 'microsoft') return
+
+      try {
+        await updateMicrosoftMailReadState(email.connectedAccountId, email.externalId, isRead)
+      } catch (error) {
+        console.error(error)
+        setEmails((prev) => prev.map((entry) => (entry.id === id ? email : entry)))
+        setGraphEmails((prev) => prev.map((entry) => (entry.id === id ? email : entry)))
+      }
+    },
+    [displayEmails, emails, graphEmails],
+  )
+
+  const handleMoveEmail = useCallback(
+    async (email: EmailMessage, destinationFolderGraphId: string) => {
+      const connectedAccountId = resolveEmailConnectedAccountId(email)
+      if (!email.externalId || !connectedAccountId) return
+
+      try {
+        await moveMicrosoftMail(connectedAccountId, email.externalId, destinationFolderGraphId)
+        setGraphEmails((prev) => prev.filter((entry) => entry.id !== email.id))
+        setEmailSelectedId((current) => (current === email.id ? null : current))
+        setToastMessage('Message moved')
+      } catch (error) {
+        console.error(error)
+        setToastMessage(error instanceof Error ? error.message : 'Failed to move message')
+      }
+    },
+    [resolveEmailConnectedAccountId],
+  )
+
+  const handleSearchMicrosoftMail = useCallback(
+    async (query: string, accountId: string) => {
+      const account = microsoftStatus?.accounts.find(
+        (entry) => microsoftAccountKey(entry.id) === accountId || entry.id === accountId,
+      )
+      if (!account || !query.trim()) return
+      try {
+        const results = await searchMicrosoftMail(account.id, query.trim())
+        setGraphEmails((prev) => {
+          const others = prev.filter((entry) => entry.accountId !== accountId)
+          return [...results, ...others]
+        })
+      } catch (error) {
+        console.error(error)
+      }
+    },
+    [microsoftStatus],
   )
 
   const handleDeleteEmail = useCallback(
@@ -1756,11 +1956,7 @@ export default function App() {
                 prev.map((e) => (e.id === id ? { ...e, starred: !e.starred } : e)),
               )
             }
-            onToggleRead={(id) =>
-              setEmails((prev) =>
-                prev.map((e) => (e.id === id ? { ...e, unread: false } : e)),
-              )
-            }
+            onToggleRead={(id) => void handleToggleEmailRead(id, true)}
             onCreateTask={handleCreateTaskFromEmail}
             onLinkExisting={openLinkPickerForEmail}
             onNavigateLink={handleNavigateLink}
@@ -1774,6 +1970,9 @@ export default function App() {
             onCompose={() => setEmailCompose({ mode: 'compose' })}
             onReply={(email) => setEmailCompose({ mode: 'reply', replyTo: email })}
             onReplyAll={(email) => setEmailCompose({ mode: 'replyAll', replyTo: email })}
+            onForward={(email) => setEmailCompose({ mode: 'forward', replyTo: email })}
+            onMoveMail={handleMoveEmail}
+            onServerSearch={usingRealMicrosoft ? handleSearchMicrosoftMail : undefined}
             onDelete={handleDeleteEmail}
           />
         )}

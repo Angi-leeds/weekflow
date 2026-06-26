@@ -122,7 +122,7 @@ export function NotesView({
             <h1 className="font-display text-title font-bold tracking-tight">Notes</h1>
             <p className="text-subhead text-wf-text-secondary">
               {outlookCount > 0
-                ? `${outlookCount} from Outlook · ${localCount} local`
+                ? `${outlookCount} from OneNote · ${localCount} local`
                 : `${notes.length} notes`}
             </p>
           </div>
@@ -142,9 +142,9 @@ export function NotesView({
             onClick={onOpenSettings}
             className="mb-3 w-full rounded-xl border border-[#0078d4]/25 bg-[#0078d4]/8 px-3 py-2.5 text-left"
           >
-            <p className="text-caption font-semibold text-[#0078d4]">Sync Outlook sticky notes</p>
+            <p className="text-caption font-semibold text-[#0078d4]">Sync OneNote pages</p>
             <p className="mt-0.5 text-caption text-wf-text-tertiary">
-              Connect Microsoft 365 in Settings to pull your Outlook Notes folder here.
+              Connect Microsoft 365 in Settings to pull your OneNote pages here.
             </p>
           </button>
         )}
@@ -402,7 +402,7 @@ function NoteDetail({
             <h2 className="truncate font-display text-headline font-bold text-wf-text">{note.title}</h2>
             <p className="text-caption text-wf-text-tertiary">
               Updated {formatNoteDate(note.updatedAt)}
-              {note.provider === "microsoft" ? " · Outlook" : note.provider === "mock" ? " · Demo" : " · Local"}
+              {note.provider === "microsoft" ? " · OneNote" : note.provider === "mock" ? " · Demo" : " · Local"}
             </p>
           </div>
         </div>
@@ -507,7 +507,7 @@ function EmptyNotes({ onAdd }: { onAdd: () => void }) {
       </div>
       <p className="font-display text-headline font-bold text-wf-text">No notes yet</p>
       <p className="mt-2 max-w-xs text-body text-wf-text-secondary">
-        Add a quick sticky note, or connect Outlook in Settings to sync your existing notes.
+        Add a quick note, or connect Microsoft 365 in Settings to sync OneNote pages.
       </p>
       <button
         type="button"

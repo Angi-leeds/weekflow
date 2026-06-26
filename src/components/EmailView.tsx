@@ -9,6 +9,7 @@ import {
   PenLine,
   Reply,
   Search,
+  Share2,
   Star,
   Trash2,
 } from 'lucide-react'
@@ -16,7 +17,7 @@ import type { LucideIcon } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
 import { normalizeEmailBody } from '../../shared/emailBody'
 import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
-import type { CalendarItem, EmailMessage } from '../types'
+import type { CalendarItem, EmailMessage, EmailAttachment } from '../types'
 import { useIsWide } from '../hooks/useMediaQuery'
 import {
   EMAIL_CATEGORIES,
@@ -24,6 +25,7 @@ import {
 import type { EmailAccount, EmailFolder } from '../types'
 import { getShareForEntity } from '../lib/itemShares'
 import { icloudMailUrl, openExternalUrl } from '../lib/appleLinks'
+import { fetchMicrosoftMessageAttachments, microsoftAttachmentDownloadUrl } from '../lib/microsoft'
 import { Badge } from './ui/Badge'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
@@ -58,6 +60,9 @@ interface EmailViewProps {
   onCompose?: () => void
   onReply?: (email: EmailMessage) => void
   onReplyAll?: (email: EmailMessage) => void
+  onForward?: (email: EmailMessage) => void
+  onMoveMail?: (email: EmailMessage, destinationFolderGraphId: string) => void
+  onServerSearch?: (query: string, accountId: string) => void | Promise<void>
   onDelete?: (email: EmailMessage) => void
 }
 
@@ -86,6 +91,9 @@ export function EmailView({
   onCompose,
   onReply,
   onReplyAll,
+  onForward,
+  onMoveMail,
+  onServerSearch,
   onDelete,
 }: EmailViewProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(emails[0]?.id ?? null)
@@ -127,6 +135,19 @@ export function EmailView({
     const folder = emailFolders.find((entry) => entry.id === inboxFilter.folderId)
     if (folder) onLoadFolderMessages?.(folder)
   }, [emailFolders, inboxFilter, onLoadFolderMessages])
+
+  useEffect(() => {
+    if (!onServerSearch || !search.trim() || search.trim().length < 3) return
+    const accountId =
+      inboxFilter.mode === 'account'
+        ? inboxFilter.accountId
+        : emailAccounts.find((account) => account.id.startsWith('ms-'))?.id
+    if (!accountId) return
+    const timer = window.setTimeout(() => {
+      void onServerSearch(search.trim(), accountId)
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [search, onServerSearch, inboxFilter, emailAccounts])
 
   const filtered = useMemo(() => {
     let list = emails
@@ -311,6 +332,9 @@ export function EmailView({
             }}
             onReply={onReply}
             onReplyAll={onReplyAll}
+            onForward={onForward}
+            onMoveMail={onMoveMail}
+            emailFolders={emailFolders}
             onDelete={onDelete}
           />
         )}
@@ -479,6 +503,9 @@ function MessagePreview({
   onOpenActionFlow,
   onReply,
   onReplyAll,
+  onForward,
+  onMoveMail,
+  emailFolders,
   onDelete,
 }: {
   email: EmailMessage | null
@@ -497,8 +524,36 @@ function MessagePreview({
   onOpenActionFlow: () => void
   onReply?: (email: EmailMessage) => void
   onReplyAll?: (email: EmailMessage) => void
+  onForward?: (email: EmailMessage) => void
+  onMoveMail?: (email: EmailMessage, destinationFolderGraphId: string) => void
+  emailFolders: EmailFolder[]
   onDelete?: (email: EmailMessage) => void
 }) {
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([])
+
+  useEffect(() => {
+    if (!email?.externalId || !email.connectedAccountId || email.provider !== 'microsoft') {
+      setAttachments([])
+      return
+    }
+    if (!email.attachmentCount) {
+      setAttachments([])
+      return
+    }
+    void fetchMicrosoftMessageAttachments(email.connectedAccountId, email.externalId)
+      .then(setAttachments)
+      .catch(() => setAttachments([]))
+  }, [email?.id, email?.externalId, email?.connectedAccountId, email?.provider, email?.attachmentCount])
+
+  const moveFolders = email
+    ? emailFolders.filter(
+        (folder) =>
+          folder.accountId === email.accountId &&
+          folder.graphFolderId &&
+          folder.id !== email.folderId,
+      )
+    : []
+
   if (!email) {
     return (
       <div className="hidden flex-1 items-center justify-center text-subhead text-wf-text-tertiary md:flex">
@@ -528,6 +583,7 @@ function MessagePreview({
               <>
                 <ActionChip icon={Reply} label="Reply" onClick={() => onReply?.(email)} />
                 <ActionChip icon={Reply} label="Reply all" onClick={() => onReplyAll?.(email)} />
+                <ActionChip icon={Share2} label="Forward" onClick={() => onForward?.(email)} />
               </>
             )}
             <ActionChip
@@ -574,6 +630,36 @@ function MessagePreview({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {attachments.length > 0 && (
+          <div className="mb-4 rounded-xl border border-wf-border bg-wf-bg p-3">
+            <p className="mb-2 text-caption font-semibold text-wf-text-secondary">Attachments</p>
+            <ul className="space-y-2">
+              {attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <a
+                    href={
+                      email.externalId && email.connectedAccountId
+                        ? microsoftAttachmentDownloadUrl(
+                            email.connectedAccountId,
+                            email.externalId,
+                            attachment.id,
+                          )
+                        : '#'
+                    }
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-subhead text-wf-accent hover:bg-wf-surface"
+                  >
+                    <span className="truncate">{attachment.name}</span>
+                    {attachment.size != null && (
+                      <span className="shrink-0 text-caption text-wf-text-tertiary">
+                        {Math.round(attachment.size / 1024)} KB
+                      </span>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="whitespace-pre-wrap text-body leading-relaxed text-wf-text">
           {normalizeEmailBody(email.body) || email.preview || '(No message body)'}
         </p>
@@ -605,6 +691,31 @@ function MessagePreview({
         <p className="mb-2 mt-4 text-caption font-semibold text-wf-text-secondary">
           Email actions
         </p>
+        {usingRealIntegrations && email.externalId && onMoveMail && moveFolders.length > 0 && (
+          <label className="mb-3 block">
+            <span className="mb-1 block text-caption font-semibold text-wf-text-secondary">
+              Move to folder
+            </span>
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const folder = moveFolders.find((entry) => entry.id === event.target.value)
+                if (folder?.graphFolderId) {
+                  onMoveMail(email, folder.graphFolderId)
+                  event.target.value = ''
+                }
+              }}
+              className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-subhead"
+            >
+              <option value="">Choose folder…</option>
+              {moveFolders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {usingRealIntegrations && email.externalId && onDelete && (
           <button
             type="button"

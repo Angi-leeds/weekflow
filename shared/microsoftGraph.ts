@@ -1,13 +1,18 @@
 export const MICROSOFT_GRAPH_SCOPES = [
   "offline_access",
   "User.Read",
-  "Mail.Read",
+  "Mail.ReadWrite",
   "Mail.Send",
+  "Mail.Read.Shared",
+  "MailboxSettings.ReadWrite",
   "Calendars.ReadWrite",
   "Tasks.ReadWrite",
-  "Contacts.Read",
+  "Contacts.ReadWrite",
   "Files.Read.All",
   "Files.ReadWrite",
+  "Notes.ReadWrite",
+  "OnlineMeetings.ReadWrite",
+  "Chat.Read",
 ] as const;
 
 export type MicrosoftGraphScope = (typeof MICROSOFT_GRAPH_SCOPES)[number];
@@ -55,6 +60,15 @@ export interface GraphMailFolderDto {
   accountId: string;
   connectedAccountId: string;
   wellKnown?: "inbox" | "sentitems" | "drafts" | "deleteditems";
+  parentFolderId?: string;
+}
+
+export interface GraphMailAttachmentDto {
+  id: string;
+  name: string;
+  contentType?: string;
+  size?: number;
+  isInline?: boolean;
 }
 
 export interface GraphCalendarDto {

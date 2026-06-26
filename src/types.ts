@@ -253,6 +253,8 @@ export interface IntegrationAccountDefaults {
   notes?: { defaultAccountId?: string }
   tasks?: { defaultAccountId?: string; defaultTodoListId?: string }
   contacts?: { defaultAccountId?: string }
+  emailSignature?: string
+  sharedMailboxEmail?: string
 }
 
 export const DEFAULT_INTEGRATION_ACCOUNT_DEFAULTS: IntegrationAccountDefaults = {}
@@ -282,6 +284,11 @@ export interface CalendarItem {
   calendarName?: string
   /** Target Microsoft To Do list when creating tasks. */
   todoListId?: string
+  attendees?: string[]
+  recurringWeekly?: boolean
+  teamsMeeting?: boolean
+  onlineMeetingUrl?: string
+  inviteResponse?: 'accepted' | 'declined' | 'tentativelyAccepted' | 'none'
 }
 
 export interface EmailAccount {
@@ -299,6 +306,15 @@ export interface EmailFolder {
   graphFolderId?: string
   connectedAccountId?: string
   wellKnown?: 'inbox' | 'sentitems' | 'drafts' | 'deleteditems'
+  parentFolderId?: string
+}
+
+export interface EmailAttachment {
+  id: string
+  name: string
+  contentType?: string
+  size?: number
+  isInline?: boolean
 }
 
 export type EmailInboxMode = 'merged' | 'account' | 'folder'
@@ -325,6 +341,7 @@ export interface EmailMessage {
   externalId?: string
   provider?: 'microsoft' | 'google' | 'apple' | 'mock'
   connectedAccountId?: string
+  attachmentCount?: number
 }
 
 export type NoteSource = 'local' | 'mock' | 'microsoft' | 'apple'

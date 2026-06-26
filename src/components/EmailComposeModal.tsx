@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { EmailAccount, EmailMessage } from '../types'
 import { connectedAccountIdFromAccountKey } from '../lib/connectedAccounts'
 
-export type EmailComposeMode = 'compose' | 'reply' | 'replyAll'
+export type EmailComposeMode = 'compose' | 'reply' | 'replyAll' | 'forward'
 
 interface EmailComposeModalProps {
   open: boolean
@@ -19,6 +19,9 @@ interface EmailComposeModalProps {
     body: string
     replyToExternalId?: string
     replyAll?: boolean
+    forwardToExternalId?: string
+    saveAsDraft?: boolean
+    draftId?: string
   }) => void | Promise<void>
 }
 
@@ -57,6 +60,15 @@ export function EmailComposeModal({
     }
 
     if (replyTo) {
+      if (mode === 'forward') {
+        setTo('')
+        setSubject(
+          replyTo.subject.startsWith('Fwd:') ? replyTo.subject : `Fwd: ${replyTo.subject}`,
+        )
+        setBody('')
+        return
+      }
+
       setTo(replyTo.fromEmail)
       setSubject(replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`)
       setBody('')
@@ -66,8 +78,15 @@ export function EmailComposeModal({
   if (!open) return null
 
   const isReply = mode === 'reply' || mode === 'replyAll'
+  const isForward = mode === 'forward'
   const title =
-    mode === 'compose' ? 'New message' : mode === 'replyAll' ? 'Reply all' : 'Reply'
+    mode === 'compose'
+      ? 'New message'
+      : mode === 'replyAll'
+        ? 'Reply all'
+        : mode === 'forward'
+          ? 'Forward'
+          : 'Reply'
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -83,12 +102,34 @@ export function EmailComposeModal({
       return
     }
 
+    if (isForward && replyTo?.externalId) {
+      if (!to.trim()) return
+      void onSend({
+        connectedAccountId: accountId,
+        to: to.trim(),
+        body: body.trim(),
+        forwardToExternalId: replyTo.externalId,
+      })
+      return
+    }
+
     if (!to.trim() || !subject.trim()) return
     void onSend({
       connectedAccountId: accountId,
       to: to.trim(),
       subject: subject.trim(),
       body: body.trim(),
+    })
+  }
+
+  const handleSaveDraft = () => {
+    if (!accountId) return
+    void onSend({
+      connectedAccountId: accountId,
+      to: to.trim(),
+      subject: subject.trim(),
+      body: body.trim(),
+      saveAsDraft: true,
     })
   }
 
@@ -112,7 +153,7 @@ export function EmailComposeModal({
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            {mode === 'compose' && accounts.length > 1 && (
+            {(mode === 'compose' || isForward) && accounts.length > 1 && (
               <Field label="From">
                 <select
                   value={accountId}
@@ -131,30 +172,32 @@ export function EmailComposeModal({
               </Field>
             )}
 
-            {!isReply && (
+            {(!isReply || isForward) && (
               <>
                 <Field label="To">
                   <input
-                    type="email"
+                    type="text"
                     value={to}
                     onChange={(event) => setTo(event.target.value)}
                     placeholder="name@example.com"
                     className={inputClass}
-                    autoFocus
+                    autoFocus={isForward || mode === 'compose'}
                   />
                 </Field>
-                <Field label="Subject">
-                  <input
-                    type="text"
-                    value={subject}
-                    onChange={(event) => setSubject(event.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
+                {!isReply && (
+                  <Field label="Subject">
+                    <input
+                      type="text"
+                      value={subject}
+                      onChange={(event) => setSubject(event.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                )}
               </>
             )}
 
-            {isReply && replyTo && (
+            {isReply && !isForward && replyTo && (
               <div className="rounded-xl bg-wf-bg px-4 py-3 text-caption text-wf-text-secondary">
                 <p>
                   {mode === 'replyAll' ? 'Reply all to' : 'Reply to'}{' '}
@@ -164,25 +207,49 @@ export function EmailComposeModal({
               </div>
             )}
 
+            {isForward && replyTo && (
+              <div className="rounded-xl bg-wf-bg px-4 py-3 text-caption text-wf-text-secondary">
+                <p className="font-semibold text-wf-text">Forwarding</p>
+                <p className="truncate">{replyTo.subject}</p>
+              </div>
+            )}
+
             <Field label="Message">
               <textarea
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 rows={8}
-                placeholder={isReply ? 'Write your reply…' : 'Write your message…'}
+                placeholder={
+                  isForward ? 'Add a comment…' : isReply ? 'Write your reply…' : 'Write your message…'
+                }
                 className={`${inputClass} resize-none`}
-                autoFocus={isReply}
+                autoFocus={isReply && !isForward}
               />
             </Field>
           </div>
 
-          <div className="shrink-0 border-t border-wf-border px-5 py-4">
+          <div className="shrink-0 space-y-2 border-t border-wf-border px-5 py-4">
+            {mode === 'compose' && (
+              <button
+                type="button"
+                disabled={sending}
+                onClick={handleSaveDraft}
+                className="w-full rounded-2xl border border-wf-border py-3 text-[15px] font-semibold text-wf-text disabled:opacity-50"
+              >
+                Save draft
+              </button>
+            )}
             <button
               type="submit"
-              disabled={sending || !body.trim() || (!isReply && (!to.trim() || !subject.trim()))}
+              disabled={
+                sending ||
+                !body.trim() ||
+                (isForward && !to.trim()) ||
+                (!isReply && !isForward && (!to.trim() || !subject.trim()))
+              }
               className="w-full rounded-2xl bg-wf-accent py-3.5 text-[16px] font-semibold text-white shadow-lg shadow-wf-accent/25 disabled:opacity-50"
             >
-              {sending ? 'Sending…' : 'Send'}
+              {sending ? 'Sending…' : isForward ? 'Forward' : 'Send'}
             </button>
           </div>
         </form>

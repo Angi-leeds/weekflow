@@ -10,6 +10,7 @@ import { isTaskCategory, resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
 import { getPhotoUrlForItem, uploadAttachment } from '../lib/attachments'
+import { getMicrosoftSchedule, respondToMicrosoftCalendarEvent } from '../lib/microsoft'
 import { isTaskOrReminder } from './itemHelpers'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
@@ -546,6 +547,76 @@ export function ItemFormModal({
                 />
               </Field>
             </div>
+          )}
+
+          {usingRealMicrosoft && !isTask && (
+            <>
+              <Field label="Attendees (emails, comma-separated)">
+                <input
+                  type="text"
+                  value={(form.attendees ?? []).join(', ')}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      attendees: e.target.value
+                        .split(/[,;]/)
+                        .map((entry) => entry.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  placeholder="colleague@company.com, friend@example.com"
+                  className="w-full rounded-xl border border-wf-border bg-wf-bg px-4 py-3 text-body outline-none focus:border-wf-accent"
+                />
+              </Field>
+              <label className="flex items-center gap-3 rounded-xl bg-wf-bg px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.recurringWeekly)}
+                  onChange={(e) => setForm({ ...form, recurringWeekly: e.target.checked })}
+                  className="h-5 w-5 rounded accent-wf-accent"
+                />
+                <span className="text-[15px] font-medium">Repeat weekly (10 times)</span>
+              </label>
+              <label className="flex items-center gap-3 rounded-xl bg-wf-bg px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.teamsMeeting)}
+                  onChange={(e) => setForm({ ...form, teamsMeeting: e.target.checked })}
+                  className="h-5 w-5 rounded accent-wf-accent"
+                />
+                <span className="text-[15px] font-medium">Teams online meeting</span>
+              </label>
+              {form.onlineMeetingUrl && (
+                <a
+                  href={form.onlineMeetingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-xl bg-[#464775]/10 px-4 py-3 text-subhead font-semibold text-[#464775]"
+                >
+                  Join Teams meeting
+                </a>
+              )}
+              {form.externalId && form.connectedAccountId && (
+                <div className="flex flex-wrap gap-2">
+                  {(['accept', 'tentativelyAccept', 'decline'] as const).map((action) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() =>
+                        void respondToMicrosoftCalendarEvent(
+                          form.connectedAccountId!,
+                          form.externalId!,
+                          action,
+                        ).then(() => setForm({ ...form, inviteResponse: action === 'tentativelyAccept' ? 'tentativelyAccepted' : action }))
+                      }
+                      className="rounded-xl border border-wf-border px-3 py-2 text-caption font-semibold capitalize"
+                    >
+                      {action === 'tentativelyAccept' ? 'Tentative' : action}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           <Field label="Notes">

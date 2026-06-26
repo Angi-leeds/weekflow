@@ -50,6 +50,9 @@ import { loadKioskPin, saveKioskPin } from './KioskPinGate'
 import { SecuritySettingsPanel } from './SecuritySettingsPanel'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
 import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
+import { OneDriveFileManager } from './OneDriveFileManager'
+import { OutlookPowerPanel } from './OutlookPowerPanel'
+import { TeamsPanel } from './TeamsPanel'
 import { GoogleConnectPanel } from './GoogleConnectPanel'
 import { AppleConnectPanel } from './AppleConnectPanel'
 import { CategoriesManager } from './CategoriesManager'
@@ -731,6 +734,27 @@ export function SettingsView({
               Reconnect Google after scope updates (send, Drive). Reconnect Outlook after Contacts scope changes.
             </p>
           </>
+        )}
+
+        {usingRealMicrosoft && (microsoftStatus?.accounts.length ?? 0) > 0 && (
+          <div className="border-t border-wf-border/50 px-4 py-4">
+            <p className="mb-3 text-caption font-semibold text-wf-text-secondary">OneDrive files</p>
+            <OneDriveFileManager
+              accounts={microsoftStatus?.accounts ?? []}
+              defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
+            />
+            <OutlookPowerPanel
+              accounts={microsoftStatus?.accounts ?? []}
+              defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
+              integrationAccountDefaults={integrationAccountDefaults}
+              onIntegrationAccountDefaultsChange={onIntegrationAccountDefaultsChange}
+            />
+            <TeamsPanel
+              accounts={microsoftStatus?.accounts ?? []}
+              upcomingItems={items}
+              defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
+            />
+          </div>
         )}
 
         {usingRealGoogle && (googleStatus?.accounts.length ?? 0) > 0 && (

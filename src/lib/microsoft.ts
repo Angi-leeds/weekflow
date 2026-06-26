@@ -1,6 +1,7 @@
 import type {
   GraphCalendarDto,
   GraphDriveItemDto,
+  GraphMailAttachmentDto,
   GraphMailFolderDto,
   GraphTodoListDto,
   MicrosoftIntegrationStatus,
@@ -75,6 +76,76 @@ export async function deleteMicrosoftMail(accountId: string, externalId: string)
   );
 }
 
+export async function updateMicrosoftMailReadState(
+  accountId: string,
+  externalId: string,
+  isRead: boolean,
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/mail/${encodeURIComponent(externalId)}/read`, {
+    method: "PATCH",
+    body: JSON.stringify({ accountId, isRead }),
+  });
+}
+
+export async function moveMicrosoftMail(
+  accountId: string,
+  externalId: string,
+  destinationFolderId: string,
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/mail/${encodeURIComponent(externalId)}/move`, {
+    method: "POST",
+    body: JSON.stringify({ accountId, destinationFolderId }),
+  });
+}
+
+export async function forwardMicrosoftMail(
+  accountId: string,
+  externalId: string,
+  input: { comment: string; to: string[] },
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/mail/${encodeURIComponent(externalId)}/forward`, {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input }),
+  });
+}
+
+export async function searchMicrosoftMail(
+  accountId: string,
+  query: string,
+): Promise<EmailMessage[]> {
+  const params = new URLSearchParams({ accountId, q: query });
+  return apiFetch<EmailMessage[]>(`/api/microsoft/mail/search?${params.toString()}`);
+}
+
+export async function fetchMicrosoftMessageAttachments(
+  accountId: string,
+  externalId: string,
+): Promise<GraphMailAttachmentDto[]> {
+  const params = new URLSearchParams({ accountId });
+  return apiFetch<GraphMailAttachmentDto[]>(
+    `/api/microsoft/mail/${encodeURIComponent(externalId)}/attachments?${params.toString()}`,
+  );
+}
+
+export function microsoftAttachmentDownloadUrl(
+  accountId: string,
+  externalId: string,
+  attachmentId: string,
+): string {
+  const params = new URLSearchParams({ accountId });
+  return `/api/microsoft/mail/${encodeURIComponent(externalId)}/attachments/${encodeURIComponent(attachmentId)}?${params.toString()}`;
+}
+
+export async function saveMicrosoftMailDraft(
+  accountId: string,
+  input: { to: string[]; subject: string; body: string; draftId?: string },
+): Promise<{ externalId: string }> {
+  return apiFetch("/api/microsoft/mail/draft", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input }),
+  });
+}
+
 export async function fetchOneDriveFolders(
   accountId: string,
   parentId?: string,
@@ -82,6 +153,68 @@ export async function fetchOneDriveFolders(
   const params = new URLSearchParams({ accountId });
   if (parentId) params.set("parentId", parentId);
   return apiFetch(`/api/microsoft/drive/folders?${params.toString()}`);
+}
+
+export interface OneDriveItem {
+  id: string;
+  name: string;
+  webUrl?: string;
+  accountId: string;
+  connectedAccountId: string;
+  parentId?: string;
+  size?: number;
+  isFolder: boolean;
+}
+
+export async function fetchOneDriveItems(
+  accountId: string,
+  parentId?: string,
+): Promise<OneDriveItem[]> {
+  const params = new URLSearchParams({ accountId });
+  if (parentId) params.set("parentId", parentId);
+  return apiFetch(`/api/microsoft/drive/items?${params.toString()}`);
+}
+
+export async function uploadOneDriveFile(
+  accountId: string,
+  parentId: string,
+  file: File,
+): Promise<{ id: string; name: string; webUrl?: string }> {
+  const buffer = await file.arrayBuffer();
+  const contentBase64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  return apiFetch("/api/microsoft/drive/upload", {
+    method: "POST",
+    body: JSON.stringify({
+      accountId,
+      parentId,
+      fileName: file.name,
+      contentBase64,
+      contentType: file.type || "application/octet-stream",
+    }),
+  });
+}
+
+export async function deleteOneDriveItem(accountId: string, itemId: string): Promise<void> {
+  await apiFetch<void>(
+    `/api/microsoft/drive/items/${encodeURIComponent(itemId)}?accountId=${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function sendMicrosoftMailWithDriveAttachments(
+  accountId: string,
+  input: {
+    to: string | string[];
+    subject: string;
+    body: string;
+    driveAttachmentIds?: string[];
+  },
+): Promise<void> {
+  const to = Array.isArray(input.to) ? input.to : [input.to];
+  await apiFetch<void>("/api/microsoft/mail/send-with-attachments", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input, to }),
+  });
 }
 
 export async function copyEmailToOneDriveFolder(
@@ -181,6 +314,66 @@ export async function fetchMicrosoftContacts(accountId: string): Promise<Contact
     connectedAccountId: contact.connectedAccountId,
     categories: ["Outlook"],
   }));
+}
+
+function contactToSyncInput(contact: Contact): {
+  name: string;
+  email?: string;
+  emailSecondary?: string;
+  phone?: string;
+  mobilePhone?: string;
+  homePhone?: string;
+  company?: string;
+  jobTitle?: string;
+  department?: string;
+  website?: string;
+  address?: string;
+  birthday?: string;
+  notes?: string;
+} {
+  return {
+    name: contact.name,
+    email: contact.email,
+    emailSecondary: contact.emailSecondary,
+    phone: contact.phone,
+    mobilePhone: contact.mobilePhone,
+    homePhone: contact.homePhone,
+    company: contact.company,
+    jobTitle: contact.jobTitle,
+    department: contact.department,
+    website: contact.website,
+    address: contact.address,
+    birthday: contact.birthday,
+    notes: contact.notes,
+  };
+}
+
+export async function createMicrosoftContact(
+  accountId: string,
+  contact: Contact,
+): Promise<{ externalId: string }> {
+  return apiFetch("/api/microsoft/contacts", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...contactToSyncInput(contact) }),
+  });
+}
+
+export async function updateMicrosoftContact(
+  accountId: string,
+  externalId: string,
+  contact: Contact,
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/contacts/${encodeURIComponent(externalId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ accountId, ...contactToSyncInput(contact) }),
+  });
+}
+
+export async function deleteMicrosoftContact(accountId: string, externalId: string): Promise<void> {
+  await apiFetch<void>(
+    `/api/microsoft/contacts/${encodeURIComponent(externalId)}?accountId=${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function fetchAllMicrosoftMail(
@@ -301,6 +494,28 @@ export async function deleteMicrosoftNote(accountId: string, externalId: string)
   );
 }
 
+export async function respondToMicrosoftCalendarEvent(
+  accountId: string,
+  externalId: string,
+  response: "accept" | "decline" | "tentativelyAccept",
+  comment?: string,
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/calendar/${encodeURIComponent(externalId)}/respond`, {
+    method: "POST",
+    body: JSON.stringify({ accountId, response, comment }),
+  });
+}
+
+export async function getMicrosoftSchedule(
+  accountId: string,
+  input: { emails: string[]; start: string; end: string },
+): Promise<Array<{ email: string; availabilityView: string }>> {
+  return apiFetch("/api/microsoft/calendar/schedule", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input }),
+  });
+}
+
 export async function syncCalendarToMicrosoft(
   accountId: string,
   item: CalendarItem,
@@ -321,11 +536,74 @@ export async function syncCalendarToMicrosoft(
         allDay: item.allDay,
         notes: item.notes,
         calendarId,
+        externalId: item.externalId,
+        attendees: item.attendees,
+        recurringWeekly: item.recurringWeekly,
+        teamsMeeting: item.teamsMeeting,
         photoStorageKey: photo?.storageKey,
         photoMimeType: photo?.mimeType,
         photoFilename: photo?.filename,
       },
     }),
+  });
+}
+
+export async function syncMicrosoftTodo(
+  accountId: string,
+  item: CalendarItem,
+  todoListId?: string,
+): Promise<{ externalId: string; todoListId: string }> {
+  return apiFetch("/api/microsoft/todo/sync", {
+    method: "POST",
+    body: JSON.stringify({
+      accountId,
+      item: {
+        localItemId: item.id,
+        title: item.title,
+        dueDate: item.date,
+        notes: item.notes,
+        todoListId: item.todoListId ?? todoListId,
+        externalId: item.externalId,
+        completed: item.completed,
+      },
+    }),
+  });
+}
+
+export async function deleteMicrosoftCalendarEvent(
+  accountId: string,
+  externalId: string,
+  calendarId?: string,
+): Promise<void> {
+  const params = new URLSearchParams({ accountId });
+  if (calendarId) params.set("calendarId", calendarId);
+  await apiFetch<void>(
+    `/api/microsoft/calendar/${encodeURIComponent(externalId)}?${params.toString()}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function deleteMicrosoftTodo(
+  accountId: string,
+  externalId: string,
+  todoListId: string,
+): Promise<void> {
+  const params = new URLSearchParams({ accountId, todoListId });
+  await apiFetch<void>(
+    `/api/microsoft/todo/${encodeURIComponent(externalId)}?${params.toString()}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function completeMicrosoftTodo(
+  accountId: string,
+  externalId: string,
+  todoListId: string,
+  completed: boolean,
+): Promise<void> {
+  await apiFetch<void>(`/api/microsoft/todo/${encodeURIComponent(externalId)}/complete`, {
+    method: "PATCH",
+    body: JSON.stringify({ accountId, todoListId, completed }),
   });
 }
 

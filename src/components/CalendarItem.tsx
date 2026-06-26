@@ -178,6 +178,17 @@ export function CalendarItemRow({
                 {item.notes}
               </span>
             )}
+            {item.onlineMeetingUrl && (
+              <a
+                href={item.onlineMeetingUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => event.stopPropagation()}
+                className="mt-1 inline-block text-[11px] font-semibold text-[#464775] underline"
+              >
+                Join Teams
+              </a>
+            )}
           </span>
         </span>
       </span>

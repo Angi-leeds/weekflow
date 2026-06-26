@@ -3,6 +3,7 @@ import type {
   GraphCalendarEventResult,
   GraphDriveItemDto,
   GraphMailFolderDto,
+  GraphMailAttachmentDto,
   GraphTodoListDto,
 } from "../../shared/microsoftGraph";
 import { normalizeEmailBody } from "../../shared/emailBody";
@@ -26,6 +27,7 @@ interface GraphMessage {
   receivedDateTime?: string;
   isRead?: boolean;
   flag?: { flagStatus?: string };
+  hasAttachments?: boolean;
 }
 
 interface GraphNote {
@@ -81,6 +83,9 @@ interface GraphEvent {
   end?: { dateTime?: string; timeZone?: string };
   isAllDay?: boolean;
   webLink?: string;
+  onlineMeeting?: { joinUrl?: string };
+  recurrence?: Record<string, unknown>;
+  attendees?: Array<{ emailAddress?: { address?: string }; status?: { response?: string } }>;
 }
 
 export interface GraphCalendarItemDto {
@@ -101,6 +106,12 @@ export interface GraphCalendarItemDto {
   connectedAccountId: string;
   calendarId?: string;
   calendarName?: string;
+  todoListId?: string;
+  attendees?: string[];
+  recurringWeekly?: boolean;
+  teamsMeeting?: boolean;
+  onlineMeetingUrl?: string;
+  inviteResponse?: "accepted" | "declined" | "tentativelyAccepted" | "none";
 }
 
 export interface CalendarSyncInput {
@@ -116,6 +127,20 @@ export interface CalendarSyncInput {
   photoMimeType?: string;
   photoFilename?: string;
   calendarId?: string;
+  externalId?: string;
+  attendees?: string[];
+  recurringWeekly?: boolean;
+  teamsMeeting?: boolean;
+}
+
+export interface TodoSyncInput {
+  localItemId: string;
+  title: string;
+  dueDate?: string;
+  notes?: string;
+  todoListId?: string;
+  externalId?: string;
+  completed?: boolean;
 }
 
 export interface GraphContactDto {
@@ -357,7 +382,25 @@ function mapGraphEventToDto(
     connectedAccountId: account.id,
     calendarId: calendar?.id,
     calendarName: calendar?.name,
+    attendees: event.attendees
+      ?.map((entry) => entry.emailAddress?.address)
+      .filter(Boolean) as string[] | undefined,
+    recurringWeekly: Boolean(event.recurrence),
+    teamsMeeting: Boolean(event.onlineMeeting?.joinUrl),
+    onlineMeetingUrl: event.onlineMeeting?.joinUrl,
+    inviteResponse: mapInviteResponse(event.attendees),
   };
+}
+
+function mapInviteResponse(
+  attendees?: Array<{ status?: { response?: string } }>,
+): GraphCalendarItemDto["inviteResponse"] {
+  const self = attendees?.find((entry) => entry.status?.response);
+  const response = self?.status?.response;
+  if (response === "accepted") return "accepted";
+  if (response === "declined") return "declined";
+  if (response === "tentativelyAccepted") return "tentativelyAccepted";
+  return "none";
 }
 
 export async function fetchMicrosoftCalendars(accountId: string): Promise<GraphCalendarDto[]> {
@@ -496,6 +539,37 @@ export async function fetchMicrosoftMailFolders(accountId: string): Promise<Grap
   const accountKey = accountKeyFromRecord(account);
   const folders: GraphMailFolderDto[] = [];
 
+  async function loadChildFolders(
+    parentGraphId: string,
+    parentCompositeId: string | undefined,
+    depth: number,
+  ): Promise<void> {
+    if (depth > 6) return;
+    try {
+      const response = await graphFetch(
+        accountId,
+        `/me/mailFolders/${encodeGraphPathSegment(parentGraphId)}/childFolders?$select=id,displayName`,
+      );
+      const payload = (await response.json()) as {
+        value?: Array<{ id: string; displayName?: string }>;
+      };
+      for (const child of payload.value ?? []) {
+        const compositeId = folderCompositeId(accountKey, child.id);
+        folders.push({
+          id: compositeId,
+          graphFolderId: child.id,
+          label: child.displayName ?? "Folder",
+          accountId: accountKey,
+          connectedAccountId: account.id,
+          parentFolderId: parentCompositeId,
+        });
+        await loadChildFolders(child.id, compositeId, depth + 1);
+      }
+    } catch (error) {
+      console.warn(`Failed to load child folders for ${parentGraphId}:`, error);
+    }
+  }
+
   for (const wellKnown of WELL_KNOWN_FOLDERS) {
     if (!wellKnown.path) continue;
     try {
@@ -504,14 +578,16 @@ export async function fetchMicrosoftMailFolders(accountId: string): Promise<Grap
         `/me/mailFolders/${wellKnown.path}?$select=id,displayName`,
       );
       const payload = (await response.json()) as { id: string; displayName?: string };
+      const compositeId = folderCompositeId(accountKey, payload.id);
       folders.push({
-        id: folderCompositeId(accountKey, payload.id),
+        id: compositeId,
         graphFolderId: payload.id,
         label: payload.displayName ?? wellKnown.label,
         accountId: accountKey,
         connectedAccountId: account.id,
         wellKnown: wellKnown.path,
       });
+      await loadChildFolders(payload.id, compositeId, 0);
     } catch (error) {
       console.warn(`Failed to load ${wellKnown.path} folder for ${accountId}:`, error);
     }
@@ -547,6 +623,7 @@ function mapGraphMessageToDto(
     labels: ["Outlook"],
     externalId: message.id,
     provider: "microsoft",
+    attachmentCount: message.hasAttachments ? 1 : 0,
   };
 }
 
@@ -569,7 +646,7 @@ export async function fetchMicrosoftMessages(
   const query = buildGraphQuery({
     $top: String(top),
     $orderby: "receivedDateTime desc",
-    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,flag",
+    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,flag,hasAttachments",
   });
 
   const response = await graphFetch(
@@ -639,38 +716,280 @@ export async function deleteMicrosoftMail(accountId: string, messageId: string):
   });
 }
 
+export async function updateMicrosoftMailReadState(
+  accountId: string,
+  messageId: string,
+  isRead: boolean,
+): Promise<void> {
+  await graphFetch(accountId, `/me/messages/${encodeURIComponent(messageId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ isRead }),
+  });
+}
+
+export async function moveMicrosoftMail(
+  accountId: string,
+  messageId: string,
+  destinationFolderId: string,
+): Promise<void> {
+  await graphFetch(accountId, `/me/messages/${encodeURIComponent(messageId)}/move`, {
+    method: "POST",
+    body: JSON.stringify({ destinationId: destinationFolderId }),
+  });
+}
+
+export async function forwardMicrosoftMail(
+  accountId: string,
+  messageId: string,
+  input: { comment: string; to: string[] },
+): Promise<void> {
+  const toRecipients = graphRecipients(input.to);
+  if (toRecipients.length === 0) throw new Error("At least one recipient is required");
+
+  await graphFetch(accountId, `/me/messages/${encodeURIComponent(messageId)}/forward`, {
+    method: "POST",
+    body: JSON.stringify({
+      comment: input.comment,
+      toRecipients,
+    }),
+  });
+}
+
+export async function searchMicrosoftMessages(
+  accountId: string,
+  query: string,
+  top = 50,
+): Promise<GraphEmailDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  const folders = await fetchMicrosoftMailFolders(accountId);
+  const inbox =
+    folders.find((entry) => entry.wellKnown === "inbox") ?? folders[0];
+  if (!inbox) return [];
+
+  const searchQuery = buildGraphQuery({
+    $search: `"${query.replace(/"/g, "")}"`,
+    $top: String(top),
+    $select: "id,subject,bodyPreview,body,from,receivedDateTime,isRead,flag,hasAttachments",
+  });
+
+  const response = await graphFetch(accountId, `/me/messages?${searchQuery}`, {
+    headers: { ConsistencyLevel: "eventual" },
+  });
+  const payload = (await response.json()) as { value?: GraphMessage[] };
+
+  return (payload.value ?? []).map((message) => mapGraphMessageToDto(message, account, inbox));
+}
+
+export async function fetchMicrosoftMessageAttachments(
+  accountId: string,
+  messageId: string,
+): Promise<GraphMailAttachmentDto[]> {
+  const response = await graphFetch(
+    accountId,
+    `/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`,
+  );
+  const payload = (await response.json()) as {
+    value?: Array<{
+      id: string;
+      name?: string;
+      contentType?: string;
+      size?: number;
+      isInline?: boolean;
+    }>;
+  };
+
+  return (payload.value ?? []).map((entry) => ({
+    id: entry.id,
+    name: entry.name ?? "attachment",
+    contentType: entry.contentType,
+    size: entry.size,
+    isInline: entry.isInline,
+  }));
+}
+
+export async function downloadMicrosoftMessageAttachment(
+  accountId: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<{ name: string; contentType: string; buffer: Buffer }> {
+  const metaResponse = await graphFetch(
+    accountId,
+    `/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  );
+  const meta = (await metaResponse.json()) as {
+    name?: string;
+    contentType?: string;
+    contentBytes?: string;
+  };
+
+  if (!meta.contentBytes) {
+    throw new Error("Attachment content is not available");
+  }
+
+  return {
+    name: meta.name ?? "attachment",
+    contentType: meta.contentType ?? "application/octet-stream",
+    buffer: Buffer.from(meta.contentBytes, "base64"),
+  };
+}
+
+export async function saveMicrosoftMailDraft(
+  accountId: string,
+  input: SendMailInput & { draftId?: string },
+): Promise<{ externalId: string }> {
+  const messageBody = {
+    subject: input.subject,
+    body: { contentType: "Text", content: input.body },
+    toRecipients: graphRecipients(input.to),
+    ...(input.cc?.length ? { ccRecipients: graphRecipients(input.cc) } : {}),
+    ...(input.bcc?.length ? { bccRecipients: graphRecipients(input.bcc) } : {}),
+  };
+
+  if (input.draftId) {
+    await graphFetch(accountId, `/me/messages/${encodeURIComponent(input.draftId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(messageBody),
+    });
+    return { externalId: input.draftId };
+  }
+
+  const response = await graphFetch(accountId, "/me/messages", {
+    method: "POST",
+    body: JSON.stringify({ ...messageBody, isDraft: true }),
+  });
+  const created = (await response.json()) as { id: string };
+  return { externalId: created.id };
+}
+
 interface GraphDriveItem {
   id: string;
   name: string;
   webUrl?: string;
   folder?: Record<string, unknown>;
+  file?: Record<string, unknown>;
+  size?: number;
+}
+
+export interface GraphDriveFileDto {
+  id: string;
+  name: string;
+  webUrl?: string;
+  accountId: string;
+  connectedAccountId: string;
+  parentId?: string;
+  size?: number;
+  isFolder: boolean;
 }
 
 export async function fetchOneDriveFolders(
   accountId: string,
   parentId?: string,
 ): Promise<GraphDriveItemDto[]> {
+  const items = await fetchOneDriveItems(accountId, parentId);
+  return items
+    .filter((item) => item.isFolder)
+    .map(({ isFolder: _isFolder, size: _size, ...folder }) => folder);
+}
+
+export async function fetchOneDriveItems(
+  accountId: string,
+  parentId?: string,
+): Promise<GraphDriveFileDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
   const accountKey = accountKeyFromRecord(account);
   const path = parentId
-    ? `/me/drive/items/${encodeURIComponent(parentId)}/children?$select=id,name,webUrl,folder`
-    : `/me/drive/root/children?$select=id,name,webUrl,folder`;
+    ? `/me/drive/items/${encodeURIComponent(parentId)}/children?$select=id,name,webUrl,folder,file,size`
+    : `/me/drive/root/children?$select=id,name,webUrl,folder,file,size`;
 
   const response = await graphFetch(accountId, path);
   const payload = (await response.json()) as { value?: GraphDriveItem[] };
 
-  return (payload.value ?? [])
-    .filter((item) => Boolean(item.folder))
-    .map((item) => ({
-      id: item.id,
-      name: item.name,
-      webUrl: item.webUrl,
-      accountId: accountKey,
-      connectedAccountId: account.id,
-      parentId,
-    }));
+  return (payload.value ?? []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    webUrl: item.webUrl,
+    accountId: accountKey,
+    connectedAccountId: account.id,
+    parentId,
+    size: item.size,
+    isFolder: Boolean(item.folder),
+  }));
+}
+
+export async function uploadOneDriveFile(
+  accountId: string,
+  parentId: string,
+  fileName: string,
+  content: Buffer,
+  contentType = "application/octet-stream",
+): Promise<{ id: string; name: string; webUrl?: string }> {
+  const token = await getValidAccessToken(accountId);
+  const response = await fetch(
+    `${MICROSOFT_GRAPH_BASE}/me/drive/items/${encodeURIComponent(parentId)}:/${encodeURIComponent(fileName)}:/content`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": contentType,
+      },
+      body: content,
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`OneDrive upload failed (${response.status}): ${detail}`);
+  }
+
+  return (await response.json()) as { id: string; name: string; webUrl?: string };
+}
+
+export async function deleteOneDriveItem(accountId: string, itemId: string): Promise<void> {
+  await graphFetch(accountId, `/me/drive/items/${encodeURIComponent(itemId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function sendMicrosoftMailWithDriveAttachments(
+  accountId: string,
+  input: SendMailInput & { driveAttachmentIds?: string[] },
+): Promise<void> {
+  const toRecipients = graphRecipients(input.to);
+  if (toRecipients.length === 0) throw new Error("At least one recipient is required");
+
+  const attachments: Array<Record<string, unknown>> = [];
+  for (const itemId of input.driveAttachmentIds ?? []) {
+    const metaResponse = await graphFetch(
+      accountId,
+      `/me/drive/items/${encodeURIComponent(itemId)}?$select=id,name,webUrl`,
+    );
+    const meta = (await metaResponse.json()) as { name?: string; webUrl?: string };
+    attachments.push({
+      "@odata.type": "#microsoft.graph.referenceAttachment",
+      name: meta.name ?? "file",
+      sourceUrl: meta.webUrl,
+      providerType: "oneDrivePro",
+    });
+  }
+
+  await graphFetch(accountId, "/me/sendMail", {
+    method: "POST",
+    body: JSON.stringify({
+      message: {
+        subject: input.subject,
+        body: { contentType: "Text", content: input.body },
+        toRecipients,
+        ...(input.cc?.length ? { ccRecipients: graphRecipients(input.cc) } : {}),
+        ...(input.bcc?.length ? { bccRecipients: graphRecipients(input.bcc) } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      },
+      saveToSentItems: true,
+    }),
+  });
 }
 
 function safeDriveFileName(subject: string): string {
@@ -716,89 +1035,263 @@ export async function copyEmailToOneDriveFolder(
 
 const OUTLOOK_NOTE_COLOUR = "#FFF4B8";
 
-function noteBodyText(note: GraphNote): string {
-  return normalizeEmailBody(note.body?.content ?? note.bodyPreview ?? "", note.body?.contentType);
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function mapGraphNoteToDto(note: GraphNote, account: ConnectedAccountRecord): GraphNoteDto {
-  const accountKey = `ms-${account.id}`;
-  const body = noteBodyText(note);
-  const title = note.subject?.trim() || body.split("\n")[0]?.slice(0, 80) || "(Untitled note)";
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
+function oneNotePageHtml(title: string, body: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeBody = escapeHtml(body).replace(/\n/g, "<br/>");
+  return `<!DOCTYPE html><html><head><title>${safeTitle}</title></head><body><p>${safeBody}</p></body></html>`;
+}
+
+async function getDefaultOneNoteSectionId(accountId: string): Promise<string> {
+  const notebooksResponse = await graphFetch(accountId, "/me/onenote/notebooks");
+  const notebooksPayload = (await notebooksResponse.json()) as {
+    value?: Array<{ id: string }>;
+  };
+  const notebookId = notebooksPayload.value?.[0]?.id;
+  if (!notebookId) throw new Error("No OneNote notebook found");
+
+  const sectionsResponse = await graphFetch(
+    accountId,
+    `/me/onenote/notebooks/${encodeURIComponent(notebookId)}/sections`,
+  );
+  const sectionsPayload = (await sectionsResponse.json()) as {
+    value?: Array<{ id: string }>;
+  };
+  const sectionId = sectionsPayload.value?.[0]?.id;
+  if (!sectionId) throw new Error("No OneNote section found");
+  return sectionId;
+}
+
+interface OneNotePage {
+  id: string;
+  title?: string;
+  createdDateTime?: string;
+  lastModifiedDateTime?: string;
+}
+
+async function fetchOneNotePageBody(accountId: string, pageId: string): Promise<string> {
+  try {
+    const token = await getValidAccessToken(accountId);
+    const response = await fetch(
+      `${MICROSOFT_GRAPH_BASE}/me/onenote/pages/${encodeURIComponent(pageId)}/content`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) return "";
+    const html = await response.text();
+    return stripHtml(html);
+  } catch {
+    return "";
+  }
+}
+
+function mapOneNotePageToDto(
+  page: OneNotePage,
+  body: string,
+  account: ConnectedAccountRecord,
+): GraphNoteDto {
+  const accountKey = `ms-${account.id}`;
+  const title = page.title?.trim() || body.split("\n")[0]?.slice(0, 80) || "(Untitled note)";
   return {
-    id: `graph-note-${note.id}`,
+    id: `graph-note-${page.id}`,
     title,
     body,
-    preview: note.bodyPreview ?? body.split("\n")[0] ?? "",
-    createdAt: note.createdDateTime ?? new Date().toISOString(),
-    updatedAt: note.lastModifiedDateTime ?? note.createdDateTime ?? new Date().toISOString(),
-    categories: note.categories ?? [],
+    preview: body.split("\n")[0]?.slice(0, 120) ?? title,
+    createdAt: page.createdDateTime ?? new Date().toISOString(),
+    updatedAt: page.lastModifiedDateTime ?? page.createdDateTime ?? new Date().toISOString(),
+    categories: ["OneNote"],
     colour: OUTLOOK_NOTE_COLOUR,
     accountId: accountKey,
-    externalId: note.id,
+    externalId: page.id,
     provider: "microsoft",
     connectedAccountId: account.id,
   };
 }
 
-export async function fetchMicrosoftNotes(
-  accountId: string,
-  _top = 100,
-): Promise<GraphNoteDto[]> {
-  // Microsoft Graph has no stable /me/outlook/notes endpoint.
-  // Notes sync is not currently supported; return empty so local notes still work.
-  console.warn(`fetchMicrosoftNotes: notes sync not supported for account ${accountId} — returning empty`);
-  return [];
+export async function fetchMicrosoftNotes(accountId: string, top = 50): Promise<GraphNoteDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+
+  try {
+    const notebooksResponse = await graphFetch(accountId, "/me/onenote/notebooks");
+    const notebooksPayload = (await notebooksResponse.json()) as {
+      value?: Array<{ id: string }>;
+    };
+
+    const pages: OneNotePage[] = [];
+    for (const notebook of notebooksPayload.value ?? []) {
+      if (pages.length >= top) break;
+      const sectionsResponse = await graphFetch(
+        accountId,
+        `/me/onenote/notebooks/${encodeURIComponent(notebook.id)}/sections`,
+      );
+      const sectionsPayload = (await sectionsResponse.json()) as {
+        value?: Array<{ id: string }>;
+      };
+      for (const section of sectionsPayload.value ?? []) {
+        if (pages.length >= top) break;
+        const pagesResponse = await graphFetch(
+          accountId,
+          `/me/onenote/sections/${encodeURIComponent(section.id)}/pages?$top=${Math.min(top - pages.length, 25)}&$orderby=lastModifiedDateTime desc`,
+        );
+        const pagesPayload = (await pagesResponse.json()) as { value?: OneNotePage[] };
+        pages.push(...(pagesPayload.value ?? []));
+      }
+    }
+
+    const limited = pages.slice(0, top);
+    const notes: GraphNoteDto[] = [];
+    await runWithConcurrency(limited, 4, async (page) => {
+      const body = await fetchOneNotePageBody(accountId, page.id);
+      notes.push(mapOneNotePageToDto(page, body, account));
+    });
+
+    return notes.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  } catch (error) {
+    console.warn(`OneNote fetch failed for ${accountId}:`, error);
+    return [];
+  }
 }
 
 export async function createMicrosoftNote(
-  _accountId: string,
-  _input: { title: string; body: string },
+  accountId: string,
+  input: { title: string; body: string },
 ): Promise<{ externalId: string }> {
-  throw new Error("Microsoft notes sync is not supported in this version.");
+  const sectionId = await getDefaultOneNoteSectionId(accountId);
+  const token = await getValidAccessToken(accountId);
+  const response = await fetch(
+    `${MICROSOFT_GRAPH_BASE}/me/onenote/sections/${encodeURIComponent(sectionId)}/pages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/xhtml+xml",
+      },
+      body: oneNotePageHtml(input.title, input.body),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`OneNote create failed (${response.status}): ${detail}`);
+  }
+
+  const page = (await response.json()) as { id: string };
+  return { externalId: page.id };
 }
 
 export async function updateMicrosoftNote(
-  _accountId: string,
-  _externalId: string,
-  _input: { title: string; body: string },
+  accountId: string,
+  externalId: string,
+  input: { title: string; body: string },
 ): Promise<void> {
-  throw new Error("Microsoft notes sync is not supported in this version.");
+  const token = await getValidAccessToken(accountId);
+  const response = await fetch(
+    `${MICROSOFT_GRAPH_BASE}/me/onenote/pages/${encodeURIComponent(externalId)}/content`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([
+        {
+          target: "body",
+          action: "replace",
+          content: oneNotePageHtml(input.title, input.body),
+        },
+      ]),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`OneNote update failed (${response.status}): ${detail}`);
+  }
 }
 
 export async function deleteMicrosoftNote(
-  _accountId: string,
-  _externalId: string,
+  accountId: string,
+  externalId: string,
 ): Promise<void> {
-  throw new Error("Microsoft notes sync is not supported in this version.");
+  await graphFetch(accountId, `/me/onenote/pages/${encodeURIComponent(externalId)}`, {
+    method: "DELETE",
+  });
 }
 
 function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
   const timeZone = process.env.MICROSOFT_CALENDAR_TIMEZONE ?? "Europe/London";
+
+  let payload: Record<string, unknown>;
 
   if (input.allDay) {
     const end =
       input.endDate && input.endDate > input.date
         ? input.endDate
         : addDaysIso(input.date, 1);
-    return {
+    payload = {
       subject: input.title,
       body: { contentType: "text", content: input.notes ?? "" },
       start: { dateTime: `${input.date}T00:00:00`, timeZone },
       end: { dateTime: `${end}T00:00:00`, timeZone },
       isAllDay: true,
     };
+  } else {
+    const startTime = input.startTime ?? "09:00";
+    const endTime = input.endTime ?? input.startTime ?? "10:00";
+    payload = {
+      subject: input.title,
+      body: { contentType: "text", content: input.notes ?? "" },
+      start: { dateTime: `${input.date}T${startTime}:00`, timeZone },
+      end: { dateTime: `${input.date}T${endTime}:00`, timeZone },
+      isAllDay: false,
+    };
   }
 
-  const startTime = input.startTime ?? "09:00";
-  const endTime = input.endTime ?? input.startTime ?? "10:00";
-  return {
-    subject: input.title,
-    body: { contentType: "text", content: input.notes ?? "" },
-    start: { dateTime: `${input.date}T${startTime}:00`, timeZone },
-    end: { dateTime: `${input.date}T${endTime}:00`, timeZone },
-    isAllDay: false,
-  };
+  if (input.attendees?.length) {
+    payload.attendees = input.attendees.map((address) => ({
+      emailAddress: { address: address.trim() },
+      type: "required",
+    }));
+  }
+
+  if (input.recurringWeekly) {
+    const dayName = new Date(`${input.date}T12:00:00`)
+      .toLocaleDateString("en-US", { weekday: "long" })
+      .toLowerCase();
+    payload.recurrence = {
+      pattern: { type: "weekly", interval: 1, daysOfWeek: [dayName] },
+      range: {
+        type: "numbered",
+        startDate: input.date,
+        numberOfOccurrences: 10,
+      },
+    };
+  }
+
+  if (input.teamsMeeting) {
+    payload.isOnlineMeeting = true;
+    payload.onlineMeetingProvider = "teamsForBusiness";
+  }
+
+  return payload;
 }
 
 function addDaysIso(date: string, days: number): string {
@@ -897,6 +1390,17 @@ async function syncMyAxisCalendarExtension(
   }
 }
 
+async function resolveCalendarEventPath(
+  accountId: string,
+  externalId: string,
+  calendarId?: string,
+): Promise<string> {
+  if (calendarId) {
+    return `/me/calendars/${encodeGraphPathSegment(calendarId)}/events/${encodeURIComponent(externalId)}`;
+  }
+  return `/me/events/${encodeURIComponent(externalId)}`;
+}
+
 export async function syncCalendarItemToMicrosoft(
   accountId: string,
   input: CalendarSyncInput,
@@ -912,16 +1416,30 @@ export async function syncCalendarItemToMicrosoft(
     ? `/me/calendars/${encodeGraphPathSegment(targetCalendar.graphCalendarId)}`
     : "/me/calendar";
 
-  if (mapping && mapping.connectedAccountId === accountId) {
-    const response = await graphFetch(
+  const existingExternalId =
+    mapping?.connectedAccountId === accountId
+      ? mapping.externalId
+      : input.externalId;
+
+  if (existingExternalId) {
+    const eventPath = await resolveCalendarEventPath(
       accountId,
-      `${calendarBase}/events/${encodeURIComponent(mapping.externalId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      },
+      existingExternalId,
+      input.calendarId ?? targetCalendar?.graphCalendarId,
     );
+    const response = await graphFetch(accountId, eventPath, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
     const event = (await response.json()) as { id: string; webLink?: string };
+    if (!mapping || mapping.externalId !== event.id) {
+      await upsertProviderMapping({
+        connectedAccountId: accountId,
+        itemType: "calendar",
+        localItemId: input.localItemId,
+        externalId: event.id,
+      });
+    }
     let photoAttached = false;
     if (input.photoStorageKey) {
       photoAttached = await attachPhotoToEvent(accountId, event.id, input);
@@ -951,6 +1469,61 @@ export async function syncCalendarItemToMicrosoft(
   return { externalId: event.id, webLink: event.webLink, photoAttached };
 }
 
+export async function deleteMicrosoftCalendarEvent(
+  accountId: string,
+  externalId: string,
+  calendarId?: string,
+): Promise<void> {
+  const eventPath = await resolveCalendarEventPath(accountId, externalId, calendarId);
+  await graphFetch(accountId, eventPath, { method: "DELETE" });
+}
+
+export async function respondToMicrosoftCalendarEvent(
+  accountId: string,
+  externalId: string,
+  response: "accept" | "decline" | "tentativelyAccept",
+  comment?: string,
+): Promise<void> {
+  await graphFetch(accountId, `/me/events/${encodeURIComponent(externalId)}/${response}`, {
+    method: "POST",
+    body: JSON.stringify(comment ? { comment } : {}),
+  });
+}
+
+export interface ScheduleAvailabilitySlot {
+  email: string;
+  availabilityView: string;
+  workingHours?: Record<string, unknown>;
+}
+
+export async function getMicrosoftSchedule(
+  accountId: string,
+  input: {
+    emails: string[];
+    start: string;
+    end: string;
+  },
+): Promise<ScheduleAvailabilitySlot[]> {
+  const timeZone = process.env.MICROSOFT_CALENDAR_TIMEZONE ?? "Europe/London";
+  const response = await graphFetch(accountId, "/me/calendar/getSchedule", {
+    method: "POST",
+    body: JSON.stringify({
+      schedules: input.emails,
+      startTime: { dateTime: input.start, timeZone },
+      endTime: { dateTime: input.end, timeZone },
+      availabilityViewInterval: 30,
+    }),
+  });
+  const payload = (await response.json()) as {
+    value?: Array<{ scheduleId?: string; availabilityView?: string; workingHours?: Record<string, unknown> }>;
+  };
+  return (payload.value ?? []).map((entry) => ({
+    email: entry.scheduleId ?? "",
+    availabilityView: entry.availabilityView ?? "",
+    workingHours: entry.workingHours,
+  }));
+}
+
 export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
@@ -972,17 +1545,12 @@ export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphT
   }));
 }
 
-export async function createMicrosoftTodoTask(
-  accountId: string,
-  input: { title: string; dueDate?: string; notes?: string; todoListId?: string },
-): Promise<{ externalId: string }> {
-  const lists = await fetchMicrosoftTodoLists(accountId);
-  const targetList =
-    lists.find((list) => list.graphListId === input.todoListId) ??
-    lists.find((list) => list.isDefault) ??
-    lists[0];
-  if (!targetList) throw new Error("No Microsoft To Do list found");
-
+function buildTodoTaskBody(input: {
+  title: string;
+  dueDate?: string;
+  notes?: string;
+  completed?: boolean;
+}): Record<string, unknown> {
   const body: Record<string, unknown> = {
     title: input.title,
     body: {
@@ -998,16 +1566,116 @@ export async function createMicrosoftTodoTask(
     };
   }
 
+  if (input.completed !== undefined) {
+    body.status = input.completed ? "completed" : "notStarted";
+  }
+
+  return body;
+}
+
+async function resolveTodoList(
+  accountId: string,
+  todoListId?: string,
+): Promise<GraphTodoListDto> {
+  const lists = await fetchMicrosoftTodoLists(accountId);
+  const targetList =
+    lists.find((list) => list.graphListId === todoListId) ??
+    lists.find((list) => list.isDefault) ??
+    lists[0];
+  if (!targetList) throw new Error("No Microsoft To Do list found");
+  return targetList;
+}
+
+export async function createMicrosoftTodoTask(
+  accountId: string,
+  input: { title: string; dueDate?: string; notes?: string; todoListId?: string },
+): Promise<{ externalId: string; todoListId: string }> {
+  const targetList = await resolveTodoList(accountId, input.todoListId);
   const response = await graphFetch(
     accountId,
     `/me/todo/lists/${encodeGraphPathSegment(targetList.graphListId)}/tasks`,
     {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify(buildTodoTaskBody(input)),
     },
   );
   const task = (await response.json()) as { id: string };
-  return { externalId: task.id };
+  return { externalId: task.id, todoListId: targetList.graphListId };
+}
+
+export async function syncMicrosoftTodoTask(
+  accountId: string,
+  input: TodoSyncInput,
+): Promise<{ externalId: string; todoListId: string }> {
+  const mapping = await getProviderMapping("task", input.localItemId);
+  const targetList = await resolveTodoList(accountId, input.todoListId);
+  const existingExternalId =
+    mapping?.connectedAccountId === accountId ? mapping.externalId : input.externalId;
+  const body = buildTodoTaskBody(input);
+
+  if (existingExternalId) {
+    const listId = input.todoListId ?? targetList.graphListId;
+    const response = await graphFetch(
+      accountId,
+      `/me/todo/lists/${encodeGraphPathSegment(listId)}/tasks/${encodeURIComponent(existingExternalId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    );
+    const task = (await response.json()) as { id: string };
+    if (!mapping || mapping.externalId !== task.id) {
+      await upsertProviderMapping({
+        connectedAccountId: accountId,
+        itemType: "task",
+        localItemId: input.localItemId,
+        externalId: task.id,
+      });
+    }
+    return { externalId: task.id, todoListId: listId };
+  }
+
+  const created = await createMicrosoftTodoTask(accountId, {
+    title: input.title,
+    dueDate: input.dueDate,
+    notes: input.notes,
+    todoListId: input.todoListId,
+  });
+  await upsertProviderMapping({
+    connectedAccountId: accountId,
+    itemType: "task",
+    localItemId: input.localItemId,
+    externalId: created.externalId,
+  });
+  return created;
+}
+
+export async function deleteMicrosoftTodoTask(
+  accountId: string,
+  externalId: string,
+  todoListId: string,
+): Promise<void> {
+  await graphFetch(
+    accountId,
+    `/me/todo/lists/${encodeGraphPathSegment(todoListId)}/tasks/${encodeURIComponent(externalId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function completeMicrosoftTodoTask(
+  accountId: string,
+  externalId: string,
+  todoListId: string,
+  completed: boolean,
+): Promise<void> {
+  await graphFetch(
+    accountId,
+    `/me/todo/lists/${encodeGraphPathSegment(todoListId)}/tasks/${encodeURIComponent(externalId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status: completed ? "completed" : "notStarted" }),
+    },
+  );
 }
 
 interface GraphTodoTask {
@@ -1052,6 +1720,7 @@ export async function fetchMicrosoftTodoTasks(
             provider: "microsoft" as const,
             connectedAccountId: account.id,
             completed: task.status === "completed",
+            todoListId: list.graphListId,
           };
         }),
       );
@@ -1161,4 +1830,221 @@ export async function fetchMicrosoftContacts(accountId: string, top = 250): Prom
       notes: contact.personalNotes,
     };
   });
+}
+
+export interface ContactSyncInput {
+  name: string;
+  email?: string;
+  emailSecondary?: string;
+  phone?: string;
+  mobilePhone?: string;
+  homePhone?: string;
+  company?: string;
+  jobTitle?: string;
+  department?: string;
+  website?: string;
+  address?: string;
+  birthday?: string;
+  notes?: string;
+}
+
+function buildContactPayload(input: ContactSyncInput): Record<string, unknown> {
+  const nameParts = input.name.trim().split(/\s+/);
+  const emailAddresses = [
+    input.email ? { address: input.email, name: input.name } : null,
+    input.emailSecondary ? { address: input.emailSecondary } : null,
+  ].filter(Boolean);
+
+  return {
+    givenName: nameParts[0],
+    surname: nameParts.slice(1).join(" ") || undefined,
+    displayName: input.name,
+    companyName: input.company || undefined,
+    jobTitle: input.jobTitle || undefined,
+    department: input.department || undefined,
+    businessPhones: input.phone ? [input.phone] : undefined,
+    homePhones: input.homePhone ? [input.homePhone] : undefined,
+    mobilePhone: input.mobilePhone || undefined,
+    businessHomePage: input.website || undefined,
+    personalNotes: input.notes || undefined,
+    birthday: input.birthday || undefined,
+    emailAddresses: emailAddresses.length > 0 ? emailAddresses : undefined,
+    homeAddress: input.address ? { street: input.address } : undefined,
+  };
+}
+
+export async function createMicrosoftContact(
+  accountId: string,
+  input: ContactSyncInput,
+): Promise<{ externalId: string }> {
+  const response = await graphFetch(accountId, "/me/contacts", {
+    method: "POST",
+    body: JSON.stringify(buildContactPayload(input)),
+  });
+  const created = (await response.json()) as { id: string };
+  return { externalId: created.id };
+}
+
+export async function updateMicrosoftContact(
+  accountId: string,
+  externalId: string,
+  input: ContactSyncInput,
+): Promise<void> {
+  await graphFetch(accountId, `/me/contacts/${encodeURIComponent(externalId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(buildContactPayload(input)),
+  });
+}
+
+export async function deleteMicrosoftContact(
+  accountId: string,
+  externalId: string,
+): Promise<void> {
+  await graphFetch(accountId, `/me/contacts/${encodeURIComponent(externalId)}`, {
+    method: "DELETE",
+  });
+}
+
+export interface OutlookCategoryDto {
+  id: string;
+  displayName: string;
+  color?: string;
+}
+
+export async function fetchOutlookMasterCategories(
+  accountId: string,
+): Promise<OutlookCategoryDto[]> {
+  const response = await graphFetch(accountId, "/me/outlook/masterCategories");
+  const payload = (await response.json()) as {
+    value?: Array<{ id: string; displayName?: string; color?: string }>;
+  };
+  return (payload.value ?? []).map((entry) => ({
+    id: entry.id,
+    displayName: entry.displayName ?? "Category",
+    color: entry.color,
+  }));
+}
+
+export async function updateMicrosoftMailCategories(
+  accountId: string,
+  messageId: string,
+  categories: string[],
+): Promise<void> {
+  await graphFetch(accountId, `/me/messages/${encodeURIComponent(messageId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ categories }),
+  });
+}
+
+export interface MailRuleDto {
+  id: string;
+  displayName: string;
+  isEnabled: boolean;
+  sequence: number;
+}
+
+export async function fetchMicrosoftMailRules(accountId: string): Promise<MailRuleDto[]> {
+  const response = await graphFetch(accountId, "/me/mailFolders/inbox/messageRules");
+  const payload = (await response.json()) as {
+    value?: Array<{ id: string; displayName?: string; isEnabled?: boolean; sequence?: number }>;
+  };
+  return (payload.value ?? []).map((rule) => ({
+    id: rule.id,
+    displayName: rule.displayName ?? "Rule",
+    isEnabled: rule.isEnabled ?? true,
+    sequence: rule.sequence ?? 0,
+  }));
+}
+
+export interface AutomaticRepliesSettings {
+  status: "disabled" | "alwaysEnabled" | "scheduled";
+  externalReplyMessage?: string;
+  internalReplyMessage?: string;
+  scheduledStartDateTime?: string;
+  scheduledEndDateTime?: string;
+}
+
+export async function getAutomaticRepliesSettings(
+  accountId: string,
+): Promise<AutomaticRepliesSettings> {
+  const response = await graphFetch(
+    accountId,
+    "/me/mailboxSettings/automaticRepliesSetting",
+  );
+  const payload = (await response.json()) as AutomaticRepliesSettings;
+  return payload;
+}
+
+export async function setAutomaticRepliesSettings(
+  accountId: string,
+  settings: AutomaticRepliesSettings,
+): Promise<void> {
+  await graphFetch(accountId, "/me/mailboxSettings", {
+    method: "PATCH",
+    body: JSON.stringify({ automaticRepliesSetting: settings }),
+  });
+}
+
+export async function fetchSharedMailboxFolders(
+  accountId: string,
+  sharedMailboxEmail: string,
+): Promise<GraphMailFolderDto[]> {
+  const account = await getConnectedAccountRecord(accountId);
+  if (!account) throw new Error("Connected account not found");
+  const accountKey = accountKeyFromRecord(account);
+
+  const response = await graphFetch(
+    accountId,
+    `/users/${encodeURIComponent(sharedMailboxEmail)}/mailFolders?$select=id,displayName`,
+  );
+  const payload = (await response.json()) as {
+    value?: Array<{ id: string; displayName?: string }>;
+  };
+
+  return (payload.value ?? []).map((folder) => ({
+    id: folderCompositeId(accountKey, folder.id),
+    graphFolderId: folder.id,
+    label: `${sharedMailboxEmail}: ${folder.displayName ?? "Folder"}`,
+    accountId: accountKey,
+    connectedAccountId: account.id,
+  }));
+}
+
+export interface TeamsChatDto {
+  id: string;
+  topic?: string;
+  webUrl?: string;
+}
+
+export async function fetchMicrosoftTeamsChats(
+  accountId: string,
+  top = 20,
+): Promise<TeamsChatDto[]> {
+  const response = await graphFetch(accountId, `/me/chats?$top=${top}&$expand=lastMessagePreview`);
+  const payload = (await response.json()) as {
+    value?: Array<{ id: string; topic?: string; webUrl?: string }>;
+  };
+  return (payload.value ?? []).map((chat) => ({
+    id: chat.id,
+    topic: chat.topic ?? "Chat",
+    webUrl: chat.webUrl,
+  }));
+}
+
+export async function createMicrosoftTeamsMeeting(
+  accountId: string,
+  input: { subject: string; start: string; end: string },
+): Promise<{ joinUrl: string; meetingId: string }> {
+  const response = await graphFetch(accountId, "/me/onlineMeetings", {
+    method: "POST",
+    body: JSON.stringify({
+      subject: input.subject,
+      startDateTime: input.start,
+      endDateTime: input.end,
+      participants: { attendees: [] },
+    }),
+  });
+  const meeting = (await response.json()) as { id: string; joinWebUrl?: string };
+  if (!meeting.joinWebUrl) throw new Error("Teams meeting created without join URL");
+  return { joinUrl: meeting.joinWebUrl, meetingId: meeting.id };
 }
