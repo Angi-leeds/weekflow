@@ -24,7 +24,8 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Tasks / reminders',
     safeAtSource: true,
     appOnly: false,
-    notes: 'Tasks can live in Microsoft To Do or stay local until connected.',
+    notes:
+      'Microsoft To Do syncs bidirectionally when Outlook is connected. Google Tasks and iCloud Reminders are planned. Local demo tasks are hidden once an account is connected.',
   },
   {
     dataType: 'Notes (OneNote)',

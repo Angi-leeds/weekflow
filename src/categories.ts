@@ -1,4 +1,5 @@
 import type { CalendarItem, Category, CategoryKind } from './types'
+import { getTaskSourceLabel, isProviderBackedTask } from './lib/providerTasks'
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'holiday', name: 'Holiday', colour: '#3D8B5F', kind: 'event', isDefault: true },
@@ -59,6 +60,7 @@ export function getCategoryName(categories: Category[], id: string): string {
 
 export function getItemCategoryLabel(item: CalendarItem, categories: Category[]): string {
   if (item.outlookCategories?.length) return item.outlookCategories.join(', ')
+  if (isProviderBackedTask(item)) return getTaskSourceLabel(item, categories)
   return getCategoryName(categories, item.categoryId)
 }
 

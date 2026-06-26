@@ -95,7 +95,8 @@ export function registerMicrosoftRoutes(app: Express): void {
     }
 
     const state = createOAuthState();
-    res.redirect(buildMicrosoftAuthorizeUrl(req, state));
+    const promptConsent = req.query.consent === "1" || req.query.consent === "true";
+    res.redirect(buildMicrosoftAuthorizeUrl(req, state, { promptConsent }));
   });
 
   app.get("/api/microsoft/auth/callback", async (req, res) => {

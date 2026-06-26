@@ -36,9 +36,10 @@ export function isGraphSourcedItem(item: CalendarItem): boolean {
   );
 }
 
+import { isAnyTaskItem } from "./providerTasks";
+
 function isTaskItem(item: CalendarItem, categories: Category[]): boolean {
-  const category = categories.find((entry) => entry.id === item.categoryId);
-  return category?.kind === "task" || item.categoryId === "task";
+  return isAnyTaskItem(item, categories)
 }
 
 export async function syncItemToProvider(

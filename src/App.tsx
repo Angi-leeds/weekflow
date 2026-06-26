@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
+import { friendlyMicrosoftAuthError } from '../shared/microsoftAuthErrors'
 import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
 import type { SharedBoardItem } from '../shared/boardPins'
@@ -128,8 +129,10 @@ import { duplicateCalendarItem } from './lib/calendarItemHelpers'
 import { CalendarMenuProvider, type CalendarMenuActions } from './context/CalendarMenuContext'
 import { CalendarLinksProvider } from './context/CalendarLinksContext'
 import { filterItemsForDiary } from './lib/diaryVisibility'
+import { isLocalOnlyTask } from './lib/providerTasks'
 import { normalizeItemSchedule } from './lib/itemTimeHelpers'
-import { PLANNER_DIARY_HINT } from './lib/diaryHelpCopy'
+import { PLANNER_DIARY_HINT, buildPlannerCalendarHint } from './lib/diaryHelpCopy'
+import { connectedTaskListLabels } from './lib/providerTasks'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
@@ -227,6 +230,7 @@ export default function App() {
   const [weekViewScrollDate, setWeekViewScrollDate] = useState<Date | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [modalDefaultKind, setModalDefaultKind] = useState<'task' | 'event'>('event')
   const [editingItem, setEditingItem] = useState<CalendarItem | null>(null)
   const [listOptions, setListOptions] = useState<ListDisplayOptions>(() => loadListOptions())
   const [itemDisplayOptions, setItemDisplayOptions] = useState<ItemDisplayOptions>(() =>
@@ -583,10 +587,11 @@ export default function App() {
     [emails, graphEmails],
   )
 
-  const displayCalendarItems = useMemo(
-    () => mergeGraphCalendar(items, graphCalendarItems),
-    [items, graphCalendarItems],
-  )
+  const displayCalendarItems = useMemo(() => {
+    const merged = mergeGraphCalendar(items, graphCalendarItems)
+    if (!usingRealIntegrations) return merged
+    return merged.filter((item) => !isLocalOnlyTask(item))
+  }, [items, graphCalendarItems, usingRealIntegrations])
 
   const displayCalendarItemsRef = useRef(displayCalendarItems)
   displayCalendarItemsRef.current = displayCalendarItems
@@ -640,8 +645,14 @@ export default function App() {
   )
 
   const diaryVisibleItems = useMemo(
-    () => filterItemsForDiary(displayCalendarItems, categories, calendarPreferences),
-    [displayCalendarItems, categories, calendarPreferences],
+    () =>
+      filterItemsForDiary(
+        displayCalendarItems,
+        categories,
+        calendarPreferences,
+        effectiveCalendarSourcePrefs,
+      ),
+    [displayCalendarItems, categories, calendarPreferences, effectiveCalendarSourcePrefs],
   )
 
   const dateHeaderDisplay = useMemo(
@@ -991,13 +1002,34 @@ export default function App() {
     [links, displayCalendarItems, handleNavigateLink],
   )
 
-  const plannerDiaryHint = useMemo(() => {
-    if ((calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules') return undefined
-    const hasDiaryList = categories.some(
-      (cat) => (cat.kind === 'task' || cat.kind === 'reminder') && cat.showInDiary,
+  const plannerTaskListLabel = useMemo(() => {
+    const labels = connectedTaskListLabels({
+      usingRealMicrosoft,
+      usingRealGoogle,
+      usingRealApple,
+    })
+    if (labels.length === 0) return undefined
+    return labels.join(' · ')
+  }, [usingRealMicrosoft, usingRealGoogle, usingRealApple])
+
+  const plannerCalendarHintMessage = useMemo(() => {
+    if (!usingRealMicrosoft) {
+      if ((calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules') return undefined
+      const hasDiaryList = categories.some(
+        (cat) => (cat.kind === 'task' || cat.kind === 'reminder') && cat.showInDiary,
+      )
+      return hasDiaryList ? undefined : PLANNER_DIARY_HINT
+    }
+    return buildPlannerCalendarHint(
+      'Microsoft To Do',
+      effectiveCalendarSourcePrefs.showMicrosoftTodoTasks,
     )
-    return hasDiaryList ? undefined : PLANNER_DIARY_HINT
-  }, [categories, calendarPreferences.diaryTasksMode])
+  }, [
+    categories,
+    calendarPreferences.diaryTasksMode,
+    usingRealMicrosoft,
+    effectiveCalendarSourcePrefs.showMicrosoftTodoTasks,
+  ])
 
   const handleSharedBoardItemTap = useCallback(
     (item: SharedBoardItem) => {
@@ -1587,9 +1619,9 @@ export default function App() {
         }
       } catch (error) {
         console.error(error)
-        setToastMessage(
-          error instanceof Error ? error.message : 'Saved locally; sync failed',
-        )
+        const message =
+          error instanceof Error ? friendlyMicrosoftAuthError(error.message) : 'Saved locally; sync failed'
+        setToastMessage(message)
       }
     },
     [
@@ -1689,6 +1721,7 @@ export default function App() {
 
   const openAddModal = () => {
     setEditingItem(null)
+    setModalDefaultKind(section === 'planner' ? 'task' : 'event')
     setModalOpen(true)
   }
 
@@ -2497,10 +2530,11 @@ export default function App() {
             categories={categories}
             listOptions={listOptions}
             displayOptions={itemDisplayOptions}
+            taskListLabel={plannerTaskListLabel}
             onListOptionsChange={setListOptions}
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}
-            diarySetupHint={plannerDiaryHint}
+            calendarHint={plannerCalendarHintMessage}
           />
         )}
 
@@ -2681,6 +2715,8 @@ export default function App() {
         onShareUpdate={handleShareUpdate}
         onSave={handleSaveItem}
         calendarPreferences={calendarPreferences}
+        calendarSourcePrefs={effectiveCalendarSourcePrefs}
+        defaultItemKind={modalDefaultKind}
         onDelete={handleDeleteItem}
         onClose={() => setModalOpen(false)}
         onNavigateLink={handleNavigateLink}

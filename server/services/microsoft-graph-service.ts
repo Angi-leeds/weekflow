@@ -310,7 +310,11 @@ async function getValidAccessToken(accountId: string): Promise<string> {
   if (!needsRefresh) return record.accessToken;
   if (!record.refreshToken) throw new Error("Microsoft session expired — reconnect in Settings");
 
-  const refreshed = await refreshMicrosoftAccessToken(accountId, record.refreshToken);
+  const refreshed = await refreshMicrosoftAccessToken(
+    accountId,
+    record.refreshToken,
+    record.scopes,
+  );
   await updateConnectedAccountTokens(accountId, refreshed);
   return refreshed.accessToken;
 }

@@ -302,7 +302,7 @@ export const DIARY_TASKS_MODE_LABELS: Record<DiaryTasksMode, string> = {
 export const DIARY_TASKS_MODE_DESCRIPTIONS: Record<DiaryTasksMode, string> = {
   'category-rules':
     'Recommended. Each list below controls whether dated tasks show on your diary.',
-  'hide-all-tasks': 'Events and reminders only — a clean diary. Tasks stay in Planner.',
+  'hide-all-tasks': 'Events and reminders only — a clean diary. Tasks stay in To Do.',
   'show-all-dated':
     'Every task with a date appears on the diary. Good if you want everything visible.',
 }
@@ -315,7 +315,7 @@ export interface CalendarPreferences {
   monthViewExpandWeeks: boolean
   /** Default left edge of the 7-day rolling week view window. */
   weekViewAnchor: WeekViewAnchor
-  /** How dated tasks appear on the calendar diary (Planner always shows all tasks). */
+  /** How dated tasks appear on the calendar diary (To Do always shows all tasks). */
   diaryTasksMode?: DiaryTasksMode
   /** Show ISO week number on the left of day headers. */
   showWeekNumber?: boolean

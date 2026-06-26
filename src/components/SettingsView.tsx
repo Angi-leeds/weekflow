@@ -78,6 +78,7 @@ import {
   SettingsToggleRow,
 } from './ui/SettingsControls'
 import { categoryDiaryStatusLabel, shouldShowInDiary } from '../lib/diaryVisibility'
+import { TASK_PROVIDER_CALENDAR_TOGGLE_DESCRIPTIONS, TASK_PROVIDER_LABELS } from '../lib/providerTasks'
 import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
 import { TodayHighlightSettingsPanel } from './TodayHighlightSettingsPanel'
 import { CalendarPresetSettingsPanel } from './CalendarPresetSettingsPanel'
@@ -408,7 +409,7 @@ export function SettingsView({
 
       <SettingsGroup title="Item appearance">
         <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
-          How events and tasks look in week board, lists, planner, and today.
+          How events and tasks look in week board, lists, To Do, and today.
         </p>
         <div className="mx-4 mb-4 rounded-2xl border border-wf-border bg-wf-bg p-2">
           {itemDisplayOptions.multiDayAllDayLayout === 'span-bar' && previewSpanSegments.length > 0 && (
@@ -656,23 +657,53 @@ export function SettingsView({
         <DiaryPreviewPanel
           categories={categories}
           calendarPreferences={calendarPreferences}
+          calendarSourcePrefs={calendarSourcePrefs}
+          usingRealMicrosoft={usingRealMicrosoft}
           displayOptions={itemDisplayOptions}
         />
         <p className="px-4 pb-2 pt-2 text-caption text-wf-text-tertiary">
-          {DIARY_SETTINGS.categoryTableIntro}
+          {usingRealMicrosoft || usingRealGoogle || usingRealApple
+            ? 'Connected task lists sync with your provider. Edits in MyAxis or in the provider app stay in sync on refresh.'
+            : DIARY_SETTINGS.categoryTableIntro}
         </p>
-        {categories
-          .filter((cat) => cat.kind === 'task' || cat.kind === 'reminder')
-          .map((cat) => (
-            <SettingsToggleRow
-              key={cat.id}
-              label={cat.name}
-              description={categoryDiaryStatusLabel(cat, calendarPreferences)}
-              checked={cat.showInDiary ?? false}
-              disabled={(calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules'}
-              onChange={(showInDiary) => onSaveCategory({ ...cat, showInDiary })}
-            />
-          ))}
+        {usingRealMicrosoft && (
+          <SettingsToggleRow
+            label={`${TASK_PROVIDER_LABELS.microsoft} on calendar`}
+            description={TASK_PROVIDER_CALENDAR_TOGGLE_DESCRIPTIONS.microsoft}
+            checked={calendarSourcePrefs.showMicrosoftTodoTasks}
+            disabled={(calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules'}
+            onChange={(showMicrosoftTodoTasks) =>
+              onCalendarSourcePrefsChange({ ...calendarSourcePrefs, showMicrosoftTodoTasks })
+            }
+          />
+        )}
+        {usingRealGoogle && (
+          <SettingsInfoCallout
+            title={TASK_PROVIDER_LABELS.google}
+            body="Google Calendar events sync today. Google Tasks support is planned — tasks will appear here when connected."
+          />
+        )}
+        {usingRealApple && (
+          <SettingsInfoCallout
+            title={TASK_PROVIDER_LABELS.apple}
+            body="iCloud Calendar events sync today. iCloud Reminders support is planned — reminders will appear here when connected."
+          />
+        )}
+        {!usingRealMicrosoft &&
+          !usingRealGoogle &&
+          !usingRealApple &&
+          categories
+            .filter((cat) => cat.kind === 'task' || cat.kind === 'reminder')
+            .map((cat) => (
+              <SettingsToggleRow
+                key={cat.id}
+                label={cat.name}
+                description={categoryDiaryStatusLabel(cat, calendarPreferences)}
+                checked={cat.showInDiary ?? false}
+                disabled={(calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules'}
+                onChange={(showInDiary) => onSaveCategory({ ...cat, showInDiary })}
+              />
+            ))}
         <SettingsInfoCallout title="Example setups">
           <div className="mt-2 space-y-2">
             {DIARY_SETTINGS.examplePresets.map((row) => (
@@ -1132,10 +1163,14 @@ function SettingsGroup({
 function DiaryPreviewPanel({
   categories,
   calendarPreferences,
+  calendarSourcePrefs,
+  usingRealMicrosoft,
   displayOptions,
 }: {
   categories: Category[]
   calendarPreferences: CalendarPreferences
+  calendarSourcePrefs: CalendarSourcePreferences
+  usingRealMicrosoft: boolean
   displayOptions: ItemDisplayOptions
 }) {
   const jobsCategory =
@@ -1148,8 +1183,25 @@ function DiaryPreviewPanel({
     jobsCategory
 
   const previewItems = useMemo((): CalendarItem[] => {
-    if (!jobsCategory || !shoppingCategory) return []
     const today = toISODate(new Date())
+    if (usingRealMicrosoft) {
+      return [
+        {
+          id: 'diary-preview-ms-todo',
+          title: 'Pick up prescription',
+          date: today,
+          allDay: true,
+          categoryId: 'task',
+          colour: '#4A5A9C',
+          accountId: 'demo',
+          completed: false,
+          provider: 'microsoft',
+          externalId: 'preview',
+          todoListId: 'preview-list',
+        },
+      ]
+    }
+    if (!jobsCategory || !shoppingCategory) return []
     return [
       {
         id: 'diary-preview-jobs',
@@ -1172,13 +1224,13 @@ function DiaryPreviewPanel({
         completed: false,
       },
     ]
-  }, [jobsCategory, shoppingCategory])
+  }, [jobsCategory, shoppingCategory, usingRealMicrosoft])
 
   const jobsVisible = previewItems[0]
-    ? shouldShowInDiary(previewItems[0], categories, calendarPreferences)
+    ? shouldShowInDiary(previewItems[0], categories, calendarPreferences, calendarSourcePrefs)
     : false
   const shoppingVisible = previewItems[1]
-    ? shouldShowInDiary(previewItems[1], categories, calendarPreferences)
+    ? shouldShowInDiary(previewItems[1], categories, calendarPreferences, calendarSourcePrefs)
     : false
 
   if (previewItems.length === 0) return null
@@ -1190,13 +1242,13 @@ function DiaryPreviewPanel({
         <div>
           <CalendarItemRow item={previewItems[0]} categories={categories} displayOptions={displayOptions} dense />
           <p className="px-1 text-caption text-wf-text-tertiary">
-            {jobsVisible ? 'Shows on diary' : 'Planner only'}
+            {jobsVisible ? 'Shows on diary' : 'To Do only'}
           </p>
         </div>
         <div>
           <CalendarItemRow item={previewItems[1]} categories={categories} displayOptions={displayOptions} dense />
           <p className="px-1 text-caption text-wf-text-tertiary">
-            {shoppingVisible ? 'Shows on diary' : 'Planner only'}
+            {shoppingVisible ? 'Shows on diary' : 'To Do only'}
           </p>
         </div>
       </div>

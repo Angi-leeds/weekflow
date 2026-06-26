@@ -2,6 +2,7 @@ import type { MicrosoftIntegrationStatus } from "../../shared/microsoftGraph";
 import {
   disconnectMicrosoftAccount,
   startMicrosoftConnect,
+  startMicrosoftReconnect,
 } from "../lib/microsoft";
 
 interface MicrosoftConnectPanelProps {
@@ -91,6 +92,13 @@ export function MicrosoftConnectPanel({
               <p className="text-body font-medium text-wf-text">{account.displayName}</p>
               <p className="truncate text-caption text-wf-text-tertiary">{account.email}</p>
             </div>
+            <button
+              type="button"
+              onClick={() => void startMicrosoftReconnect()}
+              className="shrink-0 rounded-lg border border-wf-border px-3 py-1.5 text-caption font-semibold text-wf-accent transition-colors hover:border-wf-accent/40 hover:bg-wf-accent-soft/30"
+            >
+              Reconnect
+            </button>
             <button
               type="button"
               onClick={() => void handleDisconnect(account.id)}

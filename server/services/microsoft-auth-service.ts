@@ -4,6 +4,7 @@ import {
   MICROSOFT_AUTHORITY_DEFAULT,
   MICROSOFT_GRAPH_SCOPES,
 } from "../../shared/microsoftGraph";
+import { friendlyMicrosoftAuthError } from "../../shared/microsoftAuthErrors";
 import {
   isMicrosoftOAuthConfigured,
   upsertConnectedAccount,
@@ -61,7 +62,11 @@ export function consumeOAuthState(state: string | undefined): boolean {
   return Date.now() - createdAt <= STATE_TTL_MS;
 }
 
-export function buildMicrosoftAuthorizeUrl(req: Request, state: string): string {
+export function buildMicrosoftAuthorizeUrl(
+  req: Request,
+  state: string,
+  options?: { promptConsent?: boolean },
+): string {
   const authority = process.env.MICROSOFT_AUTHORITY ?? MICROSOFT_AUTHORITY_DEFAULT;
   const params = new URLSearchParams({
     client_id: getMicrosoftClientId(),
@@ -71,6 +76,9 @@ export function buildMicrosoftAuthorizeUrl(req: Request, state: string): string 
     scope: MICROSOFT_GRAPH_SCOPES.join(" "),
     state,
   });
+  if (options?.promptConsent) {
+    params.set("prompt", "consent");
+  }
   return `${authority}/oauth2/v2.0/authorize?${params.toString()}`;
 }
 
@@ -150,6 +158,7 @@ export async function exchangeMicrosoftAuthCode(
 export async function refreshMicrosoftAccessToken(
   accountId: string,
   refreshToken: string,
+  grantedScopes?: string | null,
 ): Promise<{ accessToken: string; refreshToken: string | null; expiresAt: string | null }> {
   const authority = process.env.MICROSOFT_AUTHORITY ?? MICROSOFT_AUTHORITY_DEFAULT;
   const body = new URLSearchParams({
@@ -157,8 +166,11 @@ export async function refreshMicrosoftAccessToken(
     client_secret: getMicrosoftClientSecret(),
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    scope: MICROSOFT_GRAPH_SCOPES.join(" "),
   });
+  const scope = grantedScopes?.trim();
+  if (scope) {
+    body.set("scope", scope);
+  }
 
   const response = await fetch(`${authority}/oauth2/v2.0/token`, {
     method: "POST",
@@ -168,7 +180,7 @@ export async function refreshMicrosoftAccessToken(
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Token refresh failed (${response.status}): ${detail}`);
+    throw new Error(friendlyMicrosoftAuthError(`Token refresh failed (${response.status}): ${detail}`));
   }
 
   const tokens = (await response.json()) as TokenResponse;

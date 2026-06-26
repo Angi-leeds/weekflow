@@ -36,6 +36,10 @@ export function startMicrosoftConnect(): void {
   window.location.href = "/api/microsoft/auth/start";
 }
 
+export function startMicrosoftReconnect(): void {
+  window.location.href = "/api/microsoft/auth/start?consent=1";
+}
+
 export async function disconnectMicrosoftAccount(accountId: string): Promise<void> {
   await apiFetch<void>(`/api/microsoft/accounts/${accountId}`, { method: "DELETE" });
 }

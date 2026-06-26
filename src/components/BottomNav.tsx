@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { AppSection } from '../types'
+import { TODO_SECTION_LABEL } from '../branding'
 
 interface BottomNavProps {
   active: AppSection
@@ -21,7 +22,7 @@ interface BottomNavProps {
 
 const TABS: { id: AppSection; label: string; icon: LucideIcon; activeIcon?: LucideIcon }[] = [
   { id: 'calendar', label: 'Calendar', icon: Calendar },
-  { id: 'planner', label: 'Planner', icon: CheckSquare },
+  { id: 'planner', label: TODO_SECTION_LABEL, icon: CheckSquare },
   { id: 'board', label: 'Board', icon: LayoutGrid },
   { id: 'email', label: 'Email', icon: Mail },
   { id: 'contacts', label: 'Contacts', icon: Users },

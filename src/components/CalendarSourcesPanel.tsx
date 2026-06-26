@@ -7,6 +7,7 @@ import {
   enabledCalendarIdSet,
   groupSourcesByAccountAndKind,
 } from '../lib/calendarSources'
+import { TASK_PROVIDER_CALENDAR_TOGGLE_DESCRIPTIONS, TASK_PROVIDER_LABELS } from '../lib/providerTasks'
 
 interface CalendarSourcesPanelProps {
   open: boolean
@@ -165,18 +166,25 @@ export function CalendarSourcesPanel({
           })}
 
           {showTodoToggle && (
-            <section className="mt-2 border-t border-wf-border pt-2">
-              <label className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-wf-surface/80">
+            <section className="mt-2 border-t border-wf-border pt-2 px-2 pb-2">
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl py-2 hover:bg-wf-surface/80">
                 <input
                   type="checkbox"
                   checked={prefs.showMicrosoftTodoTasks}
                   onChange={(event) =>
                     onChange({ ...prefs, showMicrosoftTodoTasks: event.target.checked })
                   }
-                  className="h-4 w-4 rounded border-wf-border text-wf-accent focus:ring-wf-accent"
+                  className="mt-0.5 h-4 w-4 rounded border-wf-border text-wf-accent focus:ring-wf-accent"
                 />
-                <CheckSquare size={16} className="text-wf-accent" />
-                <span className="text-subhead font-medium text-wf-text">Microsoft To Do tasks</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 text-subhead font-medium text-wf-text">
+                    <CheckSquare size={16} className="shrink-0 text-wf-accent" />
+                    {TASK_PROVIDER_LABELS.microsoft} on calendar
+                  </span>
+                  <span className="mt-0.5 block text-caption text-wf-text-tertiary">
+                    {TASK_PROVIDER_CALENDAR_TOGGLE_DESCRIPTIONS.microsoft}
+                  </span>
+                </span>
               </label>
             </section>
           )}

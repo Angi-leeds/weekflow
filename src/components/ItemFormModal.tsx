@@ -5,9 +5,10 @@ import type { EntityType, ItemLink } from '../../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { GraphCalendarDto, GraphTodoListDto } from '../../shared/microsoftGraph'
 import type { GoogleCalendarDto } from '../../shared/googleApi'
-import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset, ItemShowInDiaryMode, SaveItemOptions, CalendarPreferences } from '../types'
+import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset, ItemShowInDiaryMode, SaveItemOptions, CalendarPreferences, CalendarSourcePreferences } from '../types'
 import { ITEM_REMINDER_PRESET_LABELS, DEFAULT_CALENDAR_PREFERENCES } from '../types'
 import { isTaskCategory, resolveItemColour } from '../categories'
+import { isAnyTaskItem, PROVIDER_TASK_CATEGORY_ID } from '../lib/providerTasks'
 import { CategoryPicker } from './CategoryPicker'
 import { generateId, toISODate } from '../dateUtils'
 import { ITEM_FORM_DIARY } from '../lib/diaryHelpCopy'
@@ -51,10 +52,29 @@ interface ItemFormModalProps {
   microsoftTodoLists?: GraphTodoListDto[]
   integrationAccountDefaults?: IntegrationAccountDefaults
   connectedAccountEmails?: Record<string, string>
+  defaultItemKind?: 'task' | 'event'
   calendarPreferences?: CalendarPreferences
+  calendarSourcePrefs?: CalendarSourcePreferences
 }
 
-const emptyForm = (date: Date, categories: Category[]): CalendarItem => {
+const emptyForm = (
+  date: Date,
+  categories: Category[],
+  kind: 'task' | 'event' = 'event',
+): CalendarItem => {
+  if (kind === 'task') {
+    const taskCat = categories.find((c) => c.kind === 'task')
+    return {
+      id: '',
+      title: '',
+      date: toISODate(date),
+      allDay: true,
+      categoryId: taskCat?.id ?? PROVIDER_TASK_CATEGORY_ID,
+      colour: taskCat?.colour ?? '#4A5A9C',
+      notes: '',
+      completed: false,
+    }
+  }
   const defaultCat = categories.find((c) => c.id === 'appointment') ?? categories[0]
   const isEvent = defaultCat.kind === 'event'
   return {
@@ -90,7 +110,11 @@ function applyIntegrationDefaults(
   microsoftTodoLists: GraphTodoListDto[],
   integrationAccountDefaults?: IntegrationAccountDefaults,
 ): CalendarItem {
-  if (isTaskCategory(categories, base.categoryId) && usingRealMicrosoft) {
+  if (
+    (isTaskCategory(categories, base.categoryId) ||
+      base.categoryId === PROVIDER_TASK_CATEGORY_ID) &&
+    usingRealMicrosoft
+  ) {
     const defaultAccountId =
       integrationAccountDefaults?.defaultMicrosoftAccountId ??
       microsoftCalendars[0]?.connectedAccountId ??
@@ -195,6 +219,8 @@ export function ItemFormModal({
   integrationAccountDefaults,
   connectedAccountEmails = {},
   calendarPreferences = DEFAULT_CALENDAR_PREFERENCES,
+  calendarSourcePrefs,
+  defaultItemKind = 'event',
 }: ItemFormModalProps) {
   const [form, setForm] = useState<CalendarItem>(() => emptyForm(defaultDate, categories))
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -232,17 +258,20 @@ export function ItemFormModal({
             : 'category',
       )
     } else {
-      const base = emptyForm(defaultDate, categories)
+      const base = emptyForm(defaultDate, categories, defaultItemKind)
       setForm(
-        applyIntegrationDefaults(
-          base,
+        normalizeItemSchedule(
+          applyIntegrationDefaults(
+            base,
+            categories,
+            usingRealMicrosoft,
+            usingRealGoogle,
+            microsoftCalendars,
+            googleCalendars,
+            microsoftTodoLists,
+            integrationAccountDefaults,
+          ),
           categories,
-          usingRealMicrosoft,
-          usingRealGoogle,
-          microsoftCalendars,
-          googleCalendars,
-          microsoftTodoLists,
-          integrationAccountDefaults,
         ),
       )
       setShowInDiaryMode('category')
@@ -264,10 +293,11 @@ export function ItemFormModal({
     integrationAccountDefaults,
     defaultLinkedTaskCategoryId,
     defaultLinkedEventCategoryId,
+    defaultItemKind,
   ])
 
   const isEdit = Boolean(item?.id)
-  const isTask = isTaskCategory(categories, form.categoryId)
+  const isTask = isAnyTaskItem(form, categories)
 
   const googleCalendarOptions = useMemo(
     () =>
@@ -378,6 +408,7 @@ export function ItemFormModal({
     previewItem,
     categories,
     calendarPreferences,
+    calendarSourcePrefs,
   )
   const diaryCategoryHint =
     showInDiaryMode === 'category' && selectedCategory
@@ -434,7 +465,7 @@ export function ItemFormModal({
 
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-[20px] font-bold">
-              {isEdit ? 'Edit item' : 'New item'}
+              {isEdit ? 'Edit item' : isTask ? 'New task' : 'New item'}
             </h2>
             <button
               type="button"
@@ -683,7 +714,7 @@ export function ItemFormModal({
                 {showInDiaryMode === 'always' && ITEM_FORM_DIARY.visibilityAlwaysHelp}
                 {showInDiaryMode === 'never' && ITEM_FORM_DIARY.visibilityNeverHelp}
               </p>
-              <p className="text-caption text-wf-text-tertiary">{ITEM_FORM_DIARY.visibilityPlannerNote}</p>
+              <p className="text-caption text-wf-text-tertiary">{ITEM_FORM_DIARY.visibilityTodoNote}</p>
             </div>
           )}
 
