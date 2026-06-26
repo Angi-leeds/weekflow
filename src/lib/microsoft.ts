@@ -228,10 +228,13 @@ export async function copyEmailToOneDriveFolder(
   });
 }
 
-export async function fetchMicrosoftMailFolders(accountId: string): Promise<EmailFolder[]> {
-  return apiFetch<EmailFolder[]>(
-    `/api/microsoft/mail/folders?accountId=${encodeURIComponent(accountId)}`,
-  );
+export async function fetchMicrosoftMailFolders(
+  accountId: string,
+  options?: { includeChildFolders?: boolean },
+): Promise<EmailFolder[]> {
+  const params = new URLSearchParams({ accountId });
+  if (options?.includeChildFolders) params.set("includeChildFolders", "true");
+  return apiFetch<EmailFolder[]>(`/api/microsoft/mail/folders?${params.toString()}`);
 }
 
 export async function fetchMicrosoftCalendar(
@@ -462,8 +465,13 @@ export async function fetchAllMicrosoftTodoTasks(
   return batches.flat();
 }
 
-export async function fetchMicrosoftNotes(accountId: string): Promise<Note[]> {
-  return apiFetch<Note[]>(`/api/microsoft/notes?accountId=${encodeURIComponent(accountId)}`);
+export async function fetchMicrosoftNotes(
+  accountId: string,
+  options?: { includeContent?: boolean },
+): Promise<Note[]> {
+  const params = new URLSearchParams({ accountId });
+  if (options?.includeContent) params.set("includeContent", "true");
+  return apiFetch<Note[]>(`/api/microsoft/notes?${params.toString()}`);
 }
 
 export async function createMicrosoftNote(

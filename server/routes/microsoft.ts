@@ -638,7 +638,9 @@ export function registerMicrosoftRoutes(app: Express): void {
     }
 
     try {
-      const folders = await fetchMicrosoftMailFolders(accountId);
+      const includeChildFolders =
+        req.query.includeChildFolders === "true" || req.query.recursive === "true";
+      const folders = await fetchMicrosoftMailFolders(accountId, { includeChildFolders });
       res.json(folders);
     } catch (error) {
       console.error("GET /api/microsoft/mail/folders failed:", error);
@@ -1062,7 +1064,8 @@ export function registerMicrosoftRoutes(app: Express): void {
     }
 
     try {
-      const notes = await fetchMicrosoftNotes(accountId);
+      const includeContent = req.query.includeContent === "true";
+      const notes = await fetchMicrosoftNotes(accountId, 25, { includeContent });
       res.json(notes);
     } catch (error) {
       console.error("GET /api/microsoft/notes failed:", error);

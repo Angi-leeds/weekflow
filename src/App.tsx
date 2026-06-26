@@ -16,7 +16,7 @@ import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/it
 import { createBoardPin, fetchAllBoardPins, getPinForItem, updateBoardPin } from './lib/boardPins'
 import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { fetchAllAttachments } from './lib/attachments'
-import { loadCalendarFilter, saveCalendarFilter } from './lib/calendarSettings'
+import { loadCalendarFilter, saveCalendarFilter, sanitizeCalendarFilter } from './lib/calendarSettings'
 import {
   loadCalendarPreferences,
   loadIntegrationAccountDefaults,
@@ -246,6 +246,8 @@ export default function App() {
   const [graphGoogleCalendars, setGraphGoogleCalendars] = useState<GoogleCalendarDto[]>([])
   const [graphTodoLists, setGraphTodoLists] = useState<GraphTodoListDto[]>([])
   const [loadingEmailFolders, setLoadingEmailFolders] = useState<Set<string>>(() => new Set())
+  const [notesLoading, setNotesLoading] = useState(false)
+  const notesLoadedRef = useRef(false)
 
   const usingRealMicrosoft = useRealMicrosoftData(microsoftStatus, microsoftLoading)
   const usingRealGoogle = useRealGoogleData(googleStatus, googleLoading)
@@ -266,6 +268,7 @@ export default function App() {
 
   const refreshMicrosoft = useCallback(async () => {
     setMicrosoftLoading(true)
+    notesLoadedRef.current = false
     try {
       const status = await fetchMicrosoftStatus()
       setMicrosoftStatus(status)
@@ -280,6 +283,8 @@ export default function App() {
         setGraphTodoLists([])
         return
       }
+
+      console.info('[MyAxis] Loading Microsoft calendar and tasks…')
 
       const settle = async <T,>(promise: Promise<T>): Promise<PromiseSettledResult<T>> => {
         try {
@@ -300,54 +305,55 @@ export default function App() {
         })
       }
 
-      // Default calendar first so week board / planner populate quickly.
-      const quickCalendarResult = await settle(
-        fetchAllMicrosoftCalendar(accounts, { defaultOnly: true }),
-      )
+      // Default calendar + To Do first — show planner quickly.
+      const [quickCalendarResult, todoBundleResult] = await Promise.all([
+        settle(fetchAllMicrosoftCalendar(accounts, { defaultOnly: true })),
+        settle(fetchAllMicrosoftTodoListsAndTasks(accounts)),
+      ])
+
       if (quickCalendarResult.status === 'fulfilled') {
-        applyMicrosoftItems(quickCalendarResult.value, [])
+        const todoTasks =
+          todoBundleResult.status === 'fulfilled' ? todoBundleResult.value.tasks : []
+        applyMicrosoftItems(quickCalendarResult.value, todoTasks)
       } else {
         logRejected('Microsoft quick calendar', quickCalendarResult)
       }
 
-      const [calendarsResult, calendarResult, todoBundleResult] = await Promise.all([
+      if (todoBundleResult.status === 'fulfilled') {
+        setGraphTodoLists(todoBundleResult.value.lists)
+      } else {
+        logRejected('Microsoft todo bundle', todoBundleResult)
+      }
+
+      setMicrosoftLoading(false)
+      console.info('[MyAxis] Calendar and tasks ready — loading mail and contacts in background')
+
+      // Full calendar list + all events continue without blocking the UI.
+      const [calendarsResult, calendarResult] = await Promise.all([
         settle(fetchAllMicrosoftCalendarsList(accounts)),
         settle(fetchAllMicrosoftCalendar(accounts)),
-        settle(fetchAllMicrosoftTodoListsAndTasks(accounts)),
       ])
 
       logRejected('Microsoft calendars', calendarsResult)
       logRejected('Microsoft calendar events', calendarResult)
-      logRejected('Microsoft todo bundle', todoBundleResult)
 
-      const calendar = calendarResult.status === 'fulfilled' ? calendarResult.value : []
-      const todoBundle =
-        todoBundleResult.status === 'fulfilled'
-          ? todoBundleResult.value
-          : { lists: [] as GraphTodoListDto[], tasks: [] as CalendarItem[] }
-
-      applyMicrosoftItems(calendar, todoBundle.tasks)
+      if (calendarResult.status === 'fulfilled') {
+        const todoTasks =
+          todoBundleResult.status === 'fulfilled' ? todoBundleResult.value.tasks : []
+        applyMicrosoftItems(calendarResult.value, todoTasks)
+      }
       if (calendarsResult.status === 'fulfilled') {
         setGraphCalendars(calendarsResult.value)
       }
-      setGraphTodoLists(todoBundle.lists)
 
-      setMicrosoftLoading(false)
-
-      // Mail, contacts, and notes continue in the background.
-      const [mailResult, contactsResult, notesResult] = await Promise.all([
+      // Mail and contacts in the background (notes load when Notes tab opens).
+      const [mailResult, contactsResult] = await Promise.all([
         settle(fetchAllMicrosoftMail(accounts)),
         settle(fetchAllMicrosoftContacts(accounts)),
-        settle(
-          Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id))).then((batches) =>
-            batches.flat(),
-          ),
-        ),
       ])
 
       logRejected('Microsoft mail', mailResult)
       logRejected('Microsoft contacts', contactsResult)
-      logRejected('Microsoft notes', notesResult)
 
       if (mailResult.status === 'fulfilled') {
         const mailBundle = mailResult.value
@@ -363,15 +369,40 @@ export default function App() {
       if (contactsResult.status === 'fulfilled') {
         setGraphContacts(contactsResult.value)
       }
-      if (notesResult.status === 'fulfilled') {
-        setGraphNotes(notesResult.value)
-      }
+      console.info('[MyAxis] Microsoft mail and contacts loaded')
     } catch (error) {
       console.error(error)
     } finally {
       setMicrosoftLoading(false)
     }
   }, [])
+
+  const refreshMicrosoftNotes = useCallback(async () => {
+    const accounts = microsoftStatus?.accounts ?? []
+    if (accounts.length === 0) return
+
+    setNotesLoading(true)
+    try {
+      console.info('[MyAxis] Loading OneNote pages…')
+      const batches = await Promise.all(accounts.map((account) => fetchMicrosoftNotes(account.id)))
+      setGraphNotes((prev) => {
+        const other = prev.filter((note) => note.provider !== 'microsoft')
+        return [...other, ...batches.flat()]
+      })
+      notesLoadedRef.current = true
+      console.info('[MyAxis] OneNote pages loaded')
+    } catch (error) {
+      console.error('[MyAxis] OneNote load failed', error)
+    } finally {
+      setNotesLoading(false)
+    }
+  }, [microsoftStatus?.accounts])
+
+  useEffect(() => {
+    if (section !== 'notes') return
+    if (!microsoftStatus?.connected || notesLoadedRef.current || notesLoading) return
+    void refreshMicrosoftNotes()
+  }, [section, microsoftStatus?.connected, notesLoading, refreshMicrosoftNotes])
 
   const refreshGoogle = useCallback(async () => {
     setGoogleLoading(true)
@@ -509,6 +540,19 @@ export default function App() {
       calendarFilterMatchesItem(calendarFilter, item.accountId),
     )
   }, [displayCalendarItems, calendarFilter])
+
+  useEffect(() => {
+    const hasConnectedCalendarAccounts = calendarAccounts.some(
+      (account) =>
+        account.id.startsWith('ms-') ||
+        account.id.startsWith('google-') ||
+        account.id.startsWith('apple-'),
+    )
+    if (!hasConnectedCalendarAccounts) return
+
+    const accountIds = calendarAccounts.map((account) => account.id)
+    setCalendarFilter((prev) => sanitizeCalendarFilter(prev, accountIds))
+  }, [calendarAccounts])
 
   useEffect(() => {
     if (microsoftLoading && googleLoading) return
@@ -1994,7 +2038,7 @@ export default function App() {
           <NotesView
             notes={displayNotes}
             usingRealMicrosoft={usingRealMicrosoft}
-            microsoftLoading={microsoftLoading}
+            microsoftLoading={notesLoading}
             selectedId={noteSelectedId}
             onSelectedIdChange={setNoteSelectedId}
             itemShares={itemShares}

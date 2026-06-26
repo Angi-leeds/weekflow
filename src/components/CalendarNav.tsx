@@ -99,7 +99,7 @@ export function CalendarNav({
         <ViewsMenu viewMode={viewMode} onViewChange={onViewChange} />
       </div>
 
-      {isWeekBased && (
+      {calendarAccounts.length > 0 && (
         <CalendarAccountFilter
           filter={calendarFilter}
           accounts={calendarAccounts}

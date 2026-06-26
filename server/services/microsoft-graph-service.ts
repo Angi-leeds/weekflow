@@ -199,6 +199,7 @@ function encodeGraphPathSegment(id: string): string {
 
 const GRAPH_MAX_CONCURRENT_PER_ACCOUNT = 2;
 const GRAPH_MAX_RETRIES = 4;
+const GRAPH_REQUEST_TIMEOUT_MS = 25_000;
 
 const graphSlots = new Map<string, { active: number; queue: Array<() => void> }>();
 
@@ -296,14 +297,27 @@ async function graphFetch(accountId: string, path: string, init?: RequestInit): 
   try {
     for (let attempt = 1; attempt <= GRAPH_MAX_RETRIES; attempt += 1) {
       const token = await getValidAccessToken(accountId);
-      const response = await fetch(`${MICROSOFT_GRAPH_BASE}${path}`, {
-        ...init,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          ...init?.headers,
-        },
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GRAPH_REQUEST_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(`${MICROSOFT_GRAPH_BASE}${path}`, {
+          ...init,
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            ...init?.headers,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(`Graph request timed out after ${GRAPH_REQUEST_TIMEOUT_MS}ms: ${path}`);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (response.ok) {
         return response;
@@ -532,19 +546,23 @@ const WELL_KNOWN_FOLDERS: Array<{
   { path: "deleteditems", label: "Deleted Items" },
 ];
 
-export async function fetchMicrosoftMailFolders(accountId: string): Promise<GraphMailFolderDto[]> {
+export async function fetchMicrosoftMailFolders(
+  accountId: string,
+  options?: { includeChildFolders?: boolean },
+): Promise<GraphMailFolderDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
   const accountKey = accountKeyFromRecord(account);
   const folders: GraphMailFolderDto[] = [];
+  const includeChildFolders = options?.includeChildFolders ?? false;
 
   async function loadChildFolders(
     parentGraphId: string,
     parentCompositeId: string | undefined,
     depth: number,
   ): Promise<void> {
-    if (depth > 6) return;
+    if (!includeChildFolders || depth > 3) return;
     try {
       const response = await graphFetch(
         accountId,
@@ -596,6 +614,27 @@ export async function fetchMicrosoftMailFolders(accountId: string): Promise<Grap
   return folders;
 }
 
+async function resolveMicrosoftMailFolder(
+  accountId: string,
+  folderGraphId?: string,
+): Promise<GraphMailFolderDto | null> {
+  if (folderGraphId) {
+    const account = await getConnectedAccountRecord(accountId);
+    if (!account) throw new Error("Connected account not found");
+    const accountKey = accountKeyFromRecord(account);
+    return {
+      id: folderCompositeId(accountKey, folderGraphId),
+      graphFolderId: folderGraphId,
+      label: "Folder",
+      accountId: accountKey,
+      connectedAccountId: account.id,
+    };
+  }
+
+  const folders = await fetchMicrosoftMailFolders(accountId);
+  return folders.find((entry) => entry.wellKnown === "inbox") ?? folders[0] ?? null;
+}
+
 function mapGraphMessageToDto(
   message: GraphMessage,
   account: ConnectedAccountRecord,
@@ -635,11 +674,7 @@ export async function fetchMicrosoftMessages(
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
-  const folders = await fetchMicrosoftMailFolders(accountId);
-  const folder =
-    folders.find((entry) => entry.graphFolderId === folderGraphId) ??
-    folders.find((entry) => entry.wellKnown === "inbox") ??
-    folders[0];
+  const folder = await resolveMicrosoftMailFolder(accountId, folderGraphId);
   if (!folder) return [];
 
   const folderPath = encodeGraphPathSegment(folderGraphId ?? folder.graphFolderId);
@@ -1123,12 +1158,17 @@ function mapOneNotePageToDto(
   };
 }
 
-export async function fetchMicrosoftNotes(accountId: string, top = 50): Promise<GraphNoteDto[]> {
+export async function fetchMicrosoftNotes(
+  accountId: string,
+  top = 25,
+  options?: { includeContent?: boolean },
+): Promise<GraphNoteDto[]> {
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
+  const includeContent = options?.includeContent ?? false;
 
   try {
-    const notebooksResponse = await graphFetch(accountId, "/me/onenote/notebooks");
+    const notebooksResponse = await graphFetch(accountId, "/me/onenote/notebooks?$top=3");
     const notebooksPayload = (await notebooksResponse.json()) as {
       value?: Array<{ id: string }>;
     };
@@ -1155,8 +1195,12 @@ export async function fetchMicrosoftNotes(accountId: string, top = 50): Promise<
     }
 
     const limited = pages.slice(0, top);
+    if (!includeContent) {
+      return limited.map((page) => mapOneNotePageToDto(page, page.title ?? "", account));
+    }
+
     const notes: GraphNoteDto[] = [];
-    await runWithConcurrency(limited, 4, async (page) => {
+    await runWithConcurrency(limited, 2, async (page) => {
       const body = await fetchOneNotePageBody(accountId, page.id);
       notes.push(mapOneNotePageToDto(page, body, account));
     });

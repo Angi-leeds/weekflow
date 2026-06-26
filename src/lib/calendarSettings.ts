@@ -19,3 +19,13 @@ export function loadCalendarFilter(): CalendarFilter {
 export function saveCalendarFilter(filter: CalendarFilter): void {
   localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
 }
+
+/** Drop account filters that no longer match a connected calendar account. */
+export function sanitizeCalendarFilter(
+  filter: CalendarFilter,
+  accountIds: string[],
+): CalendarFilter {
+  if (filter.mode === "merged") return filter;
+  if (accountIds.includes(filter.accountId)) return filter;
+  return { mode: "merged" };
+}
