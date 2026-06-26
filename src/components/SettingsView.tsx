@@ -16,6 +16,7 @@ import type {
   ListGroupBy,
   ListSortBy,
   MultiDayAllDayLayout,
+  TodayHighlightOptions,
   WeekStartsOn,
   WeekViewAnchor,
 } from '../types'
@@ -76,6 +77,7 @@ import {
 } from './ui/SettingsControls'
 import { categoryDiaryStatusLabel, shouldShowInDiary } from '../lib/diaryVisibility'
 import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
+import { TodayHighlightSettingsPanel } from './TodayHighlightSettingsPanel'
 
 interface SettingsViewProps {
   categories: Category[]
@@ -84,6 +86,8 @@ interface SettingsViewProps {
   onListOptionsChange: (options: ListDisplayOptions) => void
   itemDisplayOptions: ItemDisplayOptions
   onItemDisplayOptionsChange: (options: ItemDisplayOptions) => void
+  todayHighlight: TodayHighlightOptions
+  onTodayHighlightChange: (options: TodayHighlightOptions) => void
   calendarPreferences: CalendarPreferences
   onCalendarPreferencesChange: (prefs: CalendarPreferences) => void
   integrationPreferences: IntegrationPreferences
@@ -147,6 +151,8 @@ export function SettingsView({
   onListOptionsChange,
   itemDisplayOptions,
   onItemDisplayOptionsChange,
+  todayHighlight,
+  onTodayHighlightChange,
   calendarPreferences,
   onCalendarPreferencesChange,
   integrationPreferences,
@@ -505,6 +511,13 @@ export function SettingsView({
           label="Reset item appearance"
           value="Defaults"
           onClick={() => onItemDisplayOptionsChange({ ...DEFAULT_ITEM_DISPLAY })}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Finding today" id="settings-today-highlight">
+        <TodayHighlightSettingsPanel
+          options={todayHighlight}
+          onChange={onTodayHighlightChange}
         />
       </SettingsGroup>
 

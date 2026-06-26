@@ -9,6 +9,8 @@ import type {
   ItemTitleSize,
   ListDisplayOptions,
   TimeFormat,
+  TodayHighlightOptions,
+  TodayHighlightPreset,
 } from "../types";
 import {
   DEFAULT_CALENDAR_PREFERENCES,
@@ -16,12 +18,15 @@ import {
   DEFAULT_INTEGRATION_PREFERENCES,
   DEFAULT_ITEM_DISPLAY,
   DEFAULT_LIST_OPTIONS,
+  DEFAULT_TODAY_HIGHLIGHT,
   ITEM_TITLE_SIZE_OPTIONS,
+  TODAY_HIGHLIGHT_PRESETS,
 } from "../types";
 
 const CALENDAR_PREFS_KEY = "weekflow-calendar-preferences";
 const LIST_OPTIONS_KEY = "weekflow-list-options";
 const ITEM_DISPLAY_KEY = "weekflow-item-display";
+const TODAY_HIGHLIGHT_KEY = "weekflow-today-highlight";
 const INTEGRATION_PREFS_KEY = "weekflow-integration-preferences";
 const INTEGRATION_DEFAULTS_KEY = "weekflow-integration-account-defaults";
 const SETTINGS_PANEL_KEY = "weekflow-settings-panel";
@@ -134,6 +139,102 @@ export function loadItemDisplayOptions(): ItemDisplayOptions {
 
 export function saveItemDisplayOptions(options: ItemDisplayOptions): void {
   localStorage.setItem(ITEM_DISPLAY_KEY, JSON.stringify(options));
+}
+
+export function loadTodayHighlightOptions(): TodayHighlightOptions {
+  try {
+    const raw = localStorage.getItem(TODAY_HIGHLIGHT_KEY);
+    if (!raw) return { ...DEFAULT_TODAY_HIGHLIGHT };
+    const parsed = JSON.parse(raw) as Partial<TodayHighlightOptions>;
+    const preset = isTodayHighlightPreset(parsed.preset) ? parsed.preset : DEFAULT_TODAY_HIGHLIGHT.preset;
+    const presetDefaults =
+      preset !== "custom" ? TODAY_HIGHLIGHT_PRESETS[preset] : {};
+    return {
+      preset,
+      accentColor:
+        typeof parsed.accentColor === "string" && parsed.accentColor.startsWith("#")
+          ? parsed.accentColor
+          : DEFAULT_TODAY_HIGHLIGHT.accentColor,
+      backgroundMode: isTodayBackgroundMode(parsed.backgroundMode)
+        ? parsed.backgroundMode
+        : presetDefaults.backgroundMode ?? DEFAULT_TODAY_HIGHLIGHT.backgroundMode,
+      backgroundOpacity:
+        typeof parsed.backgroundOpacity === "number"
+          ? Math.min(100, Math.max(10, parsed.backgroundOpacity))
+          : presetDefaults.backgroundOpacity ?? DEFAULT_TODAY_HIGHLIGHT.backgroundOpacity,
+      borderMode: isTodayBorderMode(parsed.borderMode)
+        ? parsed.borderMode
+        : presetDefaults.borderMode ?? DEFAULT_TODAY_HIGHLIGHT.borderMode,
+      borderWidth: parsed.borderWidth === 1 || parsed.borderWidth === 3 || parsed.borderWidth === 4
+        ? parsed.borderWidth
+        : presetDefaults.borderWidth ?? DEFAULT_TODAY_HIGHLIGHT.borderWidth,
+      dateStyle: isTodayDateStyle(parsed.dateStyle)
+        ? parsed.dateStyle
+        : presetDefaults.dateStyle ?? DEFAULT_TODAY_HIGHLIGHT.dateStyle,
+      pulse: isTodayPulseMode(parsed.pulse)
+        ? parsed.pulse
+        : presetDefaults.pulse ?? DEFAULT_TODAY_HIGHLIGHT.pulse,
+      badge: isTodayBadgeMode(parsed.badge)
+        ? parsed.badge
+        : presetDefaults.badge ?? DEFAULT_TODAY_HIGHLIGHT.badge,
+      tintColumn:
+        typeof parsed.tintColumn === "boolean"
+          ? parsed.tintColumn
+          : presetDefaults.tintColumn ?? DEFAULT_TODAY_HIGHLIGHT.tintColumn,
+      tintMonthCell:
+        typeof parsed.tintMonthCell === "boolean"
+          ? parsed.tintMonthCell
+          : presetDefaults.tintMonthCell ?? DEFAULT_TODAY_HIGHLIGHT.tintMonthCell,
+      showWeekdayAccent:
+        typeof parsed.showWeekdayAccent === "boolean"
+          ? parsed.showWeekdayAccent
+          : presetDefaults.showWeekdayAccent ?? DEFAULT_TODAY_HIGHLIGHT.showWeekdayAccent,
+    };
+  } catch {
+    return { ...DEFAULT_TODAY_HIGHLIGHT };
+  }
+}
+
+export function saveTodayHighlightOptions(options: TodayHighlightOptions): void {
+  localStorage.setItem(TODAY_HIGHLIGHT_KEY, JSON.stringify(options));
+}
+
+function isTodayHighlightPreset(value: unknown): value is TodayHighlightPreset {
+  return typeof value === "string" && (value in TODAY_HIGHLIGHT_PRESETS || value === "custom");
+}
+
+function isTodayBackgroundMode(value: unknown): value is TodayHighlightOptions["backgroundMode"] {
+  return value === "none" || value === "soft" || value === "strong" || value === "solid";
+}
+
+function isTodayBorderMode(value: unknown): value is TodayHighlightOptions["borderMode"] {
+  return (
+    value === "none" ||
+    value === "ring" ||
+    value === "full" ||
+    value === "left-bar" ||
+    value === "dashed" ||
+    value === "double"
+  );
+}
+
+function isTodayDateStyle(value: unknown): value is TodayHighlightOptions["dateStyle"] {
+  return (
+    value === "default" ||
+    value === "accent-text" ||
+    value === "filled-circle" ||
+    value === "filled-pill" ||
+    value === "outlined-circle" ||
+    value === "scaled"
+  );
+}
+
+function isTodayPulseMode(value: unknown): value is TodayHighlightOptions["pulse"] {
+  return value === "off" || value === "soft" || value === "strong" || value === "glow";
+}
+
+function isTodayBadgeMode(value: unknown): value is TodayHighlightOptions["badge"] {
+  return value === "none" || value === "pill" || value === "dot" || value === "label" || value === "corner";
 }
 
 function isItemDisplayPreset(value: unknown): value is ItemDisplayPreset {

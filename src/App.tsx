@@ -32,12 +32,14 @@ import {
   loadItemDisplayOptions,
   loadListOptions,
   loadSettingsPanelPreferences,
+  loadTodayHighlightOptions,
   saveCalendarPreferences,
   saveIntegrationAccountDefaults,
   saveIntegrationPreferences,
   saveItemDisplayOptions,
   saveListOptions,
   saveSettingsPanelPreferences,
+  saveTodayHighlightOptions,
 } from './lib/appSettings'
 import {
   getActiveMember,
@@ -213,6 +215,7 @@ export default function App() {
   const [itemDisplayOptions, setItemDisplayOptions] = useState<ItemDisplayOptions>(() =>
     loadItemDisplayOptions(),
   )
+  const [todayHighlight, setTodayHighlight] = useState(() => loadTodayHighlightOptions())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsExpanded, setSettingsExpanded] = useState(
     () => loadSettingsPanelPreferences().expanded,
@@ -629,6 +632,10 @@ export default function App() {
   useEffect(() => {
     saveItemDisplayOptions(itemDisplayOptions)
   }, [itemDisplayOptions])
+
+  useEffect(() => {
+    saveTodayHighlightOptions(todayHighlight)
+  }, [todayHighlight])
 
   useEffect(() => {
     saveSettingsPanelPreferences({ expanded: settingsExpanded })
@@ -2085,6 +2092,8 @@ export default function App() {
       onListOptionsChange={setListOptions}
       itemDisplayOptions={itemDisplayOptions}
       onItemDisplayOptionsChange={setItemDisplayOptions}
+      todayHighlight={todayHighlight}
+      onTodayHighlightChange={setTodayHighlight}
       calendarPreferences={calendarPreferences}
       onCalendarPreferencesChange={handleCalendarPreferencesChange}
       integrationPreferences={integrationPreferences}
@@ -2197,6 +2206,7 @@ export default function App() {
                   viewMode={viewMode}
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
+                  todayHighlight={todayHighlight}
                   onWeekChange={setWeekStart}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
@@ -2208,6 +2218,7 @@ export default function App() {
                   categories={categories}
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
+                  todayHighlight={todayHighlight}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -2217,6 +2228,7 @@ export default function App() {
                   selectedDay={focusDate}
                   items={calendarItems}
                   displayOptions={itemDisplayOptions}
+                  todayHighlight={todayHighlight}
                   weekStartsOn={calendarPreferences.weekStartsOn}
                   expandWeekRows={calendarPreferences.monthViewExpandWeeks}
                   onExpandWeekRowsChange={handleMonthViewExpandChange}
@@ -2235,6 +2247,7 @@ export default function App() {
                   categories={categories}
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
+                  todayHighlight={todayHighlight}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />
@@ -2358,6 +2371,7 @@ export default function App() {
             categories={categories}
             listOptions={listOptions}
             displayOptions={itemDisplayOptions}
+            todayHighlight={todayHighlight}
             onListOptionsChange={setListOptions}
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}

@@ -1,7 +1,14 @@
 import type { DayItemEntry } from '../dateUtils'
 import { formatDayHeader, getDayItemEntries, getDayItemEntriesForColumn, isToday, toISODate } from '../dateUtils'
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
+import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import {
+  mergeHighlightStyle,
+  resolveTodayHighlight,
+  resolveTodayTitleClass,
+} from '../lib/todayHighlight'
 import { GroupedItemList } from './GroupedItemList'
+import { TodayHighlightBadge } from './TodayHighlightBadge'
 import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
 
 interface DayCardProps {
@@ -10,6 +17,7 @@ interface DayCardProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   compact?: boolean
   dense?: boolean
   onItemTap?: (item: CalendarItem) => void
@@ -22,6 +30,7 @@ export function DayCard({
   categories,
   listOptions,
   displayOptions,
+  todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
   compact = false,
   dense = false,
   onItemTap,
@@ -29,27 +38,26 @@ export function DayCard({
 }: DayCardProps) {
   const today = isToday(date)
   const dayMenu = useDayContextMenu(date)
+  const cardHighlight = resolveTodayHighlight(today, todayHighlight, 'day-card')
+  const headerHighlight = resolveTodayHighlight(today, todayHighlight, 'day-card-header')
+  const mergedCard = mergeHighlightStyle(cardHighlight)
+  const mergedHeader = mergeHighlightStyle(headerHighlight)
+  const onSolid = todayHighlight.backgroundMode === 'solid' && today
 
   return (
     <article
       {...dayMenu}
-      className={`overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)] ${
-        today ? 'ring-1 ring-wf-accent/25' : ''
-      }`}
+      className={`relative overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)] ${mergedCard.className}`}
+      style={mergedCard.style}
     >
       <header
-        className={`flex items-center justify-between border-b border-wf-border px-4 py-3 ${
-          today ? 'bg-wf-accent-soft/50' : ''
-        }`}
+        className={`relative flex items-center justify-between border-b border-wf-border px-4 py-3 ${mergedHeader.className}`}
+        style={mergedHeader.style}
       >
-        <h3 className={`font-display text-body font-bold tracking-tight ${today ? 'text-wf-accent' : 'text-wf-text'}`}>
+        <h3 className={resolveTodayTitleClass(today, todayHighlight, onSolid)}>
           {formatDayHeader(date)}
         </h3>
-        {today && (
-          <span className="rounded-full bg-wf-accent px-2.5 py-0.5 text-caption font-semibold text-white">
-            Today
-          </span>
-        )}
+        <TodayHighlightBadge isToday={today} options={todayHighlight} />
       </header>
 
       <div className={dense ? 'px-0.5 py-1' : 'px-2 py-2'}>
@@ -75,6 +83,7 @@ interface DayCardFromDateProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   excludeMultiDayAllDay?: boolean
   compact?: boolean
   dense?: boolean
@@ -88,13 +97,24 @@ export function DayCardFromDate({
   categories,
   listOptions,
   displayOptions,
+  todayHighlight,
   excludeMultiDayAllDay,
   ...rest
 }: DayCardFromDateProps) {
   const entries = excludeMultiDayAllDay
     ? getDayItemEntriesForColumn(allItems, date, 'span-bar')
     : getDayItemEntries(allItems, date)
-  return <DayCard date={date} entries={entries} categories={categories} listOptions={listOptions} displayOptions={displayOptions} {...rest} />
+  return (
+    <DayCard
+      date={date}
+      entries={entries}
+      categories={categories}
+      listOptions={listOptions}
+      displayOptions={displayOptions}
+      todayHighlight={todayHighlight}
+      {...rest}
+    />
+  )
 }
 
 export { toISODate }

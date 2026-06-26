@@ -1,4 +1,5 @@
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, MultiDayAllDayLayout } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, MultiDayAllDayLayout, TodayHighlightOptions } from '../types'
+import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
   formatDayColumnHeader,
   formatDayNumber,
@@ -8,8 +9,15 @@ import {
   isToday,
   toISODate,
 } from '../dateUtils'
+import {
+  mergeHighlightStyle,
+  resolveTodayDateClass,
+  resolveTodayHighlight,
+  resolveTodayWeekdayClass,
+} from '../lib/todayHighlight'
 import { DayCardFromDate } from './DayCard'
 import { GroupedItemList } from './GroupedItemList'
+import { TodayHighlightBadge } from './TodayHighlightBadge'
 import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
 
 const TIMELINE_HOURS = Array.from({ length: 14 }, (_, i) => i + 7)
@@ -24,6 +32,7 @@ interface WeekRollingDayColumnProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   multiDayLayout: MultiDayAllDayLayout
   showRightBorder?: boolean
   onItemTap?: (item: CalendarItem) => void
@@ -38,6 +47,7 @@ export function WeekRollingDayColumn({
   categories,
   listOptions,
   displayOptions,
+  todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
   multiDayLayout,
   showRightBorder = true,
   onItemTap,
@@ -62,6 +72,7 @@ export function WeekRollingDayColumn({
           categories={categories}
           listOptions={listOptions}
           displayOptions={displayOptions}
+          todayHighlight={todayHighlight}
           excludeMultiDayAllDay={multiDayLayout === 'span-bar'}
           compact
           dense
@@ -73,26 +84,35 @@ export function WeekRollingDayColumn({
   }
 
   if (mode === 'timeline') {
+    const headerHighlight = mergeHighlightStyle(
+      resolveTodayHighlight(today, todayHighlight, 'column-header'),
+    )
+    const columnHighlight = mergeHighlightStyle(
+      resolveTodayHighlight(today, todayHighlight, 'column-root'),
+    )
+
     return (
       <div
         data-wheel-chain
         {...dayMenu}
         className={`box-border flex h-full shrink-0 flex-col overflow-hidden ${
           showRightBorder ? 'border-r border-wf-border/80' : ''
-        }`}
-        style={{ width: dayWidth }}
+        } ${columnHighlight.className}`}
+        style={{ width: dayWidth, ...columnHighlight.style }}
       >
         <div
-          className={`shrink-0 border-b border-wf-border px-1 py-2 text-center ${
-            today ? 'bg-wf-accent-soft' : 'bg-wf-surface'
-          }`}
+          className={`relative shrink-0 border-b border-wf-border px-1 py-2 text-center ${headerHighlight.className}`}
+          style={headerHighlight.style}
         >
-          <p className={`truncate text-[10px] font-semibold ${today ? 'text-wf-accent' : 'text-wf-text-secondary'}`}>
+          <p className={resolveTodayWeekdayClass(today, todayHighlight, 'xs')}>
             {formatDayColumnHeader(date)}
           </p>
-          <p className={`font-display text-[15px] font-bold leading-none ${today ? 'text-wf-accent' : 'text-wf-text'}`}>
+          <p className={resolveTodayDateClass(today, todayHighlight, 'sm')}>
             {formatDayNumber(date)}
           </p>
+          {todayHighlight.badge === 'corner' && (
+            <TodayHighlightBadge isToday={today} options={todayHighlight} />
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {TIMELINE_HOURS.map((hour) => {
@@ -119,6 +139,8 @@ export function WeekRollingDayColumn({
   }
 
   const entries = getDayItemEntriesForColumn(items, date, multiDayLayout)
+  const headerHighlight = mergeHighlightStyle(resolveTodayHighlight(today, todayHighlight, 'column-header'))
+  const columnHighlight = mergeHighlightStyle(resolveTodayHighlight(today, todayHighlight, 'column-root'))
 
   return (
     <div
@@ -126,20 +148,24 @@ export function WeekRollingDayColumn({
       {...dayMenu}
       className={`box-border flex h-full shrink-0 flex-col overflow-hidden ${
         showRightBorder ? 'border-r border-wf-border' : ''
-      } ${today ? 'bg-wf-accent-soft/10' : 'bg-wf-surface'}`}
-      style={{ width: dayWidth }}
+      } ${today ? columnHighlight.className : 'bg-wf-surface'}`}
+      style={{ width: dayWidth, ...(today ? columnHighlight.style : undefined) }}
     >
       <header
-        className={`shrink-0 border-b border-wf-border px-0.5 py-2.5 text-center ${
-          today ? 'bg-wf-accent-soft' : 'bg-wf-surface'
+        className={`relative shrink-0 border-b border-wf-border px-0.5 py-2.5 text-center ${
+          today ? headerHighlight.className : 'bg-wf-surface'
         }`}
+        style={today ? headerHighlight.style : undefined}
       >
-        <p className={`text-[11px] font-semibold ${today ? 'text-wf-accent' : 'text-wf-text-secondary'}`}>
+        <p className={resolveTodayWeekdayClass(today, todayHighlight, 'md')}>
           {formatDayColumnHeader(date)}
         </p>
-        <p className={`font-display text-[18px] font-bold leading-none ${today ? 'text-wf-accent' : 'text-wf-text'}`}>
+        <p className={resolveTodayDateClass(today, todayHighlight, 'md')}>
           {formatDayNumber(date)}
         </p>
+        {todayHighlight.badge === 'corner' && (
+          <TodayHighlightBadge isToday={today} options={todayHighlight} />
+        )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-0.5">
         <GroupedItemList

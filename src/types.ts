@@ -324,6 +324,271 @@ export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
   diaryTasksMode: 'category-rules',
 }
 
+/** Visual preset for highlighting the current day across calendar views. */
+export type TodayHighlightPreset =
+  | 'subtle'
+  | 'bold'
+  | 'outline'
+  | 'pill'
+  | 'pulse-soft'
+  | 'pulse-strong'
+  | 'left-bar'
+  | 'dashed-frame'
+  | 'high-contrast'
+  | 'minimal-dot'
+  | 'custom'
+
+export type TodayBackgroundMode = 'none' | 'soft' | 'strong' | 'solid'
+
+export type TodayBorderMode = 'none' | 'ring' | 'full' | 'left-bar' | 'dashed' | 'double'
+
+export type TodayDateStyle =
+  | 'default'
+  | 'accent-text'
+  | 'filled-circle'
+  | 'filled-pill'
+  | 'outlined-circle'
+  | 'scaled'
+
+export type TodayPulseMode = 'off' | 'soft' | 'strong' | 'glow'
+
+export type TodayBadgeMode = 'none' | 'pill' | 'dot' | 'label' | 'corner'
+
+export interface TodayHighlightOptions {
+  preset: TodayHighlightPreset
+  accentColor: string
+  backgroundMode: TodayBackgroundMode
+  /** 10–100 — opacity of tint/solid fills */
+  backgroundOpacity: number
+  borderMode: TodayBorderMode
+  borderWidth: 1 | 2 | 3 | 4
+  dateStyle: TodayDateStyle
+  pulse: TodayPulseMode
+  badge: TodayBadgeMode
+  /** Tint the full day column in week board / list columns */
+  tintColumn: boolean
+  /** Tint the whole month grid cell behind today */
+  tintMonthCell: boolean
+  /** Colour the weekday label (Mon, Tue…) on today */
+  showWeekdayAccent: boolean
+}
+
+export const TODAY_HIGHLIGHT_PRESET_LABELS: Record<TodayHighlightPreset, string> = {
+  subtle: 'Subtle tint',
+  bold: 'Bold (default)',
+  outline: 'Outline frame',
+  pill: 'Date pill only',
+  'pulse-soft': 'Gentle pulse',
+  'pulse-strong': 'Strong pulse',
+  'left-bar': 'Left accent bar',
+  'dashed-frame': 'Dashed frame',
+  'high-contrast': 'High contrast',
+  'minimal-dot': 'Dot marker',
+  custom: 'Custom',
+}
+
+export const TODAY_BACKGROUND_LABELS: Record<TodayBackgroundMode, string> = {
+  none: 'None',
+  soft: 'Soft tint',
+  strong: 'Strong tint',
+  solid: 'Solid fill',
+}
+
+export const TODAY_BORDER_LABELS: Record<TodayBorderMode, string> = {
+  none: 'None',
+  ring: 'Rounded ring',
+  full: 'Full border',
+  'left-bar': 'Left bar only',
+  dashed: 'Dashed border',
+  double: 'Double border',
+}
+
+export const TODAY_DATE_STYLE_LABELS: Record<TodayDateStyle, string> = {
+  default: 'Same as other days',
+  'accent-text': 'Accent colour text',
+  'filled-circle': 'Filled circle',
+  'filled-pill': 'Filled pill',
+  'outlined-circle': 'Outlined circle',
+  scaled: 'Larger number',
+}
+
+export const TODAY_PULSE_LABELS: Record<TodayPulseMode, string> = {
+  off: 'Off',
+  soft: 'Soft pulse',
+  strong: 'Strong pulse',
+  glow: 'Glow pulse',
+}
+
+export const TODAY_BADGE_LABELS: Record<TodayBadgeMode, string> = {
+  none: 'Hidden',
+  pill: 'Today pill',
+  dot: 'Dot only',
+  label: 'TODAY text',
+  corner: 'Corner ribbon',
+}
+
+export const TODAY_COLOR_SWATCHES = [
+  '#2d6a6a',
+  '#c45c4a',
+  '#4a5a9c',
+  '#3d8b5f',
+  '#c47832',
+  '#7c5cbf',
+  '#1a1918',
+  '#0078d4',
+] as const
+
+export const DEFAULT_TODAY_HIGHLIGHT: TodayHighlightOptions = {
+  preset: 'bold',
+  accentColor: '#2d6a6a',
+  backgroundMode: 'soft',
+  backgroundOpacity: 50,
+  borderMode: 'none',
+  borderWidth: 2,
+  dateStyle: 'accent-text',
+  pulse: 'off',
+  badge: 'pill',
+  tintColumn: true,
+  tintMonthCell: false,
+  showWeekdayAccent: true,
+}
+
+type TodayPresetBundle = Omit<TodayHighlightOptions, 'preset' | 'accentColor'>
+
+export const TODAY_HIGHLIGHT_PRESETS: Record<Exclude<TodayHighlightPreset, 'custom'>, TodayPresetBundle> = {
+  subtle: {
+    backgroundMode: 'soft',
+    backgroundOpacity: 35,
+    borderMode: 'none',
+    borderWidth: 2,
+    dateStyle: 'accent-text',
+    pulse: 'off',
+    badge: 'none',
+    tintColumn: true,
+    tintMonthCell: false,
+    showWeekdayAccent: true,
+  },
+  bold: {
+    backgroundMode: 'soft',
+    backgroundOpacity: 50,
+    borderMode: 'none',
+    borderWidth: 2,
+    dateStyle: 'accent-text',
+    pulse: 'off',
+    badge: 'pill',
+    tintColumn: true,
+    tintMonthCell: false,
+    showWeekdayAccent: true,
+  },
+  outline: {
+    backgroundMode: 'none',
+    backgroundOpacity: 50,
+    borderMode: 'ring',
+    borderWidth: 2,
+    dateStyle: 'accent-text',
+    pulse: 'off',
+    badge: 'none',
+    tintColumn: false,
+    tintMonthCell: false,
+    showWeekdayAccent: true,
+  },
+  pill: {
+    backgroundMode: 'none',
+    backgroundOpacity: 50,
+    borderMode: 'none',
+    borderWidth: 2,
+    dateStyle: 'filled-circle',
+    pulse: 'off',
+    badge: 'none',
+    tintColumn: false,
+    tintMonthCell: false,
+    showWeekdayAccent: false,
+  },
+  'pulse-soft': {
+    backgroundMode: 'soft',
+    backgroundOpacity: 45,
+    borderMode: 'ring',
+    borderWidth: 2,
+    dateStyle: 'filled-circle',
+    pulse: 'soft',
+    badge: 'dot',
+    tintColumn: true,
+    tintMonthCell: true,
+    showWeekdayAccent: true,
+  },
+  'pulse-strong': {
+    backgroundMode: 'strong',
+    backgroundOpacity: 65,
+    borderMode: 'full',
+    borderWidth: 3,
+    dateStyle: 'scaled',
+    pulse: 'strong',
+    badge: 'label',
+    tintColumn: true,
+    tintMonthCell: true,
+    showWeekdayAccent: true,
+  },
+  'left-bar': {
+    backgroundMode: 'soft',
+    backgroundOpacity: 40,
+    borderMode: 'left-bar',
+    borderWidth: 4,
+    dateStyle: 'accent-text',
+    pulse: 'off',
+    badge: 'none',
+    tintColumn: true,
+    tintMonthCell: false,
+    showWeekdayAccent: true,
+  },
+  'dashed-frame': {
+    backgroundMode: 'none',
+    backgroundOpacity: 50,
+    borderMode: 'dashed',
+    borderWidth: 2,
+    dateStyle: 'outlined-circle',
+    pulse: 'off',
+    badge: 'none',
+    tintColumn: false,
+    tintMonthCell: false,
+    showWeekdayAccent: true,
+  },
+  'high-contrast': {
+    backgroundMode: 'solid',
+    backgroundOpacity: 100,
+    borderMode: 'full',
+    borderWidth: 2,
+    dateStyle: 'filled-pill',
+    pulse: 'glow',
+    badge: 'label',
+    tintColumn: true,
+    tintMonthCell: true,
+    showWeekdayAccent: true,
+  },
+  'minimal-dot': {
+    backgroundMode: 'none',
+    backgroundOpacity: 50,
+    borderMode: 'none',
+    borderWidth: 2,
+    dateStyle: 'default',
+    pulse: 'off',
+    badge: 'dot',
+    tintColumn: false,
+    tintMonthCell: false,
+    showWeekdayAccent: false,
+  },
+}
+
+export function applyTodayHighlightPreset(
+  preset: Exclude<TodayHighlightPreset, 'custom'>,
+  accentColor = DEFAULT_TODAY_HIGHLIGHT.accentColor,
+): TodayHighlightOptions {
+  return {
+    preset,
+    accentColor,
+    ...TODAY_HIGHLIGHT_PRESETS[preset],
+  }
+}
+
 export type ItemShowInDiaryMode = 'category' | 'always' | 'never'
 
 export interface SaveItemOptions {

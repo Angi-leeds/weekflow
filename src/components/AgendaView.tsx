@@ -1,19 +1,28 @@
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
-import { formatDayHeader, getAgendaEntries, parseDate } from '../dateUtils'
-import { GroupedItemList } from './GroupedItemList'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
+import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import { getAgendaEntries, parseDate } from '../dateUtils'
+import { DayCard } from './DayCard'
 import { SectionHeader } from './ui/SectionHeader'
-import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
 
 interface AgendaViewProps {
   items: CalendarItem[]
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
 
-export function AgendaView({ items, categories, listOptions, displayOptions, onItemTap, onToggleComplete }: AgendaViewProps) {
+export function AgendaView({
+  items,
+  categories,
+  listOptions,
+  displayOptions,
+  todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
+  onItemTap,
+  onToggleComplete,
+}: AgendaViewProps) {
   const entries = getAgendaEntries(items)
 
   const grouped = entries.reduce<Map<string, typeof entries>>((map, entry) => {
@@ -34,60 +43,19 @@ export function AgendaView({ items, categories, listOptions, displayOptions, onI
         <p className="py-8 text-center text-subhead text-wf-text-tertiary">No upcoming items</p>
       ) : (
         groups.map(([date, dayEntries]) => (
-          <AgendaDaySection
+          <DayCard
             key={date}
             date={parseDate(date)}
-            dayEntries={dayEntries}
+            entries={dayEntries}
             categories={categories}
             listOptions={listOptions}
             displayOptions={displayOptions}
+            todayHighlight={todayHighlight}
             onItemTap={onItemTap}
             onToggleComplete={onToggleComplete}
           />
         ))
       )}
     </div>
-  )
-}
-
-function AgendaDaySection({
-  date,
-  dayEntries,
-  categories,
-  listOptions,
-  displayOptions,
-  onItemTap,
-  onToggleComplete,
-}: {
-  date: Date
-  dayEntries: ReturnType<typeof getAgendaEntries>
-  categories: Category[]
-  listOptions: ListDisplayOptions
-  displayOptions?: ItemDisplayOptions
-  onItemTap?: (item: CalendarItem) => void
-  onToggleComplete?: (id: string) => void
-}) {
-  const dayMenu = useDayContextMenu(date)
-
-  return (
-    <section
-      {...dayMenu}
-      className="overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]"
-    >
-      <h3 className="border-b border-wf-border px-4 py-2.5 font-display text-body font-semibold">
-        {formatDayHeader(date)}
-      </h3>
-      <div className="px-2 py-2">
-        <GroupedItemList
-          entries={dayEntries}
-          viewDate={date}
-          categories={categories}
-          listOptions={listOptions}
-          displayOptions={displayOptions}
-          onItemTap={onItemTap}
-          onToggleComplete={onToggleComplete}
-        />
-      </div>
-    </section>
   )
 }

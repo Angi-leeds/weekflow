@@ -133,3 +133,47 @@ body {
 .animate-scale-in {
   animation: scale-in 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
+
+@keyframes wf-today-pulse-soft-keyframes {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--wf-today-glow, rgba(45, 106, 106, 0.35));
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+@keyframes wf-today-pulse-strong-keyframes {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--wf-today-glow, rgba(45, 106, 106, 0.55));
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 10px transparent;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes wf-today-pulse-glow-keyframes {
+  0%,
+  100% {
+    box-shadow: 0 0 8px 0 var(--wf-today-glow, rgba(45, 106, 106, 0.45));
+  }
+  50% {
+    box-shadow: 0 0 16px 2px var(--wf-today-glow, rgba(45, 106, 106, 0.65));
+  }
+}
+
+.wf-today-pulse-soft {
+  animation: wf-today-pulse-soft-keyframes 2.4s ease-in-out infinite;
+}
+
+.wf-today-pulse-strong {
+  animation: wf-today-pulse-strong-keyframes 1.6s ease-in-out infinite;
+}
+
+.wf-today-pulse-glow {
+  animation: wf-today-pulse-glow-keyframes 2s ease-in-out infinite;
+}

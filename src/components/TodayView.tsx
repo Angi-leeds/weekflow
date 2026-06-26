@@ -1,6 +1,13 @@
-import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
+import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions, TodayHighlightOptions } from '../types'
+import { DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import { formatDayHeader, getDayItemEntries, isToday } from '../dateUtils'
+import {
+  mergeHighlightStyle,
+  resolveTodayHighlight,
+  resolveTodayTitleClass,
+} from '../lib/todayHighlight'
 import { GroupedItemList } from './GroupedItemList'
+import { TodayHighlightBadge } from './TodayHighlightBadge'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
 import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
@@ -10,6 +17,7 @@ interface TodayViewProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   onListOptionsChange: (options: ListDisplayOptions) => void
   date?: Date
   onItemTap?: (item: CalendarItem) => void
@@ -21,6 +29,7 @@ export function TodayView({
   categories,
   listOptions,
   displayOptions,
+  todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
   onListOptionsChange,
   date = new Date(),
   onItemTap,
@@ -28,12 +37,18 @@ export function TodayView({
 }: TodayViewProps) {
   const entries = getDayItemEntries(items, date)
   const dayMenu = useDayContextMenu(date)
+  const today = isToday(date)
+  const cardHighlight = mergeHighlightStyle(
+    resolveTodayHighlight(today, todayHighlight, 'day-card'),
+    resolveTodayHighlight(today, todayHighlight, 'day-card-header'),
+  )
+  const onSolid = todayHighlight.backgroundMode === 'solid' && today
 
   return (
     <div className="px-4 pb-6 pt-2 safe-top">
       <div className="mb-4 flex items-start justify-between gap-2">
         <SectionHeader
-          subtitle={isToday(date) ? 'Today' : 'Focus'}
+          subtitle={today ? 'Today' : 'Focus'}
           title={formatDayHeader(date)}
         />
         <ListOptionsMenu
@@ -45,8 +60,18 @@ export function TodayView({
 
       <section
         {...dayMenu}
-        className="overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]"
+        className={`relative overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] ${cardHighlight.className}`}
+        style={cardHighlight.style}
       >
+        {today && (
+          <div
+            className="flex items-center justify-between border-b border-wf-border px-4 py-2"
+            style={resolveTodayHighlight(true, todayHighlight, 'day-card-header').style}
+          >
+            <span className={resolveTodayTitleClass(true, todayHighlight, onSolid)}>Today</span>
+            <TodayHighlightBadge isToday options={todayHighlight} />
+          </div>
+        )}
         <div className="px-2 py-2">
           <GroupedItemList
             entries={entries}

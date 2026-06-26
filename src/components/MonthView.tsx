@@ -15,14 +15,20 @@ import {
 } from '../dateUtils'
 import { useScrollPan } from '../hooks/useScrollPan'
 import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
-import type { CalendarItem, ItemDisplayOptions, WeekStartsOn } from '../types'
-import { DEFAULT_ITEM_DISPLAY } from '../types'
+import type { CalendarItem, ItemDisplayOptions, TodayHighlightOptions, WeekStartsOn } from '../types'
+import { DEFAULT_ITEM_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import {
+  mergeHighlightStyle,
+  resolveTodayDateClass,
+  resolveTodayHighlight,
+} from '../lib/todayHighlight'
 
 interface MonthViewProps {
   currentDate: Date
   selectedDay?: Date
   items: CalendarItem[]
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   weekStartsOn?: WeekStartsOn
   expandWeekRows?: boolean
   onExpandWeekRowsChange?: (expand: boolean) => void
@@ -96,6 +102,7 @@ export function MonthView({
   selectedDay,
   items,
   displayOptions = DEFAULT_ITEM_DISPLAY,
+  todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
   weekStartsOn = 1,
   expandWeekRows = false,
   onExpandWeekRowsChange,
@@ -347,6 +354,7 @@ export function MonthView({
                 items={items}
                 selectedDay={selectedDay}
                 multiDayLayout={multiDayLayout}
+                todayHighlight={todayHighlight}
                 weekStartsOn={weekStartsOn}
                 expandWeekRows={expandWeekRows}
                 onDaySelect={onDaySelect}
@@ -369,6 +377,7 @@ function MonthGrid({
   items,
   selectedDay,
   multiDayLayout,
+  todayHighlight,
   weekStartsOn,
   expandWeekRows,
   onDaySelect,
@@ -380,6 +389,7 @@ function MonthGrid({
   items: CalendarItem[]
   selectedDay?: Date
   multiDayLayout: 'span-bar' | 'repeat-daily'
+  todayHighlight: TodayHighlightOptions
   weekStartsOn: WeekStartsOn
   expandWeekRows: boolean
   onDaySelect: (date: Date) => void
@@ -398,6 +408,7 @@ function MonthGrid({
           items={items}
           selectedDay={selectedDay}
           multiDayLayout={multiDayLayout}
+          todayHighlight={todayHighlight}
           weekStartsOn={weekStartsOn}
           expandWeekRows={expandWeekRows}
           onDaySelect={onDaySelect}
@@ -415,6 +426,7 @@ function MonthWeekRow({
   items,
   selectedDay,
   multiDayLayout,
+  todayHighlight,
   weekStartsOn,
   expandWeekRows,
   onDaySelect,
@@ -426,6 +438,7 @@ function MonthWeekRow({
   items: CalendarItem[]
   selectedDay?: Date
   multiDayLayout: 'span-bar' | 'repeat-daily'
+  todayHighlight: TodayHighlightOptions
   weekStartsOn: WeekStartsOn
   expandWeekRows: boolean
   onDaySelect: (date: Date) => void
@@ -459,6 +472,7 @@ function MonthWeekRow({
             colIndex={colIndex}
             inMonth={inMonth}
             selected={selected}
+            todayHighlight={todayHighlight}
             style={{ gridRow: 1, gridColumn: colIndex + 1 }}
             onDaySelect={onDaySelect}
             onDayAdd={onDayAdd}
@@ -511,6 +525,7 @@ function MonthWeekRow({
             entries={dayEntries[colIndex]}
             expandWeekRows={expandWeekRows}
             selected={selected}
+            todayHighlight={todayHighlight}
             style={{ gridRow: eventsRow, gridColumn: colIndex + 1 }}
             onDaySelect={onDaySelect}
             onItemTap={onItemTap}
@@ -526,6 +541,7 @@ function MonthDateHeader({
   colIndex,
   inMonth,
   selected,
+  todayHighlight,
   style,
   onDaySelect,
   onDayAdd,
@@ -534,30 +550,35 @@ function MonthDateHeader({
   colIndex: number
   inMonth: boolean
   selected: boolean
+  todayHighlight: TodayHighlightOptions
   style: CSSProperties
   onDaySelect: (date: Date) => void
   onDayAdd?: (date: Date) => void
 }) {
   const today = isToday(day)
   const dayMenu = useDayContextMenu(day)
+  const cellHighlight = mergeHighlightStyle(
+    resolveTodayHighlight(today, todayHighlight, 'month-cell'),
+    resolveTodayHighlight(today, todayHighlight, 'month-date-button'),
+  )
+
+  const dateButtonClass = today
+    ? resolveTodayDateClass(true, todayHighlight, 'xs')
+    : inMonth
+      ? 'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-caption font-semibold text-wf-text hover:bg-black/[0.06]'
+      : 'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-caption font-semibold text-wf-text-tertiary hover:bg-black/[0.04]'
 
   return (
     <div
-      style={style}
+      style={{ ...style, ...cellHighlight.style }}
       {...dayMenu}
-      className={`group ${monthCellBorderClass(colIndex, inMonth, selected ? 'ring-1 ring-inset ring-wf-accent/35' : '')}`}
+      className={`group ${monthCellBorderClass(colIndex, inMonth, selected ? 'ring-1 ring-inset ring-wf-accent/35' : '')} ${cellHighlight.className}`}
     >
       <div className="flex items-start justify-between gap-1">
         <button
           type="button"
           onClick={() => onDaySelect(day)}
-          className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-caption font-semibold ${
-            today
-              ? 'bg-wf-accent text-white'
-              : inMonth
-                ? 'text-wf-text hover:bg-black/[0.06]'
-                : 'text-wf-text-tertiary hover:bg-black/[0.04]'
-          }`}
+          className={dateButtonClass}
           aria-label={`Open ${formatMonthDayLabel(day)}`}
         >
           {formatMonthDayLabel(day)}
@@ -588,6 +609,7 @@ function MonthDayEventsCell({
   entries,
   expandWeekRows,
   selected,
+  todayHighlight,
   style,
   onDaySelect,
   onItemTap,
@@ -598,6 +620,7 @@ function MonthDayEventsCell({
   entries: DayItemEntry[]
   expandWeekRows: boolean
   selected: boolean
+  todayHighlight: TodayHighlightOptions
   style: CSSProperties
   onDaySelect: (date: Date) => void
   onItemTap?: (item: CalendarItem) => void
@@ -606,16 +629,18 @@ function MonthDayEventsCell({
   const visibleEntries = entries.slice(0, eventLimit)
   const overflowCount = expandWeekRows ? 0 : entries.length - visibleEntries.length
   const dayMenu = useDayContextMenu(day)
+  const today = isToday(day)
+  const cellHighlight = mergeHighlightStyle(resolveTodayHighlight(today, todayHighlight, 'month-cell'))
 
   return (
     <div
-      style={style}
+      style={{ ...style, ...cellHighlight.style }}
       {...dayMenu}
       className={`${monthCellBorderClass(
         colIndex,
         inMonth,
         `${selected ? 'ring-1 ring-inset ring-wf-accent/35' : ''} ${expandWeekRows ? '' : 'min-h-[4.5rem]'}`,
-      )}`}
+      )} ${cellHighlight.className}`}
     >
       <div className="space-y-0.5">
         {visibleEntries.map((entry) => (

@@ -6,10 +6,11 @@ import type {
   Category,
   ItemDisplayOptions,
   ListDisplayOptions,
+  TodayHighlightOptions,
   WeekStartsOn,
   WeekViewAnchor,
 } from '../types'
-import { DEFAULT_ITEM_DISPLAY } from '../types'
+import { DEFAULT_ITEM_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
 import {
   addDays,
   daysBetween,
@@ -41,6 +42,7 @@ interface WeekViewProps {
   viewMode: CalendarViewMode
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  todayHighlight?: TodayHighlightOptions
   onWeekChange: (weekStart: Date) => void
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
@@ -69,6 +71,7 @@ export function WeekView({
   viewMode,
   listOptions,
   displayOptions = DEFAULT_ITEM_DISPLAY,
+  todayHighlight = DEFAULT_TODAY_HIGHLIGHT,
   onWeekChange,
   onItemTap,
   onToggleComplete,
@@ -348,6 +351,7 @@ export function WeekView({
                 categories={categories}
                 listOptions={listOptions}
                 displayOptions={displayOptions}
+                todayHighlight={todayHighlight}
                 multiDayLayout={multiDayLayout}
                 showRightBorder={index < days.length - 1}
                 onItemTap={onItemTap}
