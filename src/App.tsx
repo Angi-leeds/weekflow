@@ -18,6 +18,14 @@ import { resolveSharedBoardItems } from './lib/boardItemHelpers'
 import { fetchAllAttachments } from './lib/attachments'
 import { loadCalendarFilter, saveCalendarFilter, sanitizeCalendarFilter } from './lib/calendarSettings'
 import {
+  clampDateToMonth,
+  initialFocusDate,
+  loadCalendarNavigation,
+  normalizeCalendarDate,
+  saveCalendarNavigation,
+  todayCalendarDate,
+} from './lib/calendarNavigation'
+import {
   loadCalendarPreferences,
   loadIntegrationAccountDefaults,
   loadIntegrationPreferences,
@@ -188,14 +196,14 @@ export default function App() {
   )
   const [emailSearchQuery, setEmailSearchQuery] = useState<string | null>(null)
   const [calendarPreferences, setCalendarPreferences] = useState(() => loadCalendarPreferences())
+  const [focusDate, setFocusDate] = useState(() => initialFocusDate())
   const [weekStart, setWeekStart] = useState(() =>
-    startOfWeek(new Date(), loadCalendarPreferences().weekStartsOn),
+    startOfWeek(initialFocusDate(), loadCalendarPreferences().weekStartsOn),
   )
-  const [viewMode, setViewMode] = useState<CalendarViewMode>(
-    () => loadCalendarPreferences().defaultView,
-  )
-  const [selectedDay, setSelectedDay] = useState(new Date())
-  const [monthDate, setMonthDate] = useState(new Date())
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(() => {
+    const nav = loadCalendarNavigation()
+    return nav?.viewMode ?? loadCalendarPreferences().defaultView
+  })
   const [weekViewScrollDate, setWeekViewScrollDate] = useState<Date | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -620,8 +628,12 @@ export default function App() {
   }, [integrationAccountDefaults])
 
   useEffect(() => {
-    setWeekStart(startOfWeek(new Date(), calendarPreferences.weekStartsOn))
-  }, [calendarPreferences.weekStartsOn])
+    saveCalendarNavigation({ focusDate: toISODate(focusDate), viewMode })
+  }, [focusDate, viewMode])
+
+  useEffect(() => {
+    setWeekStart(startOfWeek(focusDate, calendarPreferences.weekStartsOn))
+  }, [calendarPreferences.weekStartsOn, focusDate])
 
   useEffect(() => {
     saveHouseholdPermissions(permissionsConfig)
@@ -1479,9 +1491,17 @@ export default function App() {
   )
 
   const handleNewEventOnDay = useCallback((date: Date) => {
-    setSelectedDay(date)
+    setFocusDate(normalizeCalendarDate(date))
     setEditingItem(null)
     setModalOpen(true)
+  }, [])
+
+  const handleFocusDateFromWeek = useCallback((date: Date) => {
+    setFocusDate(normalizeCalendarDate(date))
+  }, [])
+
+  const handleMonthFocusChange = useCallback((month: Date) => {
+    setFocusDate((prev) => clampDateToMonth(prev, month))
   }, [])
 
   const handleSaveContact = useCallback(
@@ -1935,14 +1955,12 @@ export default function App() {
   )
 
   const goToday = () => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = todayCalendarDate()
     setWeekViewScrollDate(
       getDefaultWeekViewStart(calendarPreferences.weekViewAnchor, calendarPreferences.weekStartsOn, today),
     )
     setWeekStart(startOfWeek(today, calendarPreferences.weekStartsOn))
-    setSelectedDay(today)
-    setMonthDate(today)
+    setFocusDate(today)
   }
 
   const handleCalendarPreferencesChange = useCallback((prefs: CalendarPreferences) => {
@@ -1968,7 +1986,7 @@ export default function App() {
   )
 
   const handleDaySelect = (date: Date) => {
-    setSelectedDay(date)
+    setFocusDate(normalizeCalendarDate(date))
     setViewMode('day')
   }
 
@@ -2001,7 +2019,7 @@ export default function App() {
           : 'week-list',
       )
     } else if (tab === 'today') {
-      setSelectedDay(new Date())
+      setFocusDate(todayCalendarDate())
       setViewMode('day')
     } else if (tab === 'month') {
       setViewMode('month')
@@ -2132,7 +2150,7 @@ export default function App() {
           <>
             <CalendarNav
               viewMode={viewMode}
-              selectedDay={selectedDay}
+              selectedDay={focusDate}
               categories={categories}
               listOptions={listOptions}
               calendarFilter={calendarFilter}
@@ -2149,6 +2167,8 @@ export default function App() {
                   weekStartsOn={calendarPreferences.weekStartsOn}
                   weekViewAnchor={calendarPreferences.weekViewAnchor}
                   scrollToDate={weekViewScrollDate}
+                  initialScrollDate={focusDate}
+                  onFocusDateChange={handleFocusDateFromWeek}
                   onScrollToDateApplied={() => setWeekViewScrollDate(null)}
                   items={calendarItems}
                   categories={categories}
@@ -2161,7 +2181,7 @@ export default function App() {
                 />
               ) : viewMode === 'day' ? (
                 <DayView
-                  date={selectedDay}
+                  date={focusDate}
                   items={calendarItems}
                   categories={categories}
                   listOptions={listOptions}
@@ -2171,8 +2191,8 @@ export default function App() {
                 />
               ) : viewMode === 'month' ? (
                 <MonthView
-                  currentDate={monthDate}
-                  selectedDay={selectedDay}
+                  currentDate={focusDate}
+                  selectedDay={focusDate}
                   items={calendarItems}
                   displayOptions={itemDisplayOptions}
                   weekStartsOn={calendarPreferences.weekStartsOn}
@@ -2180,11 +2200,11 @@ export default function App() {
                   onExpandWeekRowsChange={handleMonthViewExpandChange}
                   onDaySelect={handleDaySelect}
                   onDayAdd={(date) => {
-                    setSelectedDay(date)
+                    setFocusDate(normalizeCalendarDate(date))
                     setEditingItem(null)
                     setModalOpen(true)
                   }}
-                  onMonthChange={setMonthDate}
+                  onMonthChange={handleMonthFocusChange}
                   onItemTap={openEditModal}
                 />
               ) : viewMode === 'agenda' ? (
@@ -2364,7 +2384,7 @@ export default function App() {
         open={modalOpen}
         item={editingItem}
         categories={categories}
-        defaultDate={section === 'today' ? new Date() : selectedDay}
+        defaultDate={section === 'today' ? new Date() : focusDate}
         links={links}
         emails={displayEmails}
         items={displayCalendarItems}

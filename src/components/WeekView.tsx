@@ -33,6 +33,8 @@ interface WeekViewProps {
   weekStartsOn: WeekStartsOn
   weekViewAnchor: WeekViewAnchor
   scrollToDate?: Date | null
+  initialScrollDate?: Date
+  onFocusDateChange?: (date: Date) => void
   onScrollToDateApplied?: () => void
   items: CalendarItem[]
   categories: Category[]
@@ -59,6 +61,8 @@ export function WeekView({
   weekStartsOn,
   weekViewAnchor,
   scrollToDate,
+  initialScrollDate,
+  onFocusDateChange,
   onScrollToDateApplied,
   items,
   categories,
@@ -79,7 +83,9 @@ export function WeekView({
   const anchorPrefRef = useRef(`${weekViewAnchor}:${weekStartsOn}`)
   const hasInitialScroll = useRef(false)
 
-  const initialStart = normalizeDate(getDefaultWeekViewStart(weekViewAnchor, weekStartsOn))
+  const initialStart = normalizeDate(
+    initialScrollDate ?? getDefaultWeekViewStart(weekViewAnchor, weekStartsOn),
+  )
   const [rangeStart, setRangeStart] = useState(() => addDays(initialStart, -INITIAL_DAYS_BEFORE))
   const rangeStartRef = useRef(rangeStart)
   rangeStartRef.current = rangeStart
@@ -130,16 +136,17 @@ export function WeekView({
     const index = daysBetween(rangeStartRef.current, normalized)
     root.scrollTo({ left: index * width, behavior })
     setVisibleStart((prev) => (toISODate(prev) === toISODate(normalized) ? prev : normalized))
-  }, [])
+    onFocusDateChange?.(normalized)
+  }, [onFocusDateChange])
 
-  const applyDefaultScrollPosition = useCallback(
+  const applyInitialScrollPosition = useCallback(
     (behavior: ScrollBehavior = 'auto') => {
-      scrollToDateInternal(
-        normalizeDate(getDefaultWeekViewStart(weekViewAnchor, weekStartsOn)),
-        behavior,
-      )
+      const target = initialScrollDate
+        ? normalizeDate(initialScrollDate)
+        : normalizeDate(getDefaultWeekViewStart(weekViewAnchor, weekStartsOn))
+      scrollToDateInternal(target, behavior)
     },
-    [scrollToDateInternal, weekViewAnchor, weekStartsOn],
+    [initialScrollDate, scrollToDateInternal, weekViewAnchor, weekStartsOn],
   )
 
   const prependDays = useCallback((count: number) => {
@@ -168,8 +175,12 @@ export function WeekView({
 
     const index = Math.max(0, Math.floor(root.scrollLeft / width))
     const next = addDays(rangeStart, index)
-    setVisibleStart((prev) => (toISODate(prev) === toISODate(next) ? prev : next))
-  }, [rangeStart])
+    setVisibleStart((prev) => {
+      if (toISODate(prev) === toISODate(next)) return prev
+      onFocusDateChange?.(next)
+      return next
+    })
+  }, [onFocusDateChange, rangeStart])
 
   const navigateByDays = useCallback(
     (deltaDays: number) => {
@@ -191,23 +202,25 @@ export function WeekView({
   useLayoutEffect(() => {
     if (dayWidth <= 0 || hasInitialScroll.current) return
     hasInitialScroll.current = true
-    applyDefaultScrollPosition('auto')
-  }, [dayWidth, applyDefaultScrollPosition])
+    applyInitialScrollPosition('auto')
+  }, [dayWidth, applyInitialScrollPosition])
 
   useEffect(() => {
     const prefKey = `${weekViewAnchor}:${weekStartsOn}`
     if (prefKey === anchorPrefRef.current) return
     anchorPrefRef.current = prefKey
 
-    const start = normalizeDate(getDefaultWeekViewStart(weekViewAnchor, weekStartsOn))
+    const start = initialScrollDate
+      ? normalizeDate(initialScrollDate)
+      : normalizeDate(getDefaultWeekViewStart(weekViewAnchor, weekStartsOn))
     setRangeStart(addDays(start, -INITIAL_DAYS_BEFORE))
     setRangeDayCount(INITIAL_DAYS_BEFORE + INITIAL_DAYS_AFTER + VISIBLE_DAYS)
     if (dayWidth > 0) {
-      requestAnimationFrame(() => applyDefaultScrollPosition('auto'))
+      requestAnimationFrame(() => applyInitialScrollPosition('auto'))
     } else {
       hasInitialScroll.current = false
     }
-  }, [weekViewAnchor, weekStartsOn, dayWidth, applyDefaultScrollPosition])
+  }, [weekViewAnchor, weekStartsOn, dayWidth, applyInitialScrollPosition, initialScrollDate])
 
   useEffect(() => {
     if (!scrollToDate || dayWidth <= 0) return

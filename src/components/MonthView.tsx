@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus, UnfoldVertical } from 'lucide-react'
 import type { DayItemEntry, WeekSpanSegment } from '../dateUtils'
 import {
@@ -110,6 +110,7 @@ export function MonthView({
   const monthSectionRefs = useRef(new Map<string, HTMLElement>())
   const lastExternalMonthKey = useRef(monthKey(monthAnchor(currentDate)))
   const scrollRaf = useRef<number | null>(null)
+  const hasInitialScroll = useRef(false)
 
   const anchor = monthAnchor(currentDate)
   const [rangeStart, setRangeStart] = useState(() => addMonths(anchor, -INITIAL_MONTHS_BEFORE))
@@ -194,6 +195,16 @@ export function MonthView({
 
     if (closest) setVisibleMonthLocal(closest)
   }, [setVisibleMonthLocal])
+
+  useLayoutEffect(() => {
+    if (hasInitialScroll.current) return
+    hasInitialScroll.current = true
+    const target = monthAnchor(currentDate)
+    ensureMonthInRange(target)
+    setVisibleMonth(target)
+    lastExternalMonthKey.current = monthKey(target)
+    requestAnimationFrame(() => scrollToMonth(target, 'auto'))
+  }, [currentDate, ensureMonthInRange, scrollToMonth])
 
   useEffect(() => {
     const key = monthKey(monthAnchor(currentDate))
