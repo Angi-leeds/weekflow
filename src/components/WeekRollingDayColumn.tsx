@@ -10,6 +10,7 @@ import {
 } from '../dateUtils'
 import { DayCardFromDate } from './DayCard'
 import { GroupedItemList } from './GroupedItemList'
+import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
 
 const TIMELINE_HOURS = Array.from({ length: 14 }, (_, i) => i + 7)
 
@@ -43,11 +44,13 @@ export function WeekRollingDayColumn({
   onToggleComplete,
 }: WeekRollingDayColumnProps) {
   const today = isToday(date)
+  const dayMenu = useDayContextMenu(date)
 
   if (mode === 'list') {
     return (
       <div
         data-wheel-chain
+        {...dayMenu}
         className={`box-border h-full shrink-0 overflow-x-hidden overflow-y-auto ${
           showRightBorder ? 'border-r border-wf-border' : ''
         }`}
@@ -60,6 +63,8 @@ export function WeekRollingDayColumn({
           listOptions={listOptions}
           displayOptions={displayOptions}
           excludeMultiDayAllDay={multiDayLayout === 'span-bar'}
+          compact
+          dense
           onItemTap={onItemTap}
           onToggleComplete={onToggleComplete}
         />
@@ -71,6 +76,7 @@ export function WeekRollingDayColumn({
     return (
       <div
         data-wheel-chain
+        {...dayMenu}
         className={`box-border flex h-full shrink-0 flex-col overflow-hidden ${
           showRightBorder ? 'border-r border-wf-border/80' : ''
         }`}
@@ -101,15 +107,7 @@ export function WeekRollingDayColumn({
                 <div className="w-7 shrink-0 pt-1 text-right text-[9px] text-wf-text-tertiary">{label}</div>
                 <div className="min-w-0 flex-1 p-0.5">
                   {hourItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="mb-0.5 rounded-md px-1 py-0.5 text-[10px] font-medium text-white"
-                      style={{ backgroundColor: item.colour }}
-                    >
-                      <button type="button" className="w-full truncate text-left" onClick={() => onItemTap?.(item)}>
-                        {formatTime(item.startTime!)} {item.title}
-                      </button>
-                    </div>
+                    <TimelineEventChip key={item.id} item={item} viewDate={date} onItemTap={onItemTap} />
                   ))}
                 </div>
               </div>
@@ -125,6 +123,7 @@ export function WeekRollingDayColumn({
   return (
     <div
       data-wheel-chain
+      {...dayMenu}
       className={`box-border flex h-full shrink-0 flex-col overflow-hidden ${
         showRightBorder ? 'border-r border-wf-border' : ''
       } ${today ? 'bg-wf-accent-soft/10' : 'bg-wf-surface'}`}
@@ -170,4 +169,32 @@ export function listRollingDays(from: Date, count: number): Date[] {
 
 export function rollingDayKey(date: Date): string {
   return toISODate(date)
+}
+
+function TimelineEventChip({
+  item,
+  viewDate,
+  onItemTap,
+}: {
+  item: CalendarItem
+  viewDate: Date
+  onItemTap?: (item: CalendarItem) => void
+}) {
+  const itemMenu = useItemContextMenu(item, viewDate)
+
+  return (
+    <div
+      className="mb-0.5 rounded-md px-1 py-0.5 text-[10px] font-medium text-white"
+      style={{ backgroundColor: item.colour }}
+    >
+      <button
+        type="button"
+        className="w-full truncate text-left"
+        onClick={() => onItemTap?.(item)}
+        {...itemMenu}
+      >
+        {formatTime(item.startTime!)} {item.title}
+      </button>
+    </div>
+  )
 }

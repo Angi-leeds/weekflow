@@ -197,6 +197,9 @@ export async function syncCalendarToGoogle(
         allDay: item.allDay,
         notes: item.notes,
         calendarId,
+        reminderPreset: item.reminderPreset,
+        reminderCustomMinutes: item.reminderCustomMinutes,
+        reminderAt: item.reminderAt,
       },
     }),
   });

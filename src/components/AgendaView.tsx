@@ -2,6 +2,7 @@ import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } f
 import { formatDayHeader, getAgendaEntries, parseDate } from '../dateUtils'
 import { GroupedItemList } from './GroupedItemList'
 import { SectionHeader } from './ui/SectionHeader'
+import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
 
 interface AgendaViewProps {
   items: CalendarItem[]
@@ -33,27 +34,60 @@ export function AgendaView({ items, categories, listOptions, displayOptions, onI
         <p className="py-8 text-center text-subhead text-wf-text-tertiary">No upcoming items</p>
       ) : (
         groups.map(([date, dayEntries]) => (
-          <section
+          <AgendaDaySection
             key={date}
-            className="overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]"
-          >
-            <h3 className="border-b border-wf-border px-4 py-2.5 font-display text-body font-semibold">
-              {formatDayHeader(parseDate(date))}
-            </h3>
-            <div className="px-2 py-2">
-              <GroupedItemList
-                entries={dayEntries}
-                viewDate={parseDate(date)}
-                categories={categories}
-                listOptions={listOptions}
-                displayOptions={displayOptions}
-                onItemTap={onItemTap}
-                onToggleComplete={onToggleComplete}
-              />
-            </div>
-          </section>
+            date={parseDate(date)}
+            dayEntries={dayEntries}
+            categories={categories}
+            listOptions={listOptions}
+            displayOptions={displayOptions}
+            onItemTap={onItemTap}
+            onToggleComplete={onToggleComplete}
+          />
         ))
       )}
     </div>
+  )
+}
+
+function AgendaDaySection({
+  date,
+  dayEntries,
+  categories,
+  listOptions,
+  displayOptions,
+  onItemTap,
+  onToggleComplete,
+}: {
+  date: Date
+  dayEntries: ReturnType<typeof getAgendaEntries>
+  categories: Category[]
+  listOptions: ListDisplayOptions
+  displayOptions?: ItemDisplayOptions
+  onItemTap?: (item: CalendarItem) => void
+  onToggleComplete?: (id: string) => void
+}) {
+  const dayMenu = useDayContextMenu(date)
+
+  return (
+    <section
+      {...dayMenu}
+      className="overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]"
+    >
+      <h3 className="border-b border-wf-border px-4 py-2.5 font-display text-body font-semibold">
+        {formatDayHeader(date)}
+      </h3>
+      <div className="px-2 py-2">
+        <GroupedItemList
+          entries={dayEntries}
+          viewDate={date}
+          categories={categories}
+          listOptions={listOptions}
+          displayOptions={displayOptions}
+          onItemTap={onItemTap}
+          onToggleComplete={onToggleComplete}
+        />
+      </div>
+    </section>
   )
 }

@@ -1,4 +1,5 @@
 import { normalizeEmailBody } from "../../shared/emailBody";
+import { getReminderMinutesBefore, minutesToReminderPreset } from "../../shared/reminders";
 import type {
   GoogleCalendarDto,
   GoogleCalendarEventResult,
@@ -55,6 +56,9 @@ export interface GoogleCalendarItemDto {
   connectedAccountId: string;
   calendarId?: string;
   calendarName?: string;
+  reminderPreset?: string;
+  reminderCustomMinutes?: number;
+  reminderAt?: string;
 }
 
 const WELL_KNOWN_LABELS: Array<{
@@ -299,6 +303,10 @@ interface GoogleCalendarEvent {
   description?: string;
   start?: { date?: string; dateTime?: string; timeZone?: string };
   end?: { date?: string; dateTime?: string; timeZone?: string };
+  reminders?: {
+    useDefault?: boolean;
+    overrides?: Array<{ method?: string; minutes?: number }>;
+  };
 }
 
 function parseGoogleEventDateTime(value?: { date?: string; dateTime?: string }): {
@@ -356,6 +364,9 @@ function mapGoogleEventToDto(
     connectedAccountId: account.id,
     calendarId: calendar?.id,
     calendarName: calendar?.name,
+    ...(event.reminders?.overrides?.[0]?.minutes != null
+      ? minutesToReminderPreset(event.reminders.overrides[0].minutes)
+      : {}),
   };
 }
 
@@ -675,6 +686,14 @@ function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string,
       description: input.notes ?? "",
       start: { date: input.date },
       end: { date: exclusiveEnd },
+      ...(getReminderMinutesBefore(input) != null
+        ? {
+            reminders: {
+              useDefault: false,
+              overrides: [{ method: "popup", minutes: getReminderMinutesBefore(input)! }],
+            },
+          }
+        : {}),
     };
   }
 
@@ -682,12 +701,22 @@ function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string,
   const endTime = input.endTime ?? input.startTime ?? "10:00";
   const endDate = input.endDate && input.endDate > input.date ? input.endDate : input.date;
 
-  return {
+  const payload: Record<string, unknown> = {
     summary: input.title,
     description: input.notes ?? "",
     start: { dateTime: `${input.date}T${startTime}:00`, timeZone },
     end: { dateTime: `${endDate}T${endTime}:00`, timeZone },
   };
+
+  const minutes = getReminderMinutesBefore(input);
+  if (minutes != null) {
+    payload.reminders = {
+      useDefault: false,
+      overrides: [{ method: "popup", minutes }],
+    };
+  }
+
+  return payload;
 }
 
 function withMyAxisExtendedProperties(

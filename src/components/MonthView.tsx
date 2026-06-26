@@ -14,6 +14,7 @@ import {
   toISODate,
 } from '../dateUtils'
 import { useScrollPan } from '../hooks/useScrollPan'
+import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
 import type { CalendarItem, ItemDisplayOptions, WeekStartsOn } from '../types'
 import { DEFAULT_ITEM_DISPLAY } from '../types'
 
@@ -477,7 +478,11 @@ function MonthWeekRow({
                 gridColumn: `${segment.startCol + 1} / span ${segment.spanCols}`,
               }}
             >
-              <MonthSpanChip segment={segment} onItemTap={onItemTap} />
+              <MonthSpanChip
+                segment={segment}
+                viewDate={weekDays[segment.startCol]}
+                onItemTap={onItemTap}
+              />
             </div>
           </div>
         )
@@ -523,10 +528,12 @@ function MonthDateHeader({
   onDayAdd?: (date: Date) => void
 }) {
   const today = isToday(day)
+  const dayMenu = useDayContextMenu(day)
 
   return (
     <div
       style={style}
+      {...dayMenu}
       className={`group ${monthCellBorderClass(colIndex, inMonth, selected ? 'ring-1 ring-inset ring-wf-accent/35' : '')}`}
     >
       <div className="flex items-start justify-between gap-1">
@@ -587,10 +594,12 @@ function MonthDayEventsCell({
   const eventLimit = expandWeekRows ? entries.length : MAX_VISIBLE_EVENTS
   const visibleEntries = entries.slice(0, eventLimit)
   const overflowCount = expandWeekRows ? 0 : entries.length - visibleEntries.length
+  const dayMenu = useDayContextMenu(day)
 
   return (
     <div
       style={style}
+      {...dayMenu}
       className={`${monthCellBorderClass(
         colIndex,
         inMonth,
@@ -602,6 +611,7 @@ function MonthDayEventsCell({
           <MonthEventChip
             key={`${entry.item.id}-${entry.spanPosition}`}
             entry={entry}
+            viewDate={day}
             onItemTap={onItemTap}
           />
         ))}
@@ -622,12 +632,15 @@ function MonthDayEventsCell({
 
 function MonthSpanChip({
   segment,
+  viewDate,
   onItemTap,
 }: {
   segment: WeekSpanSegment
+  viewDate: Date
   onItemTap?: (item: CalendarItem) => void
 }) {
   const { item, continuesBefore, continuesAfter } = segment
+  const itemMenu = useItemContextMenu(item, viewDate)
   const radius = 3
   const borderRadius = `${continuesBefore ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesBefore ? 0 : radius}px`
 
@@ -635,6 +648,7 @@ function MonthSpanChip({
     <button
       type="button"
       onClick={() => onItemTap?.(item)}
+      {...itemMenu}
       className="pointer-events-auto flex h-full w-full min-w-0 items-center overflow-hidden px-1 py-0.5 text-left text-[10px] leading-tight transition-opacity hover:opacity-90 active:scale-[0.99]"
       style={{
         backgroundColor: `${item.colour}28`,
@@ -654,12 +668,15 @@ function MonthSpanChip({
 
 function MonthEventChip({
   entry,
+  viewDate,
   onItemTap,
 }: {
   entry: DayItemEntry
+  viewDate: Date
   onItemTap?: (item: CalendarItem) => void
 }) {
   const { item } = entry
+  const itemMenu = useItemContextMenu(item, viewDate)
   const timePrefix =
     !item.allDay && item.startTime ? `${formatTime(item.startTime)} ` : ''
 
@@ -670,14 +687,15 @@ function MonthEventChip({
         event.stopPropagation()
         onItemTap?.(item)
       }}
-      className="flex w-full min-w-0 items-center overflow-hidden rounded px-1 py-0.5 text-left text-[10px] leading-tight transition-opacity hover:opacity-90 active:scale-[0.99]"
+      {...itemMenu}
+      className="flex w-full min-w-0 items-start overflow-hidden rounded px-1 py-0.5 text-left text-[10px] leading-tight transition-opacity hover:opacity-90 active:scale-[0.99]"
       style={{
         backgroundColor: `${item.colour}28`,
         borderLeft: `2px solid ${item.colour}`,
       }}
       title={`${timePrefix}${item.title}`}
     >
-      <span className="truncate font-medium text-wf-text">
+      <span className="min-w-0 break-words font-medium text-wf-text">
         {timePrefix && (
           <span className="font-semibold tabular-nums text-wf-text-secondary">{timePrefix}</span>
         )}

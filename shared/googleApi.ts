@@ -21,6 +21,9 @@ export interface GoogleCalendarSyncInput {
   allDay: boolean;
   notes?: string;
   calendarId?: string;
+  reminderPreset?: string;
+  reminderCustomMinutes?: number;
+  reminderAt?: string;
 }
 
 export interface GoogleCalendarEventResult {

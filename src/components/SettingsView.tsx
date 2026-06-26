@@ -27,6 +27,7 @@ import {
   ITEM_DISPLAY_PRESET_LABELS,
   ITEM_TIME_PLACEMENT_LABELS,
   ITEM_TITLE_SIZE_LABELS,
+  ITEM_TITLE_SIZE_OPTIONS,
   LIST_GROUP_LABELS,
   LIST_SORT_LABELS,
   MULTI_DAY_ALL_DAY_LAYOUT_LABELS,
@@ -130,7 +131,7 @@ const COLOR_STYLE_OPTIONS: ItemColorStyle[] = [
   'filled',
 ]
 const TIME_PLACEMENT_OPTIONS: ItemTimePlacement[] = ['above-title', 'inline-title', 'hidden']
-const TITLE_SIZE_OPTIONS: ItemTitleSize[] = ['sm', 'md', 'lg']
+const TITLE_SIZE_OPTIONS: ItemTitleSize[] = ITEM_TITLE_SIZE_OPTIONS
 const MULTI_DAY_LAYOUT_OPTIONS: MultiDayAllDayLayout[] = ['span-bar', 'repeat-daily']
 
 export function SettingsView({

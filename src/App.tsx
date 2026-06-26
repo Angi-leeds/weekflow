@@ -105,6 +105,8 @@ import {
   saveContactOverlays,
   applyContactOverlays,
 } from './lib/contacts'
+import { duplicateCalendarItem } from './lib/calendarItemHelpers'
+import { CalendarMenuProvider, type CalendarMenuActions } from './context/CalendarMenuContext'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
@@ -228,6 +230,7 @@ export default function App() {
   } | null>(null)
   const [emailSending, setEmailSending] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [clipboardItem, setClipboardItem] = useState<CalendarItem | null>(null)
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>(() => loadCalendarFilter())
   const [permissionsConfig, setPermissionsConfig] = useState<HouseholdPermissionsConfig>(() =>
     loadHouseholdPermissions(),
@@ -1369,6 +1372,32 @@ export default function App() {
     setModalOpen(true)
   }
 
+  const handleCopyItem = useCallback((item: CalendarItem) => {
+    setClipboardItem(item)
+    setToastMessage('Copied — right-click a day to paste')
+  }, [])
+
+  const handlePasteToDay = useCallback(
+    (date: Date) => {
+      if (!clipboardItem) return
+      void handleSaveItem(duplicateCalendarItem(clipboardItem, date))
+    },
+    [clipboardItem, handleSaveItem],
+  )
+
+  const handleDuplicateItem = useCallback(
+    (item: CalendarItem, targetDate: Date) => {
+      void handleSaveItem(duplicateCalendarItem(item, targetDate))
+    },
+    [handleSaveItem],
+  )
+
+  const handleNewEventOnDay = useCallback((date: Date) => {
+    setSelectedDay(date)
+    setEditingItem(null)
+    setModalOpen(true)
+  }, [])
+
   const handleSaveContact = useCallback(
     async (contact: Contact) => {
       if (contact.source === 'microsoft' && contact.externalId && contact.connectedAccountId) {
@@ -1857,6 +1886,27 @@ export default function App() {
     setViewMode('day')
   }
 
+  const calendarMenuActions = useMemo(
+    (): CalendarMenuActions => ({
+      onOpenItem: openEditModal,
+      onCopyItem: handleCopyItem,
+      onDuplicateItem: handleDuplicateItem,
+      onDeleteItem: (id) => void handleDeleteItem(id),
+      onToggleComplete: (id) => void handleToggleComplete(id),
+      onNewEvent: handleNewEventOnDay,
+      onGoToDay: handleDaySelect,
+      onPasteToDay: handlePasteToDay,
+    }),
+    [
+      handleCopyItem,
+      handleDeleteItem,
+      handleDuplicateItem,
+      handleNewEventOnDay,
+      handlePasteToDay,
+      handleToggleComplete,
+    ],
+  )
+
   const handlePrimaryTabChange = (tab: PrimaryCalendarTab) => {
     if (tab === 'week') {
       setViewMode(
@@ -1983,6 +2033,11 @@ export default function App() {
   }
 
   return (
+    <CalendarMenuProvider
+      categories={categories}
+      clipboardItem={clipboardItem}
+      actions={calendarMenuActions}
+    >
     <div className="flex h-full min-h-0 flex-col bg-wf-bg">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -2292,5 +2347,6 @@ export default function App() {
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
+    </CalendarMenuProvider>
   )
 }

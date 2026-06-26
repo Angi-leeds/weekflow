@@ -7,6 +7,7 @@ import {
   packWeekSpanSegmentsIntoLanes,
 } from '../dateUtils'
 import type { CalendarItem } from '../types'
+import { useItemContextMenu } from '../hooks/useCalendarContextMenu'
 
 interface MultiDaySpanBarProps {
   segments: WeekSpanSegment[]
@@ -81,6 +82,7 @@ function SpanBar({
 }) {
   const { item, startCol, spanCols, continuesBefore, continuesAfter } = segment
   const range = formatDateRangeShort(item.date, getItemEndDate(item))
+  const itemMenu = useItemContextMenu(item)
 
   const radius = seamless ? 4 : 8
   const borderRadius = `${continuesBefore ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesBefore ? 0 : radius}px`
@@ -89,6 +91,7 @@ function SpanBar({
     <button
       type="button"
       onClick={() => onItemTap?.(item)}
+      {...itemMenu}
       className={`relative z-10 flex items-center overflow-hidden text-left transition-opacity hover:opacity-90 active:scale-[0.995] ${
         compact
           ? seamless

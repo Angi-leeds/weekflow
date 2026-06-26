@@ -2,6 +2,7 @@ import type { DayItemEntry } from '../dateUtils'
 import { formatDayHeader, getDayItemEntries, getDayItemEntriesForColumn, isToday, toISODate } from '../dateUtils'
 import type { CalendarItem, Category, ItemDisplayOptions, ListDisplayOptions } from '../types'
 import { GroupedItemList } from './GroupedItemList'
+import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
 
 interface DayCardProps {
   date: Date
@@ -9,15 +10,29 @@ interface DayCardProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  compact?: boolean
+  dense?: boolean
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
 
-export function DayCard({ date, entries, categories, listOptions, displayOptions, onItemTap, onToggleComplete }: DayCardProps) {
+export function DayCard({
+  date,
+  entries,
+  categories,
+  listOptions,
+  displayOptions,
+  compact = false,
+  dense = false,
+  onItemTap,
+  onToggleComplete,
+}: DayCardProps) {
   const today = isToday(date)
+  const dayMenu = useDayContextMenu(date)
 
   return (
     <article
+      {...dayMenu}
       className={`overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)] ${
         today ? 'ring-1 ring-wf-accent/25' : ''
       }`}
@@ -37,13 +52,15 @@ export function DayCard({ date, entries, categories, listOptions, displayOptions
         )}
       </header>
 
-      <div className="px-2 py-2">
+      <div className={dense ? 'px-0.5 py-1' : 'px-2 py-2'}>
         <GroupedItemList
           entries={entries}
           viewDate={date}
           categories={categories}
           listOptions={listOptions}
           displayOptions={displayOptions}
+          compact={compact}
+          dense={dense}
           onItemTap={onItemTap}
           onToggleComplete={onToggleComplete}
         />
@@ -59,6 +76,8 @@ interface DayCardFromDateProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   excludeMultiDayAllDay?: boolean
+  compact?: boolean
+  dense?: boolean
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }

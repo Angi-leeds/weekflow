@@ -3,6 +3,7 @@ import { formatDayHeader, getDayItemEntries, isToday } from '../dateUtils'
 import { GroupedItemList } from './GroupedItemList'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
+import { useDayContextMenu } from '../hooks/useCalendarContextMenu'
 
 interface TodayViewProps {
   items: CalendarItem[]
@@ -26,6 +27,7 @@ export function TodayView({
   onToggleComplete,
 }: TodayViewProps) {
   const entries = getDayItemEntries(items, date)
+  const dayMenu = useDayContextMenu(date)
 
   return (
     <div className="px-4 pb-6 pt-2 safe-top">
@@ -41,7 +43,10 @@ export function TodayView({
         />
       </div>
 
-      <section className="overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]">
+      <section
+        {...dayMenu}
+        className="overflow-hidden rounded-[var(--radius-lg)] bg-wf-surface shadow-[var(--shadow-card)]"
+      >
         <div className="px-2 py-2">
           <GroupedItemList
             entries={entries}

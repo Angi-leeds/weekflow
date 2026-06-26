@@ -5,6 +5,7 @@ import type {
   IntegrationPreferences,
   ItemDisplayOptions,
   ItemDisplayPreset,
+  ItemTitleSize,
   ListDisplayOptions,
   TimeFormat,
 } from "../types";
@@ -14,6 +15,7 @@ import {
   DEFAULT_INTEGRATION_PREFERENCES,
   DEFAULT_ITEM_DISPLAY,
   DEFAULT_LIST_OPTIONS,
+  ITEM_TITLE_SIZE_OPTIONS,
 } from "../types";
 
 const CALENDAR_PREFS_KEY = "weekflow-calendar-preferences";
@@ -110,7 +112,7 @@ export function loadItemDisplayOptions(): ItemDisplayOptions {
       density: parsed.density ?? DEFAULT_ITEM_DISPLAY.density,
       colorStyle: parsed.colorStyle ?? DEFAULT_ITEM_DISPLAY.colorStyle,
       timePlacement: parsed.timePlacement ?? DEFAULT_ITEM_DISPLAY.timePlacement,
-      titleSize: parsed.titleSize ?? DEFAULT_ITEM_DISPLAY.titleSize,
+      titleSize: isItemTitleSize(parsed.titleSize) ? parsed.titleSize : DEFAULT_ITEM_DISPLAY.titleSize,
       multiDayAllDayLayout:
         parsed.multiDayAllDayLayout === 'repeat-daily' ? 'repeat-daily' : 'span-bar',
       showCategoryBadge: parsed.showCategoryBadge ?? DEFAULT_ITEM_DISPLAY.showCategoryBadge,
@@ -138,6 +140,10 @@ function isItemDisplayPreset(value: unknown): value is ItemDisplayPreset {
     value === "bold" ||
     value === "custom"
   );
+}
+
+function isItemTitleSize(value: unknown): value is ItemTitleSize {
+  return typeof value === "string" && ITEM_TITLE_SIZE_OPTIONS.includes(value as ItemTitleSize);
 }
 
 export function loadIntegrationPreferences(): IntegrationPreferences {

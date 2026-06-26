@@ -7,6 +7,11 @@ import type {
   GraphTodoListDto,
 } from "../../shared/microsoftGraph";
 import { normalizeEmailBody } from "../../shared/emailBody";
+import {
+  getReminderDateTimeForSync,
+  getReminderMinutesBefore,
+  minutesToReminderPreset,
+} from "../../shared/reminders";
 import { MICROSOFT_GRAPH_BASE } from "../../shared/microsoftGraph";
 import {
   type ConnectedAccountRecord,
@@ -86,6 +91,8 @@ interface GraphEvent {
   onlineMeeting?: { joinUrl?: string };
   recurrence?: Record<string, unknown>;
   attendees?: Array<{ emailAddress?: { address?: string }; status?: { response?: string } }>;
+  isReminderOn?: boolean;
+  reminderMinutesBeforeStart?: number;
 }
 
 export interface GraphCalendarItemDto {
@@ -112,6 +119,9 @@ export interface GraphCalendarItemDto {
   teamsMeeting?: boolean;
   onlineMeetingUrl?: string;
   inviteResponse?: "accepted" | "declined" | "tentativelyAccepted" | "none";
+  reminderPreset?: string;
+  reminderCustomMinutes?: number;
+  reminderAt?: string;
 }
 
 export interface CalendarSyncInput {
@@ -131,16 +141,24 @@ export interface CalendarSyncInput {
   attendees?: string[];
   recurringWeekly?: boolean;
   teamsMeeting?: boolean;
+  reminderPreset?: string;
+  reminderCustomMinutes?: number;
+  reminderAt?: string;
 }
 
 export interface TodoSyncInput {
   localItemId: string;
   title: string;
   dueDate?: string;
+  startTime?: string;
+  allDay?: boolean;
   notes?: string;
   todoListId?: string;
   externalId?: string;
   completed?: boolean;
+  reminderPreset?: string;
+  reminderCustomMinutes?: number;
+  reminderAt?: string;
 }
 
 export interface GraphContactDto {
@@ -403,6 +421,9 @@ function mapGraphEventToDto(
     teamsMeeting: Boolean(event.onlineMeeting?.joinUrl),
     onlineMeetingUrl: event.onlineMeeting?.joinUrl,
     inviteResponse: mapInviteResponse(event.attendees),
+    ...(event.isReminderOn && event.reminderMinutesBeforeStart != null
+      ? minutesToReminderPreset(event.reminderMinutesBeforeStart)
+      : {}),
   };
 }
 
@@ -458,7 +479,7 @@ export async function fetchMicrosoftCalendarEvents(
     endDateTime: `${end}T23:59:59`,
     $top: "250",
     $orderby: "start/dateTime",
-    $select: "id,subject,bodyPreview,start,end,isAllDay,webLink",
+    $select: "id,subject,bodyPreview,start,end,isAllDay,webLink,isReminderOn,reminderMinutesBeforeStart",
   });
 
   if (calendarGraphId) {
@@ -1341,6 +1362,14 @@ function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
     payload.onlineMeetingProvider = "teamsForBusiness";
   }
 
+  const minutes = getReminderMinutesBefore(input);
+  if (minutes != null) {
+    payload.isReminderOn = true;
+    payload.reminderMinutesBeforeStart = minutes;
+  } else {
+    payload.isReminderOn = false;
+  }
+
   return payload;
 }
 
@@ -1600,7 +1629,13 @@ function buildTodoTaskBody(input: {
   dueDate?: string;
   notes?: string;
   completed?: boolean;
+  startTime?: string;
+  allDay?: boolean;
+  reminderPreset?: string;
+  reminderCustomMinutes?: number;
+  reminderAt?: string;
 }): Record<string, unknown> {
+  const timeZone = process.env.MICROSOFT_CALENDAR_TIMEZONE ?? "Europe/London";
   const body: Record<string, unknown> = {
     title: input.title,
     body: {
@@ -1610,14 +1645,33 @@ function buildTodoTaskBody(input: {
   };
 
   if (input.dueDate) {
+    const dueTime = input.startTime && !input.allDay ? input.startTime : "09:00";
     body.dueDateTime = {
-      dateTime: `${input.dueDate}T00:00:00`,
-      timeZone: process.env.MICROSOFT_CALENDAR_TIMEZONE ?? "Europe/London",
+      dateTime: `${input.dueDate}T${dueTime}:00`,
+      timeZone,
     };
   }
 
   if (input.completed !== undefined) {
     body.status = input.completed ? "completed" : "notStarted";
+  }
+
+  const reminderDateTime = getReminderDateTimeForSync(
+    {
+      date: input.dueDate ?? new Date().toISOString().slice(0, 10),
+      startTime: input.startTime,
+      allDay: input.allDay ?? true,
+      reminderPreset: input.reminderPreset as never,
+      reminderCustomMinutes: input.reminderCustomMinutes,
+      reminderAt: input.reminderAt,
+    },
+    timeZone,
+  );
+  if (reminderDateTime) {
+    body.isReminderOn = true;
+    body.reminderDateTime = reminderDateTime;
+  } else {
+    body.isReminderOn = false;
   }
 
   return body;

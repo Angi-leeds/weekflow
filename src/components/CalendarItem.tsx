@@ -7,10 +7,13 @@ import {
   isMultiDay,
 } from '../dateUtils'
 import type { CalendarItem, Category, ItemDisplayOptions } from '../types'
-import { DEFAULT_ITEM_DISPLAY } from '../types'
+import { DEFAULT_ITEM_DISPLAY, getItemTitleSizeClass, getItemTimeSizeClass } from '../types'
 import { getCategoryName } from '../categories'
 import { isTaskOrReminder } from './itemHelpers'
 import { Badge } from './ui/Badge'
+import { useOptionalCalendarMenu } from '../context/CalendarMenuContext'
+import { useItemContextMenu } from '../hooks/useCalendarContextMenu'
+import { formatReminderLabel, hasActiveReminder } from '../lib/reminderHelpers'
 
 interface CalendarItemRowProps {
   item: CalendarItem
@@ -39,74 +42,79 @@ export function CalendarItemRow({
 }: CalendarItemRowProps) {
   const isTask = isTaskOrReminder(item, categories)
   const completed = item.completed ?? false
-  const density = displayOptions.density === 'comfortable' && !compact ? 'comfortable' : displayOptions.density
-  const isMinimalDensity = density === 'minimal'
-  const isCompactDensity = density === 'compact' || isMinimalDensity || compact
+  const density = displayOptions.density === 'comfortable' && !compact && !dense ? 'comfortable' : displayOptions.density
+  const isMinimalDensity = density === 'minimal' || dense
+  const isCompactDensity = density === 'compact' || isMinimalDensity || compact || dense
   const showNotes =
     displayOptions.showNotesPreview &&
+    !dense &&
     item.notes &&
     (spanPosition === 'start' || spanPosition === 'single')
   const showBadge =
-    displayOptions.showCategoryBadge && !hideCategoryBadge && displayOptions.colorStyle !== 'filled'
-  const showTimeAbove = displayOptions.timePlacement === 'above-title'
-  const showTimeInline = displayOptions.timePlacement === 'inline-title'
+    !dense &&
+    displayOptions.showCategoryBadge &&
+    !hideCategoryBadge &&
+    displayOptions.colorStyle !== 'filled'
+  const showTimeAbove = !dense && displayOptions.timePlacement === 'above-title'
+  const showTimeInline = dense || displayOptions.timePlacement === 'inline-title'
   const hideTime = displayOptions.timePlacement === 'hidden'
 
-  const titleClass =
-    displayOptions.titleSize === 'lg'
-      ? isCompactDensity
-        ? 'text-body'
-        : 'text-[17px]'
-      : displayOptions.titleSize === 'sm'
-        ? 'text-[12px]'
-        : isCompactDensity
-          ? 'text-[13px]'
-          : 'text-body'
+  const titleClass = getItemTitleSizeClass(displayOptions.titleSize)
+  const timeSizeClass = getItemTimeSizeClass(displayOptions.titleSize)
 
-  const paddingClass = isMinimalDensity
-    ? dense
-      ? 'py-1 pr-1.5 pl-1.5'
-      : 'py-1.5 pr-2 pl-2'
-    : isCompactDensity
-      ? dense
-        ? 'py-1 pr-2 pl-2'
-        : 'py-2 pr-2 pl-2.5'
-      : 'py-2.5 pr-3 pl-2.5'
+  const paddingClass = dense
+    ? 'py-0.5 pr-1.5 pl-1.5'
+    : isMinimalDensity
+      ? 'py-1.5 pr-2 pl-2'
+      : isCompactDensity
+        ? 'py-2 pr-2 pl-2.5'
+        : 'py-2.5 pr-3 pl-2.5'
 
   const marginClass = dense ? 'my-0.5' : isCompactDensity ? 'my-1' : 'my-1.5'
   const titleLeading = dense ? 'leading-tight' : 'leading-snug'
 
-  const cardStyle = buildCardStyle(item.colour, displayOptions.colorStyle)
-  const cardBorderClass = displayOptions.cardBorder
-    ? displayOptions.colorStyle === 'filled'
-      ? 'ring-1 ring-white/35'
-      : displayOptions.colorStyle === 'left-border'
-        ? ''
-        : 'ring-1 ring-wf-border/70'
-    : ''
+  const cardStyle = buildCardStyle(item.colour, displayOptions.colorStyle, dense)
+  const cardBorderClass =
+    !dense && displayOptions.cardBorder
+      ? displayOptions.colorStyle === 'filled'
+        ? 'ring-1 ring-white/35'
+        : displayOptions.colorStyle === 'left-border'
+          ? ''
+          : 'ring-1 ring-wf-border/70'
+      : ''
+  const cardShadowClass = !dense && displayOptions.cardShadow ? 'shadow-[var(--shadow-card)]' : ''
   const timeLabel = hideTime ? null : (
     <TimeLabel
       item={item}
       spanPosition={spanPosition}
       isTask={isTask}
       compact={isCompactDensity}
+      dense={dense}
+      timeSizeClass={timeSizeClass}
       viewDate={viewDate}
       showAnytimeLabel={displayOptions.showTaskAnytimeLabel}
     />
   )
 
+  const menu = useOptionalCalendarMenu()
+  const itemMenu = useItemContextMenu(item, viewDate)
+  const isCopied = menu?.clipboardItemId === item.id
+  const denseChipText = dense ? formatDenseChipText(item, isTask) : null
+  const reminderLabel = !dense && hasActiveReminder(item) ? formatReminderLabel(item) : null
+
   return (
     <button
       type="button"
       onClick={() => onTap?.(item)}
+      {...itemMenu}
       className={`group flex w-full gap-0 overflow-hidden text-left transition-all hover:bg-black/[0.02] active:scale-[0.99] active:bg-black/[0.04] ${
         completed ? 'opacity-55' : ''
-      } ${marginClass} ${cardStyle.outerClass} ${cardBorderClass} ${displayOptions.cardShadow ? 'shadow-[var(--shadow-card)]' : ''}`}
+      } ${isCopied ? 'ring-2 ring-wf-accent/35 ring-inset' : ''} ${marginClass} ${cardStyle.outerClass} ${cardBorderClass} ${cardShadowClass}`}
       style={cardStyle.outerStyle}
     >
       {displayOptions.colorStyle === 'accent-bar' && (
         <span
-          className="w-1 shrink-0 self-stretch rounded-full"
+          className={`${dense ? 'w-0.5' : 'w-1'} shrink-0 self-stretch rounded-full`}
           style={{ backgroundColor: item.colour }}
           aria-hidden
         />
@@ -121,6 +129,39 @@ export function CalendarItemRow({
       )}
 
       <span className={`min-w-0 flex-1 ${paddingClass}`}>
+        {dense ? (
+          <span className="flex min-w-0 items-start gap-1.5">
+            {isTask && (
+              <span
+                role="checkbox"
+                aria-checked={completed}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleComplete?.(item.id)
+                }}
+                className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${
+                  completed
+                    ? 'border-wf-green bg-wf-green text-white'
+                    : 'border-wf-text-tertiary group-hover:border-wf-accent'
+                }`}
+              >
+                {completed && (
+                  <svg className="h-2 w-2" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+            )}
+            <span
+              className={`min-w-0 flex-1 break-words font-medium ${titleLeading} ${titleClass} ${
+                displayOptions.colorStyle === 'filled' ? 'text-white' : 'text-wf-text'
+              } ${completed && displayOptions.showCompletedStrike ? 'line-through decoration-wf-text-tertiary' : ''}`}
+            >
+              {denseChipText}
+            </span>
+          </span>
+        ) : (
+          <>
         {showTimeAbove && timeLabel && (
           <span className="mb-0.5 flex items-center justify-between gap-2">
             {timeLabel}
@@ -168,10 +209,10 @@ export function CalendarItemRow({
           )}
 
           <span className="min-w-0 flex-1">
-            <span className={`flex items-baseline gap-2 ${showTimeInline ? 'flex-wrap' : ''}`}>
+            <span className={`flex items-baseline gap-x-1.5 gap-y-0 ${showTimeInline ? 'flex-wrap' : ''}`}>
               {showTimeInline && timeLabel}
               <span
-                className={`font-medium ${titleLeading} ${titleClass} ${
+                className={`min-w-0 break-words font-medium ${titleLeading} ${titleClass} ${
                   displayOptions.colorStyle === 'filled' ? 'text-white' : 'text-wf-text'
                 } ${completed && displayOptions.showCompletedStrike ? 'line-through decoration-wf-text-tertiary' : ''}`}
               >
@@ -187,7 +228,12 @@ export function CalendarItemRow({
                 {item.notes}
               </span>
             )}
-            {item.onlineMeetingUrl && (
+            {reminderLabel && (
+              <span className="mt-0.5 block truncate text-[10px] font-medium text-wf-accent">
+                {reminderLabel}
+              </span>
+            )}
+            {!dense && item.onlineMeetingUrl && (
               <a
                 href={item.onlineMeetingUrl}
                 target="_blank"
@@ -200,33 +246,60 @@ export function CalendarItemRow({
             )}
           </span>
         </span>
+          </>
+        )}
       </span>
     </button>
   )
 }
 
+function formatDenseChipText(item: CalendarItem, isTask: boolean): string {
+  if (!item.allDay && item.startTime && !isTask) {
+    const time = item.endTime
+      ? formatTimeRange(item.startTime, item.endTime)
+      : formatTime(item.startTime)
+    return `${time} ${item.title}`
+  }
+
+  if (!item.allDay && item.startTime && isTask) {
+    return `${formatTime(item.startTime)} ${item.title}`
+  }
+
+  return item.title
+}
+
 function buildCardStyle(
   colour: string,
   colorStyle: ItemDisplayOptions['colorStyle'],
+  dense = false,
 ): { outerClass: string; outerStyle?: React.CSSProperties } {
+  const radius = dense ? 'rounded-lg' : 'rounded-xl'
+
   switch (colorStyle) {
     case 'tinted':
       return {
-        outerClass: 'rounded-xl',
-        outerStyle: { backgroundColor: `${colour}18` },
+        outerClass: radius,
+        outerStyle: { backgroundColor: `${colour}${dense ? '20' : '18'}` },
       }
     case 'filled':
       return {
-        outerClass: 'rounded-xl',
+        outerClass: radius,
         outerStyle: { backgroundColor: colour },
       }
     case 'dot-only':
-      return { outerClass: 'rounded-lg' }
+      return { outerClass: dense ? 'rounded-md' : 'rounded-lg' }
     case 'left-border':
-      return { outerClass: 'rounded-lg bg-wf-surface ring-1 ring-wf-border/60' }
+      return {
+        outerClass: dense
+          ? 'rounded-md bg-wf-surface'
+          : 'rounded-lg bg-wf-surface ring-1 ring-wf-border/60',
+      }
     case 'accent-bar':
     default:
-      return { outerClass: 'rounded-xl' }
+      return {
+        outerClass: radius,
+        outerStyle: dense ? { backgroundColor: `${colour}14` } : undefined,
+      }
   }
 }
 
@@ -235,6 +308,8 @@ function TimeLabel({
   spanPosition,
   isTask,
   compact,
+  dense = false,
+  timeSizeClass,
   viewDate,
   showAnytimeLabel,
 }: {
@@ -242,10 +317,14 @@ function TimeLabel({
   spanPosition: SpanPosition
   isTask: boolean
   compact: boolean
+  dense?: boolean
+  timeSizeClass?: string
   viewDate?: Date
   showAnytimeLabel: boolean
 }) {
-  const sizeClass = compact ? 'text-[11px]' : 'text-subhead'
+  const sizeClass =
+    timeSizeClass ??
+    (dense ? 'text-[10px]' : compact ? 'text-[11px]' : 'text-subhead')
 
   if (isMultiDay(item) && item.allDay && !isTask) {
     return (

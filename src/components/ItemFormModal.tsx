@@ -5,12 +5,18 @@ import type { EntityType, ItemLink } from '../../shared/links'
 import type { ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { GraphCalendarDto, GraphTodoListDto } from '../../shared/microsoftGraph'
 import type { GoogleCalendarDto } from '../../shared/googleApi'
-import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults } from '../types'
+import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset } from '../types'
+import { ITEM_REMINDER_PRESET_LABELS } from '../types'
 import { isTaskCategory, resolveItemColour } from '../categories'
 import { generateId, toISODate } from '../dateUtils'
 import { getItemLinkType } from '../lib/itemLinkHelpers'
 import { getPhotoUrlForItem, uploadAttachment } from '../lib/attachments'
 import { getMicrosoftSchedule, respondToMicrosoftCalendarEvent } from '../lib/microsoft'
+import {
+  ITEM_REMINDER_PRESET_OPTIONS,
+  joinReminderAt,
+  splitReminderAt,
+} from '../lib/reminderHelpers'
 import { isTaskOrReminder } from './itemHelpers'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
@@ -549,6 +555,8 @@ export function ItemFormModal({
             </div>
           )}
 
+          <ReminderFields form={form} onChange={setForm} defaultDate={form.date} />
+
           {usingRealMicrosoft && !isTask && (
             <>
               <Field label="Attendees (emails, comma-separated)">
@@ -736,5 +744,124 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1.5 block text-[13px] font-medium text-wf-text-secondary">{label}</span>
       {children}
     </label>
+  )
+}
+
+type CustomReminderUnit = 'minutes' | 'hours' | 'days'
+
+function customUnitFromMinutes(minutes: number): { amount: number; unit: CustomReminderUnit } {
+  if (minutes > 0 && minutes % (24 * 60) === 0) {
+    return { amount: minutes / (24 * 60), unit: 'days' }
+  }
+  if (minutes > 0 && minutes % 60 === 0) {
+    return { amount: minutes / 60, unit: 'hours' }
+  }
+  return { amount: minutes || 15, unit: 'minutes' }
+}
+
+function minutesFromCustom(amount: number, unit: CustomReminderUnit): number {
+  if (unit === 'days') return amount * 24 * 60
+  if (unit === 'hours') return amount * 60
+  return amount
+}
+
+function ReminderFields({
+  form,
+  onChange,
+  defaultDate,
+}: {
+  form: CalendarItem
+  onChange: (next: CalendarItem) => void
+  defaultDate: string
+}) {
+  const preset = form.reminderPreset ?? 'none'
+  const custom = customUnitFromMinutes(form.reminderCustomMinutes ?? 15)
+  const reminderAtParts = splitReminderAt(form.reminderAt ?? `${defaultDate}T09:00`)
+
+  return (
+    <Field label="Reminder">
+      <select
+        value={preset}
+        onChange={(e) => {
+          const nextPreset = e.target.value as ItemReminderPreset
+          onChange({
+            ...form,
+            reminderPreset: nextPreset,
+            reminderCustomMinutes: nextPreset === 'custom' ? form.reminderCustomMinutes ?? 15 : undefined,
+            reminderAt:
+              nextPreset === 'datetime'
+                ? form.reminderAt ?? joinReminderAt(defaultDate, form.startTime ?? '09:00')
+                : undefined,
+          })
+        }}
+        className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+      >
+        {ITEM_REMINDER_PRESET_OPTIONS.map((key) => (
+          <option key={key} value={key}>
+            {ITEM_REMINDER_PRESET_LABELS[key]}
+          </option>
+        ))}
+      </select>
+
+      {preset === 'custom' && (
+        <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+          <input
+            type="number"
+            min={0}
+            value={custom.amount}
+            onChange={(e) => {
+              const amount = Math.max(0, Number(e.target.value) || 0)
+              onChange({
+                ...form,
+                reminderCustomMinutes: minutesFromCustom(amount, custom.unit),
+              })
+            }}
+            className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+          />
+          <select
+            value={custom.unit}
+            onChange={(e) => {
+              const unit = e.target.value as CustomReminderUnit
+              onChange({
+                ...form,
+                reminderCustomMinutes: minutesFromCustom(custom.amount, unit),
+              })
+            }}
+            className="rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+          >
+            <option value="minutes">minutes before</option>
+            <option value="hours">hours before</option>
+            <option value="days">days before</option>
+          </select>
+        </div>
+      )}
+
+      {preset === 'datetime' && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <input
+            type="date"
+            value={reminderAtParts.date}
+            onChange={(e) =>
+              onChange({
+                ...form,
+                reminderAt: joinReminderAt(e.target.value, reminderAtParts.time),
+              })
+            }
+            className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+          />
+          <input
+            type="time"
+            value={reminderAtParts.time}
+            onChange={(e) =>
+              onChange({
+                ...form,
+                reminderAt: joinReminderAt(reminderAtParts.date || defaultDate, e.target.value),
+              })
+            }
+            className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+          />
+        </div>
+      )}
+    </Field>
   )
 }

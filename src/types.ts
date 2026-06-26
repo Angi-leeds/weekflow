@@ -59,7 +59,30 @@ export type ItemColorStyle = 'accent-bar' | 'tinted' | 'left-border' | 'dot-only
 
 export type ItemTimePlacement = 'above-title' | 'inline-title' | 'hidden'
 
-export type ItemTitleSize = 'sm' | 'md' | 'lg'
+import type { ItemReminderPreset } from '../../shared/reminders'
+
+export type { ItemReminderPreset }
+
+export const ITEM_REMINDER_PRESET_LABELS: Record<ItemReminderPreset, string> = {
+  none: 'No reminder',
+  'at-time': 'At time of event',
+  '5min': '5 minutes before',
+  '15min': '15 minutes before',
+  '30min': '30 minutes before',
+  '1hour': '1 hour before',
+  '2hours': '2 hours before',
+  '4hours': '4 hours before',
+  '1day': '1 day before',
+  '2days': '2 days before',
+  '3days': '3 days before',
+  '1week': '1 week before',
+  custom: 'Custom offset…',
+  datetime: 'Specific date & time…',
+}
+
+export type ItemTitleSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+
+export const ITEM_TITLE_SIZE_OPTIONS: ItemTitleSize[] = ['xs', 'sm', 'md', 'lg', 'xl', '2xl']
 
 /** How multi-day all-day events appear in week board / week list. */
 export type MultiDayAllDayLayout = 'span-bar' | 'repeat-daily'
@@ -123,9 +146,38 @@ export const ITEM_TIME_PLACEMENT_LABELS: Record<ItemTimePlacement, string> = {
 }
 
 export const ITEM_TITLE_SIZE_LABELS: Record<ItemTitleSize, string> = {
+  xs: 'Extra small',
   sm: 'Small',
   md: 'Medium',
   lg: 'Large',
+  xl: 'Extra large',
+  '2xl': 'Extra extra large',
+}
+
+export function getItemTitleSizeClass(size: ItemTitleSize): string {
+  switch (size) {
+    case 'xs':
+      return 'text-[10px]'
+    case 'sm':
+      return 'text-[11px]'
+    case 'md':
+      return 'text-[12px]'
+    case 'lg':
+      return 'text-[14px]'
+    case 'xl':
+      return 'text-[16px]'
+    case '2xl':
+      return 'text-[18px]'
+    default:
+      return 'text-[12px]'
+  }
+}
+
+/** Time labels sit one step below the chosen title size. */
+export function getItemTimeSizeClass(size: ItemTitleSize): string {
+  const index = ITEM_TITLE_SIZE_OPTIONS.indexOf(size)
+  const timeSize = index > 0 ? ITEM_TITLE_SIZE_OPTIONS[index - 1]! : size
+  return getItemTitleSizeClass(timeSize)
 }
 
 export const MULTI_DAY_ALL_DAY_LAYOUT_LABELS: Record<MultiDayAllDayLayout, string> = {
@@ -171,7 +223,7 @@ export const ITEM_DISPLAY_PRESETS: Record<
     density: 'comfortable',
     colorStyle: 'filled',
     timePlacement: 'above-title',
-    titleSize: 'lg',
+    titleSize: 'xl',
     multiDayAllDayLayout: 'span-bar',
     showCategoryBadge: true,
     showNotesPreview: true,
@@ -303,6 +355,12 @@ export interface CalendarItem {
   teamsMeeting?: boolean
   onlineMeetingUrl?: string
   inviteResponse?: 'accepted' | 'declined' | 'tentativelyAccepted' | 'none'
+  /** When to remind — relative offset or specific datetime. */
+  reminderPreset?: ItemReminderPreset
+  /** Minutes before start when reminderPreset is 'custom'. */
+  reminderCustomMinutes?: number
+  /** Local datetime (YYYY-MM-DDTHH:mm) when reminderPreset is 'datetime'. */
+  reminderAt?: string
 }
 
 export interface EmailAccount {
