@@ -533,6 +533,14 @@ export function SettingsView({
             onCalendarPreferencesChange({ ...calendarPreferences, timeFormat })
           }
         />
+        <SettingsToggleRow
+          label="Expand month weeks to fit"
+          description="Show every event in month view by growing each week row — no +N more."
+          checked={calendarPreferences.monthViewExpandWeeks}
+          onChange={(monthViewExpandWeeks) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, monthViewExpandWeeks })
+          }
+        />
         <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
           {usingRealMicrosoft
             ? 'Tap a calendar to filter the week view to that account.'

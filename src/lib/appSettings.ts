@@ -63,6 +63,7 @@ export function loadCalendarPreferences(): CalendarPreferences {
         : DEFAULT_CALENDAR_PREFERENCES.defaultView,
       weekStartsOn: parsed.weekStartsOn === 0 ? 0 : 1,
       timeFormat: parsed.timeFormat === "12h" ? "12h" : "24h",
+      monthViewExpandWeeks: parsed.monthViewExpandWeeks === true,
     };
     applyTimeFormat(prefs.timeFormat);
     return prefs;

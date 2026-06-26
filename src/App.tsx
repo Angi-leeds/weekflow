@@ -1834,8 +1834,16 @@ export default function App() {
   }
 
   const handleCalendarPreferencesChange = useCallback((prefs: CalendarPreferences) => {
-    setCalendarPreferences(prefs)
-    setViewMode(prefs.defaultView)
+    setCalendarPreferences((previous) => {
+      if (prefs.defaultView !== previous.defaultView) {
+        setViewMode(prefs.defaultView)
+      }
+      return prefs
+    })
+  }, [])
+
+  const handleMonthViewExpandChange = useCallback((monthViewExpandWeeks: boolean) => {
+    setCalendarPreferences((previous) => ({ ...previous, monthViewExpandWeeks }))
   }, [])
 
   const handleShowCalendarAccount = useCallback(
@@ -2025,10 +2033,20 @@ export default function App() {
               ) : viewMode === 'month' ? (
                 <MonthView
                   currentDate={monthDate}
+                  selectedDay={selectedDay}
                   items={calendarItems}
+                  displayOptions={itemDisplayOptions}
                   weekStartsOn={calendarPreferences.weekStartsOn}
+                  expandWeekRows={calendarPreferences.monthViewExpandWeeks}
+                  onExpandWeekRowsChange={handleMonthViewExpandChange}
                   onDaySelect={handleDaySelect}
+                  onDayAdd={(date) => {
+                    setSelectedDay(date)
+                    setEditingItem(null)
+                    setModalOpen(true)
+                  }}
                   onMonthChange={setMonthDate}
+                  onItemTap={openEditModal}
                 />
               ) : viewMode === 'agenda' ? (
                 <AgendaView

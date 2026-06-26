@@ -183,6 +183,39 @@ export function getMonthGrid(year: number, month: number, weekStartsOn = 1): (Da
   return weeks
 }
 
+/** Full month grid including trailing/adjacent-month days (Outlook-style). */
+export function getMonthGridFilled(year: number, month: number, weekStartsOn = 1): Date[][] {
+  const first = new Date(year, month, 1)
+  const last = new Date(year, month + 1, 0)
+  const startPad = (first.getDay() - weekStartsOn + 7) % 7
+  const days: Date[] = []
+
+  for (let i = startPad; i > 0; i--) {
+    days.push(addDays(first, -i))
+  }
+  for (let d = 1; d <= last.getDate(); d++) {
+    days.push(new Date(year, month, d))
+  }
+  let trailing = 1
+  while (days.length % 7 !== 0) {
+    days.push(new Date(year, month + 1, trailing))
+    trailing += 1
+  }
+
+  const weeks: Date[][] = []
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7))
+  }
+  return weeks
+}
+
+export function formatMonthDayLabel(date: Date): string {
+  if (date.getDate() === 1) {
+    return `${date.getDate()} ${MONTH_NAMES[date.getMonth()]}`
+  }
+  return String(date.getDate())
+}
+
 const SPAN_SORT: Record<SpanPosition, number> = { start: 0, single: 0, middle: 1, end: 2 }
 
 function sortDayItemEntries(entries: DayItemEntry[]): DayItemEntry[] {

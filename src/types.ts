@@ -223,12 +223,15 @@ export interface CalendarPreferences {
   defaultView: CalendarViewMode
   weekStartsOn: WeekStartsOn
   timeFormat: TimeFormat
+  /** When true, month view week rows grow to show every event instead of "+N more". */
+  monthViewExpandWeeks: boolean
 }
 
 export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
   defaultView: 'week-list',
   weekStartsOn: 1,
   timeFormat: '24h',
+  monthViewExpandWeeks: false,
 }
 
 export interface IntegrationPreferences {
