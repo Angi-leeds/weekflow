@@ -386,6 +386,7 @@ export function ItemFormModal({
       : null
 
   const selectCategory = (categoryId: string) => {
+    const match = categories.find((entry) => entry.id === categoryId)
     const next = {
       ...form,
       categoryId,
@@ -393,6 +394,8 @@ export function ItemFormModal({
       calendarId: undefined,
       calendarName: undefined,
       todoListId: undefined,
+      outlookCategories:
+        usingRealMicrosoft && match && !isTask ? [match.name] : form.outlookCategories,
     }
     setForm(
       normalizeItemSchedule(
@@ -409,6 +412,13 @@ export function ItemFormModal({
         categories,
       ),
     )
+  }
+
+  const clearOutlookCategory = () => {
+    setForm((prev) => ({
+      ...prev,
+      outlookCategories: [],
+    }))
   }
 
   return (
@@ -487,13 +497,27 @@ export function ItemFormModal({
 
           <Field label="Category">
             <div className="flex flex-wrap gap-2">
+              {usingRealMicrosoft && !isTask && (
+                <button
+                  type="button"
+                  onClick={clearOutlookCategory}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-body transition-all active:scale-[0.98] ${
+                    (form.outlookCategories?.length ?? 0) === 0
+                      ? 'border-wf-accent bg-wf-accent-soft font-medium text-wf-accent'
+                      : 'border-wf-border bg-wf-bg text-wf-text hover:border-wf-accent/30'
+                  }`}
+                >
+                  None
+                </button>
+              )}
               {categories.map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => selectCategory(cat.id)}
                   className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-body transition-all active:scale-[0.98] ${
-                    form.categoryId === cat.id
+                    form.categoryId === cat.id &&
+                    (form.outlookCategories?.length ?? 0) !== 0
                       ? 'border-wf-accent bg-wf-accent-soft font-medium text-wf-accent'
                       : 'border-wf-border bg-wf-bg text-wf-text hover:border-wf-accent/30'
                   }`}

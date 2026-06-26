@@ -23,6 +23,10 @@ export interface Category {
   isDefault?: boolean
   /** When true, dated tasks/reminders in this category appear on the calendar diary. */
   showInDiary?: boolean
+  /** Outlook master category Graph id (when synced). */
+  outlookGraphId?: string
+  /** Outlook colour preset name e.g. preset7. */
+  outlookPreset?: string
 }
 
 export interface ListDisplayOptions {
@@ -687,6 +691,8 @@ export interface CalendarItem {
   reminderAt?: string
   /** null = follow category; true/false = pin to diary or hide from diary. */
   showInDiary?: boolean | null
+  /** Outlook category names assigned on the Graph event. */
+  outlookCategories?: string[]
 }
 
 export interface EmailAccount {

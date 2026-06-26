@@ -1,4 +1,4 @@
-import type { Category, CategoryKind } from './types'
+import type { CalendarItem, Category, CategoryKind } from './types'
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'holiday', name: 'Holiday', colour: '#3D8B5F', kind: 'event', isDefault: true },
@@ -55,6 +55,11 @@ export function getCategoryColour(categories: Category[], id: string): string {
 
 export function getCategoryName(categories: Category[], id: string): string {
   return getCategoryById(categories, id)?.name ?? 'Unknown'
+}
+
+export function getItemCategoryLabel(item: CalendarItem, categories: Category[]): string {
+  if (item.outlookCategories?.[0]) return item.outlookCategories[0]
+  return getCategoryName(categories, item.categoryId)
 }
 
 export function isTaskCategory(categories: Category[], categoryId: string): boolean {

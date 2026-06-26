@@ -8,7 +8,7 @@ import {
 } from '../dateUtils'
 import type { CalendarItem, Category, ItemDisplayOptions } from '../types'
 import { DEFAULT_ITEM_DISPLAY, getItemTitleSizeClass, getItemTimeSizeClass } from '../types'
-import { getCategoryName } from '../categories'
+import { getItemCategoryLabel } from '../categories'
 import { isTaskOrReminder } from './itemHelpers'
 import { Badge } from './ui/Badge'
 import { useOptionalCalendarMenu } from '../context/CalendarMenuContext'
@@ -188,14 +188,14 @@ export function CalendarItemRow({
           <span className="mb-0.5 flex items-center justify-between gap-2">
             {timeLabel}
             {!isCompactDensity && showBadge && (
-              <Badge label={getCategoryName(categories, item.categoryId)} colour={item.colour} variant="default" />
+              <Badge label={getItemCategoryLabel(item, categories)} colour={item.colour} variant="default" />
             )}
           </span>
         )}
 
         {!showTimeAbove && !isCompactDensity && showBadge && (
           <span className="mb-0.5 flex justify-end">
-            <Badge label={getCategoryName(categories, item.categoryId)} colour={item.colour} variant="default" />
+            <Badge label={getItemCategoryLabel(item, categories)} colour={item.colour} variant="default" />
           </span>
         )}
 

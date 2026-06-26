@@ -5,6 +5,7 @@ import type {
   GraphMailFolderDto,
   GraphTodoListDto,
   MicrosoftIntegrationStatus,
+  OutlookCategoryDto,
 } from "../../shared/microsoftGraph";
 import type { CalendarItem, Contact, EmailMessage, EmailFolder, Note } from "../types";
 import { getClientTimeZone } from "./itemTimeHelpers";
@@ -261,6 +262,59 @@ export async function fetchSharedMailboxCalendars(
 ): Promise<GraphCalendarDto[]> {
   const params = new URLSearchParams({ accountId, sharedMailboxEmail });
   return apiFetch<GraphCalendarDto[]>(`/api/microsoft/calendars/shared-mailbox?${params.toString()}`);
+}
+
+export async function fetchOutlookMasterCategories(accountId: string): Promise<OutlookCategoryDto[]> {
+  return apiFetch<OutlookCategoryDto[]>(
+    `/api/microsoft/outlook/categories?accountId=${encodeURIComponent(accountId)}`,
+  );
+}
+
+export async function fetchAllOutlookMasterCategories(
+  accounts: MicrosoftIntegrationStatus["accounts"],
+): Promise<OutlookCategoryDto[]> {
+  if (accounts.length === 0) return [];
+  const batches = await Promise.all(accounts.map((account) => fetchOutlookMasterCategories(account.id)));
+  const seen = new Set<string>();
+  return batches.flat().filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
+}
+
+export async function createOutlookMasterCategory(
+  accountId: string,
+  input: { displayName: string; color: string },
+): Promise<OutlookCategoryDto> {
+  return apiFetch<OutlookCategoryDto>("/api/microsoft/outlook/categories", {
+    method: "POST",
+    body: JSON.stringify({ accountId, ...input }),
+  });
+}
+
+export async function updateOutlookMasterCategory(
+  accountId: string,
+  categoryId: string,
+  color: string,
+): Promise<OutlookCategoryDto> {
+  return apiFetch<OutlookCategoryDto>(
+    `/api/microsoft/outlook/categories/${encodeURIComponent(categoryId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ accountId, color }),
+    },
+  );
+}
+
+export async function deleteOutlookMasterCategory(
+  accountId: string,
+  categoryId: string,
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/microsoft/outlook/categories/${encodeURIComponent(categoryId)}?accountId=${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function fetchMicrosoftTodoLists(accountId: string): Promise<GraphTodoListDto[]> {
@@ -577,6 +631,7 @@ export async function syncCalendarToMicrosoft(
         photoStorageKey: photo?.storageKey,
         photoMimeType: photo?.mimeType,
         photoFilename: photo?.filename,
+        categories: item.outlookCategories,
       },
     }),
   });

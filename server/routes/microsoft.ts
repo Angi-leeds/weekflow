@@ -43,6 +43,9 @@ import {
   getAutomaticRepliesSettings,
   setAutomaticRepliesSettings,
   fetchOutlookMasterCategories,
+  createOutlookMasterCategory,
+  updateOutlookMasterCategory,
+  deleteOutlookMasterCategory,
   fetchMicrosoftMailRules,
   updateMicrosoftMailCategories,
   fetchMicrosoftTeamsChats,
@@ -387,6 +390,51 @@ export function registerMicrosoftRoutes(app: Express): void {
       res.json(await fetchOutlookMasterCategories(accountId));
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch categories" });
+    }
+  });
+
+  app.post("/api/microsoft/outlook/categories", async (req, res) => {
+    const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
+    const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim() : "";
+    const color = typeof req.body?.color === "string" ? req.body.color : "preset7";
+    if (!accountId || !displayName) {
+      res.status(400).json({ message: "accountId and displayName are required" });
+      return;
+    }
+    try {
+      res.json(await createOutlookMasterCategory(accountId, { displayName, color }));
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to create category" });
+    }
+  });
+
+  app.patch("/api/microsoft/outlook/categories/:categoryId", async (req, res) => {
+    const accountId = typeof req.body?.accountId === "string" ? req.body.accountId : null;
+    const color = typeof req.body?.color === "string" ? req.body.color : null;
+    const { categoryId } = req.params;
+    if (!accountId || !categoryId || !color) {
+      res.status(400).json({ message: "accountId, categoryId, and color are required" });
+      return;
+    }
+    try {
+      res.json(await updateOutlookMasterCategory(accountId, categoryId, { color }));
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to update category" });
+    }
+  });
+
+  app.delete("/api/microsoft/outlook/categories/:categoryId", async (req, res) => {
+    const accountId = typeof req.query.accountId === "string" ? req.query.accountId : null;
+    const { categoryId } = req.params;
+    if (!accountId || !categoryId) {
+      res.status(400).json({ message: "accountId and categoryId are required" });
+      return;
+    }
+    try {
+      await deleteOutlookMasterCategory(accountId, categoryId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete category" });
     }
   });
 

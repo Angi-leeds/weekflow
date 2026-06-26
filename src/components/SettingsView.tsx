@@ -366,7 +366,9 @@ export function SettingsView({
 
       <SettingsGroup title="Categories" id="settings-categories">
         <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
-          Customise colours and labels. Items inherit their category colour.
+          {usingRealMicrosoft
+            ? 'These categories sync with Outlook — the same list as Categorize in Outlook calendar and mail.'
+            : 'Customise colours and labels. Items inherit their category colour.'}
         </p>
         <div className="px-4 pb-4">
           <CategoriesManager
@@ -374,6 +376,7 @@ export function SettingsView({
             itemCounts={itemCounts}
             onSave={onSaveCategory}
             onDelete={onDeleteCategory}
+            outlookSynced={usingRealMicrosoft}
           />
         </div>
       </SettingsGroup>

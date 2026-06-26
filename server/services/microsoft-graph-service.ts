@@ -5,7 +5,9 @@ import type {
   GraphMailFolderDto,
   GraphMailAttachmentDto,
   GraphTodoListDto,
+  OutlookCategoryDto,
 } from "../../shared/microsoftGraph";
+import { outlookPresetToHex, OUTLOOK_ORPHAN_CATEGORY_HEX } from "../../shared/outlookCategoryColors";
 import { normalizeEmailBody } from "../../shared/emailBody";
 import {
   getReminderDateTimeForSync,
@@ -93,6 +95,7 @@ interface GraphEvent {
   attendees?: Array<{ emailAddress?: { address?: string }; status?: { response?: string } }>;
   isReminderOn?: boolean;
   reminderMinutesBeforeStart?: number;
+  categories?: string[];
 }
 
 export interface GraphCalendarItemDto {
@@ -122,6 +125,7 @@ export interface GraphCalendarItemDto {
   reminderPreset?: string;
   reminderCustomMinutes?: number;
   reminderAt?: string;
+  outlookCategories?: string[];
 }
 
 export interface CalendarSyncInput {
@@ -145,6 +149,7 @@ export interface CalendarSyncInput {
   reminderCustomMinutes?: number;
   reminderAt?: string;
   timeZone?: string;
+  categories?: string[];
 }
 
 export interface TodoSyncInput {
@@ -381,10 +386,37 @@ function subtractOneDayIso(date: string): string {
   return value.toISOString().slice(0, 10);
 }
 
+function resolveOutlookEventCategory(
+  eventCategories: string[] | undefined,
+  masterCategories: OutlookCategoryDto[],
+): { categoryId: string; colour: string; outlookCategories?: string[] } {
+  const names = (eventCategories ?? []).filter(Boolean);
+  const primary = names[0];
+  if (!primary) {
+    return { categoryId: "work", colour: "#C45C4A", outlookCategories: names.length ? names : undefined };
+  }
+  const matched = masterCategories.find(
+    (entry) => entry.displayName.toLowerCase() === primary.toLowerCase(),
+  );
+  if (matched) {
+    return {
+      categoryId: `outlook-${matched.id}`,
+      colour: outlookPresetToHex(matched.color),
+      outlookCategories: names,
+    };
+  }
+  return {
+    categoryId: `outlook-name-${primary.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    colour: OUTLOOK_ORPHAN_CATEGORY_HEX,
+    outlookCategories: names,
+  };
+}
+
 function mapGraphEventToDto(
   event: GraphEvent,
   account: ConnectedAccountRecord,
   calendar?: { id: string; name: string },
+  masterCategories: OutlookCategoryDto[] = [],
 ): GraphCalendarItemDto {
   const accountKey = accountKeyFromRecord(account);
   const allDay = Boolean(event.isAllDay);
@@ -398,6 +430,8 @@ function mapGraphEventToDto(
     endDate = end.date;
   }
 
+  const category = resolveOutlookEventCategory(event.categories, masterCategories);
+
   return {
     id: `graph-${event.id}`,
     title: event.subject ?? "(No title)",
@@ -406,8 +440,9 @@ function mapGraphEventToDto(
     startTime: allDay ? undefined : start.time,
     endTime: allDay ? undefined : end.time,
     allDay,
-    categoryId: "work",
-    colour: "#C45C4A",
+    categoryId: category.categoryId,
+    colour: category.colour,
+    outlookCategories: category.outlookCategories,
     notes: event.bodyPreview,
     accountId: accountKey,
     externalId: event.id,
@@ -542,6 +577,8 @@ export async function fetchMicrosoftCalendarEvents(
   const account = await getConnectedAccountRecord(accountId);
   if (!account) throw new Error("Connected account not found");
 
+  const masterCategories = await fetchOutlookMasterCategories(accountId);
+
   const start = startDate ?? addDaysIso(new Date().toISOString().slice(0, 10), -30);
   const end = endDate ?? addDaysIso(new Date().toISOString().slice(0, 10), 90);
 
@@ -550,7 +587,7 @@ export async function fetchMicrosoftCalendarEvents(
     endDateTime: `${end}T23:59:59`,
     $top: "250",
     $orderby: "start/dateTime",
-    $select: "id,subject,bodyPreview,start,end,isAllDay,webLink,isReminderOn,reminderMinutesBeforeStart",
+    $select: "id,subject,bodyPreview,start,end,isAllDay,webLink,isReminderOn,reminderMinutesBeforeStart,categories",
   });
 
   if (calendarGraphId) {
@@ -562,10 +599,15 @@ export async function fetchMicrosoftCalendarEvents(
     );
     const payload = (await response.json()) as { value?: GraphEvent[] };
     return (payload.value ?? []).map((event) =>
-      mapGraphEventToDto(event, account, {
-        id: calendarGraphId,
-        name: calendar?.name ?? "Calendar",
-      }),
+      mapGraphEventToDto(
+        event,
+        account,
+        {
+          id: calendarGraphId,
+          name: calendar?.name ?? "Calendar",
+        },
+        masterCategories,
+      ),
     );
   }
 
@@ -573,7 +615,9 @@ export async function fetchMicrosoftCalendarEvents(
   if (calendars.length === 0) {
     const response = await graphFetch(accountId, `/me/calendarView?${query}`);
     const payload = (await response.json()) as { value?: GraphEvent[] };
-    return (payload.value ?? []).map((event) => mapGraphEventToDto(event, account));
+    return (payload.value ?? []).map((event) =>
+      mapGraphEventToDto(event, account, undefined, masterCategories),
+    );
   }
 
   const orderedCalendars = [...calendars].sort((a, b) => {
@@ -599,10 +643,15 @@ export async function fetchMicrosoftCalendarEvents(
       const payload = (await response.json()) as { value?: GraphEvent[] };
       batches.push(
         (payload.value ?? []).map((event) =>
-          mapGraphEventToDto(event, account, {
-            id: calendar.graphCalendarId,
-            name: calendar.name,
-          }),
+          mapGraphEventToDto(
+            event,
+            account,
+            {
+              id: calendar.graphCalendarId,
+              name: calendar.name,
+            },
+            masterCategories,
+          ),
         ),
       );
     } catch (error) {
@@ -1442,6 +1491,10 @@ function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
     payload.onlineMeetingProvider = "teamsForBusiness";
   }
 
+  if (input.categories !== undefined) {
+    payload.categories = input.categories;
+  }
+
   const minutes = getReminderMinutesBefore(input);
   if (minutes != null) {
     payload.isReminderOn = true;
@@ -2089,12 +2142,6 @@ export async function deleteMicrosoftContact(
   });
 }
 
-export interface OutlookCategoryDto {
-  id: string;
-  displayName: string;
-  color?: string;
-}
-
 export async function fetchOutlookMasterCategories(
   accountId: string,
 ): Promise<OutlookCategoryDto[]> {
@@ -2107,6 +2154,60 @@ export async function fetchOutlookMasterCategories(
     displayName: entry.displayName ?? "Category",
     color: entry.color,
   }));
+}
+
+export async function createOutlookMasterCategory(
+  accountId: string,
+  input: { displayName: string; color: string },
+): Promise<OutlookCategoryDto> {
+  const response = await graphFetch(accountId, "/me/outlook/masterCategories", {
+    method: "POST",
+    body: JSON.stringify({ displayName: input.displayName, color: input.color }),
+  });
+  const entry = (await response.json()) as {
+    id: string;
+    displayName?: string;
+    color?: string;
+  };
+  return {
+    id: entry.id,
+    displayName: entry.displayName ?? input.displayName,
+    color: entry.color ?? input.color,
+  };
+}
+
+export async function updateOutlookMasterCategory(
+  accountId: string,
+  categoryId: string,
+  input: { color: string },
+): Promise<OutlookCategoryDto> {
+  const response = await graphFetch(
+    accountId,
+    `/me/outlook/masterCategories/${encodeURIComponent(categoryId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ color: input.color }),
+    },
+  );
+  const entry = (await response.json()) as {
+    id: string;
+    displayName?: string;
+    color?: string;
+  };
+  return {
+    id: entry.id,
+    displayName: entry.displayName ?? "Category",
+    color: entry.color ?? input.color,
+  };
+}
+
+export async function deleteOutlookMasterCategory(
+  accountId: string,
+  categoryId: string,
+): Promise<void> {
+  await graphFetch(accountId, `/me/outlook/masterCategories/${encodeURIComponent(categoryId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function updateMicrosoftMailCategories(

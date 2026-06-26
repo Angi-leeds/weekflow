@@ -2,23 +2,37 @@ import { useEffect, useState } from 'react'
 import type { Category, CategoryKind } from '../types'
 import { CATEGORY_KIND_LABELS, COLOUR_PRESETS, defaultShowInDiaryForKind } from '../categories'
 import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
+import {
+  OUTLOOK_PRESET_HEX,
+  OUTLOOK_PRESET_OPTIONS,
+  type OutlookCategoryPreset,
+} from '../../shared/outlookCategoryColors'
+import { weekflowCategoryToOutlookPreset } from '../lib/outlookCategories'
 
 interface CategoryFormModalProps {
   open: boolean
   category?: Category | null
   onSave: (category: Category) => void
   onClose: () => void
+  outlookMode?: boolean
 }
 
-const emptyForm = (): Omit<Category, 'id'> => ({
+const emptyForm = (outlookMode: boolean): Omit<Category, 'id'> => ({
   name: '',
-  colour: COLOUR_PRESETS[0],
+  colour: outlookMode ? OUTLOOK_PRESET_HEX.preset7 : COLOUR_PRESETS[0],
   kind: 'event',
   showInDiary: undefined,
+  outlookPreset: outlookMode ? 'preset7' : undefined,
 })
 
-export function CategoryFormModal({ open, category, onSave, onClose }: CategoryFormModalProps) {
-  const [form, setForm] = useState(emptyForm)
+export function CategoryFormModal({
+  open,
+  category,
+  onSave,
+  onClose,
+  outlookMode = false,
+}: CategoryFormModalProps) {
+  const [form, setForm] = useState(emptyForm(outlookMode))
   const isEdit = Boolean(category?.id)
 
   useEffect(() => {
@@ -30,11 +44,13 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
               colour: category.colour,
               kind: category.kind,
               showInDiary: category.showInDiary,
+              outlookPreset: category.outlookPreset,
+              outlookGraphId: category.outlookGraphId,
             }
-          : emptyForm(),
+          : emptyForm(outlookMode),
       )
     }
-  }, [open, category])
+  }, [open, category, outlookMode])
 
   if (!open) return null
 
@@ -42,18 +58,32 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
     e.preventDefault()
     const name = form.name.trim()
     if (!name) return
+    const preset = outlookMode
+      ? (form.outlookPreset ?? weekflowCategoryToOutlookPreset({ colour: form.colour }))
+      : undefined
     onSave({
       id: category?.id ?? '',
       name,
-      colour: form.colour,
-      kind: form.kind,
+      colour: outlookMode && preset ? OUTLOOK_PRESET_HEX[preset as OutlookCategoryPreset] : form.colour,
+      kind: outlookMode ? 'event' : form.kind,
       isDefault: category?.isDefault,
-      showInDiary:
-        form.kind === 'event'
+      showInDiary: outlookMode
+        ? undefined
+        : form.kind === 'event'
           ? undefined
           : form.showInDiary ?? defaultShowInDiaryForKind(form.kind),
+      outlookPreset: preset,
+      outlookGraphId: category?.outlookGraphId,
     })
     onClose()
+  }
+
+  const selectOutlookPreset = (preset: OutlookCategoryPreset) => {
+    setForm({
+      ...form,
+      colour: OUTLOOK_PRESET_HEX[preset],
+      outlookPreset: preset,
+    })
   }
 
   return (
@@ -80,71 +110,99 @@ export function CategoryFormModal({ open, category, onSave, onClose }: CategoryF
           </button>
         </div>
 
+        {outlookMode && (
+          <p className="mb-4 text-caption text-wf-text-tertiary">
+            Synced with Outlook — same list as the Categorize menu. Renaming creates a new Outlook
+            category and removes the old one.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field label="Name">
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Work, Health, Errands"
+              placeholder="e.g. Work, Job To Do, Birthday"
               className="w-full rounded-xl border border-wf-border bg-wf-bg px-4 py-3 text-[16px] outline-none focus:border-wf-accent focus:ring-2 focus:ring-wf-accent/20"
               autoFocus
             />
           </Field>
 
-          <Field label="Kind">
-            <select
-              value={form.kind}
-              onChange={(e) => {
-                const kind = e.target.value as CategoryKind
-                setForm({
-                  ...form,
-                  kind,
-                  showInDiary:
-                    kind === 'event' ? undefined : defaultShowInDiaryForKind(kind),
-                })
-              }}
-              className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
-            >
-              {(Object.keys(CATEGORY_KIND_LABELS) as CategoryKind[]).map((k) => (
-                <option key={k} value={k}>
-                  {CATEGORY_KIND_LABELS[k]}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {!outlookMode && (
+            <Field label="Kind">
+              <select
+                value={form.kind}
+                onChange={(e) => {
+                  const kind = e.target.value as CategoryKind
+                  setForm({
+                    ...form,
+                    kind,
+                    showInDiary:
+                      kind === 'event' ? undefined : defaultShowInDiaryForKind(kind),
+                  })
+                }}
+                className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+              >
+                {(Object.keys(CATEGORY_KIND_LABELS) as CategoryKind[]).map((k) => (
+                  <option key={k} value={k}>
+                    {CATEGORY_KIND_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <Field label="Colour">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {COLOUR_PRESETS.map((colour) => (
-                <button
-                  key={colour}
-                  type="button"
-                  onClick={() => setForm({ ...form, colour })}
-                  className={`h-9 w-9 rounded-full transition-transform active:scale-95 ${
-                    form.colour === colour ? 'ring-2 ring-wf-accent ring-offset-2' : ''
-                  }`}
-                  style={{ backgroundColor: colour }}
-                  aria-label={`Colour ${colour}`}
-                />
-              ))}
-            </div>
-            <div className="flex items-center gap-3">
-              <span
-                className="h-10 w-10 shrink-0 rounded-xl border border-wf-border"
-                style={{ backgroundColor: form.colour }}
-              />
-              <input
-                type="text"
-                value={form.colour}
-                onChange={(e) => setForm({ ...form, colour: e.target.value })}
-                placeholder="#2D6A6A"
-                className="min-w-0 flex-1 rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 font-mono text-body outline-none focus:border-wf-accent"
-              />
-            </div>
+            {outlookMode ? (
+              <div className="flex flex-wrap gap-2">
+                {OUTLOOK_PRESET_OPTIONS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => selectOutlookPreset(preset)}
+                    className={`h-9 w-9 rounded-full transition-transform active:scale-95 ${
+                      form.outlookPreset === preset ? 'ring-2 ring-wf-accent ring-offset-2' : ''
+                    }`}
+                    style={{ backgroundColor: OUTLOOK_PRESET_HEX[preset] }}
+                    aria-label={preset}
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {COLOUR_PRESETS.map((colour) => (
+                    <button
+                      key={colour}
+                      type="button"
+                      onClick={() => setForm({ ...form, colour })}
+                      className={`h-9 w-9 rounded-full transition-transform active:scale-95 ${
+                        form.colour === colour ? 'ring-2 ring-wf-accent ring-offset-2' : ''
+                      }`}
+                      style={{ backgroundColor: colour }}
+                      aria-label={`Colour ${colour}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="h-10 w-10 shrink-0 rounded-xl border border-wf-border"
+                    style={{ backgroundColor: form.colour }}
+                  />
+                  <input
+                    type="text"
+                    value={form.colour}
+                    onChange={(e) => setForm({ ...form, colour: e.target.value })}
+                    placeholder="#2D6A6A"
+                    className="min-w-0 flex-1 rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 font-mono text-body outline-none focus:border-wf-accent"
+                  />
+                </div>
+              </>
+            )}
           </Field>
 
-          {(form.kind === 'task' || form.kind === 'reminder') && (
+          {!outlookMode && (form.kind === 'task' || form.kind === 'reminder') && (
             <label className="flex items-start gap-3 rounded-xl bg-wf-bg px-4 py-3">
               <input
                 type="checkbox"

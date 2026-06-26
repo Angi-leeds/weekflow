@@ -64,6 +64,10 @@ import {
   deleteMicrosoftContact,
   fetchAllMicrosoftMail,
   fetchAllMicrosoftTodoListsAndTasks,
+  fetchAllOutlookMasterCategories,
+  createOutlookMasterCategory,
+  updateOutlookMasterCategory,
+  deleteOutlookMasterCategory,
   fetchMicrosoftMail,
   fetchMicrosoftNotes,
   fetchMicrosoftStatus,
@@ -150,7 +154,7 @@ import type { MicrosoftIntegrationStatus } from '../shared/microsoftGraph'
 import type { GoogleIntegrationStatus } from '../shared/googleApi'
 import type { AppleIntegrationStatus } from '../shared/appleApi'
 import type { GoogleCalendarDto } from '../shared/googleApi'
-import type { GraphCalendarDto, GraphTodoListDto } from '../shared/microsoftGraph'
+import type { GraphCalendarDto, GraphTodoListDto, OutlookCategoryDto } from '../shared/microsoftGraph'
 import { getItemLinkType } from './lib/itemLinkHelpers'
 import {
   DEFAULT_CATEGORIES,
@@ -159,6 +163,12 @@ import {
   migrateCategories,
   saveStoredCategories,
 } from './categories'
+import {
+  isOutlookCategoryId,
+  outlookCategoriesToWeekflowCategories,
+  outlookGraphIdFromCategoryId,
+  weekflowCategoryToOutlookPreset,
+} from './lib/outlookCategories'
 import { BottomNav } from './components/BottomNav'
 import { CalendarNav } from './components/CalendarNav'
 import type { PrimaryCalendarTab } from './components/ui/ViewsMenu'
@@ -188,9 +198,11 @@ import { KioskPinGate } from './components/KioskPinGate'
 export default function App() {
   const { user, config, logout, setUser } = useAuth()
   const [section, setSection] = useState<AppSection>('calendar')
-  const [categories, setCategories] = useState<Category[]>(() =>
+  const [localCategories, setLocalCategories] = useState<Category[]>(() =>
     migrateCategories(loadStoredCategories() ?? DEFAULT_CATEGORIES),
   )
+  const [outlookMasterCategories, setOutlookMasterCategories] = useState<OutlookCategoryDto[]>([])
+  const [outlookCategoriesLoaded, setOutlookCategoriesLoaded] = useState(false)
   const [items, setItems] = useState<CalendarItem[]>(() => loadStoredItems() ?? defaultItems())
   const [emails, setEmails] = useState(initialEmails)
   const [contacts, setContacts] = useState<Contact[]>(
@@ -281,6 +293,27 @@ export default function App() {
   const usingRealGoogle = useRealGoogleData(googleStatus, googleLoading)
   const usingRealApple = useRealAppleData(appleStatus, appleLoading)
   const usingRealIntegrations = usingRealMicrosoft || usingRealGoogle || usingRealApple
+
+  const categories = useMemo(() => {
+    if (usingRealMicrosoft && outlookCategoriesLoaded) {
+      return outlookCategoriesToWeekflowCategories(outlookMasterCategories)
+    }
+    return localCategories
+  }, [usingRealMicrosoft, outlookCategoriesLoaded, outlookMasterCategories, localCategories])
+
+  const defaultMicrosoftAccountId = microsoftStatus?.accounts[0]?.id
+
+  const reloadOutlookCategories = useCallback(async () => {
+    const accounts = microsoftStatus?.accounts ?? []
+    if (accounts.length === 0) {
+      setOutlookMasterCategories([])
+      setOutlookCategoriesLoaded(false)
+      return
+    }
+    const list = await fetchAllOutlookMasterCategories(accounts)
+    setOutlookMasterCategories(list)
+    setOutlookCategoriesLoaded(true)
+  }, [microsoftStatus?.accounts])
   const emailAccounts = useMemo(
     () => resolveEmailAccounts(microsoftStatus, googleStatus, appleStatus),
     [microsoftStatus, googleStatus, appleStatus],
@@ -309,8 +342,12 @@ export default function App() {
         setGraphContacts([])
         setGraphCalendars([])
         setGraphTodoLists([])
+        setOutlookMasterCategories([])
+        setOutlookCategoriesLoaded(false)
         return
       }
+
+      void reloadOutlookCategories()
 
       console.info('[MyAxis] Loading Microsoft calendar and tasks…')
 
@@ -408,7 +445,7 @@ export default function App() {
     } finally {
       setMicrosoftLoading(false)
     }
-  }, [integrationAccountDefaults.sharedMailboxEmail])
+  }, [integrationAccountDefaults.sharedMailboxEmail, reloadOutlookCategories])
 
   const refreshMicrosoftNotes = useCallback(async () => {
     const accounts = microsoftStatus?.accounts ?? []
@@ -666,8 +703,8 @@ export default function App() {
   }, [notes])
 
   useEffect(() => {
-    saveStoredCategories(categories)
-  }, [categories])
+    saveStoredCategories(localCategories)
+  }, [localCategories])
 
   useEffect(() => {
     saveCalendarFilter(calendarFilter)
@@ -1212,53 +1249,134 @@ export default function App() {
     ])
   }, [])
 
-  const handleSaveCategory = useCallback((incoming: Category) => {
-    const savedId = incoming.id
+  const handleSaveCategory = useCallback(
+    async (incoming: Category) => {
+      if (usingRealMicrosoft && defaultMicrosoftAccountId) {
+        const preset = weekflowCategoryToOutlookPreset(incoming)
+        const graphId =
+          incoming.outlookGraphId ?? outlookGraphIdFromCategoryId(incoming.id) ?? undefined
+        const existing = graphId
+          ? outlookMasterCategories.find((entry) => entry.id === graphId)
+          : undefined
+        const trimmedName = incoming.name.trim()
+        if (!trimmedName) return
 
-    setCategories((prev) => {
-      if (incoming.id) {
-        const idx = prev.findIndex((c) => c.id === incoming.id)
-        if (idx >= 0) {
-          const next = [...prev]
-          next[idx] = { ...incoming, isDefault: prev[idx].isDefault }
-          return next
+        try {
+          if (existing) {
+            if (existing.displayName !== trimmedName) {
+              const confirmed = window.confirm(
+                `Rename "${existing.displayName}" to "${trimmedName}"?\n\nOutlook cannot rename categories in place — weekflow will create the new category and remove the old one. Events still tagged with the old name until you recategorize them in Outlook or weekflow.`,
+              )
+              if (!confirmed) return
+              await createOutlookMasterCategory(defaultMicrosoftAccountId, {
+                displayName: trimmedName,
+                color: preset,
+              })
+              await deleteOutlookMasterCategory(defaultMicrosoftAccountId, existing.id)
+            } else {
+              await updateOutlookMasterCategory(defaultMicrosoftAccountId, existing.id, preset)
+            }
+          } else {
+            await createOutlookMasterCategory(defaultMicrosoftAccountId, {
+              displayName: trimmedName,
+              color: preset,
+            })
+          }
+          await reloadOutlookCategories()
+          void refreshMicrosoft()
+        } catch (error) {
+          console.error(error)
+          setToastMessage(
+            error instanceof Error ? error.message : 'Failed to save Outlook category',
+          )
         }
+        return
       }
-      const id = generateCategoryId(incoming.name, prev)
-      return [...prev, { ...incoming, id }]
-    })
 
-    if (savedId) {
+      const savedId = incoming.id
+      setLocalCategories((prev) => {
+        if (incoming.id) {
+          const idx = prev.findIndex((c) => c.id === incoming.id)
+          if (idx >= 0) {
+            const next = [...prev]
+            next[idx] = { ...incoming, isDefault: prev[idx].isDefault }
+            return next
+          }
+        }
+        const id = generateCategoryId(incoming.name, prev)
+        return [...prev, { ...incoming, id }]
+      })
+
+      if (savedId) {
+        setItems((prev) =>
+          prev.map((item) =>
+            item.categoryId === savedId ? { ...item, colour: incoming.colour } : item,
+          ),
+        )
+      }
+    },
+    [
+      usingRealMicrosoft,
+      defaultMicrosoftAccountId,
+      outlookMasterCategories,
+      reloadOutlookCategories,
+      refreshMicrosoft,
+    ],
+  )
+
+  const handleDeleteCategory = useCallback(
+    async (id: string) => {
+      if (usingRealMicrosoft && defaultMicrosoftAccountId && isOutlookCategoryId(id)) {
+        const graphId = outlookGraphIdFromCategoryId(id)
+        if (!graphId) return
+        const name = outlookMasterCategories.find((entry) => entry.id === graphId)?.displayName
+        const msg = name
+          ? `Delete "${name}" from Outlook?\n\nEvents already tagged with this category will keep the label until you change them in Outlook.`
+          : 'Delete this Outlook category?'
+        if (!window.confirm(msg)) return
+        try {
+          await deleteOutlookMasterCategory(defaultMicrosoftAccountId, graphId)
+          await reloadOutlookCategories()
+          void refreshMicrosoft()
+        } catch (error) {
+          console.error(error)
+          setToastMessage(
+            error instanceof Error ? error.message : 'Failed to delete Outlook category',
+          )
+        }
+        return
+      }
+
+      const fallbackId = localCategories.find((c) => c.id === 'work')?.id ?? localCategories[0]?.id ?? id
+      const fallbackColour =
+        localCategories.find((c) => c.id === fallbackId)?.colour ?? '#8E8E93'
+
+      setLocalCategories((prev) => prev.filter((c) => c.id !== id))
+
       setItems((prev) =>
         prev.map((item) =>
-          item.categoryId === savedId ? { ...item, colour: incoming.colour } : item,
+          item.categoryId === id
+            ? { ...item, categoryId: fallbackId, colour: fallbackColour }
+            : item,
         ),
       )
-    }
-  }, [])
 
-  const handleDeleteCategory = useCallback((id: string) => {
-    const fallbackId = categories.find((c) => c.id === 'work')?.id ?? categories[0]?.id ?? id
-    const fallbackColour =
-      categories.find((c) => c.id === fallbackId)?.colour ?? '#8E8E93'
-
-    setCategories((prev) => prev.filter((c) => c.id !== id))
-
-    setItems((prev) =>
-      prev.map((item) =>
-        item.categoryId === id
-          ? { ...item, categoryId: fallbackId, colour: fallbackColour }
-          : item,
-      ),
-    )
-
-    setListOptions((opts) => {
-      if (!opts.categoryFilter) return opts
-      const next = opts.categoryFilter.filter((cid) => cid !== id)
-      if (next.length === 0) return { ...opts, categoryFilter: null }
-      return { ...opts, categoryFilter: next }
-    })
-  }, [categories])
+      setListOptions((opts) => {
+        if (!opts.categoryFilter) return opts
+        const next = opts.categoryFilter.filter((cid) => cid !== id)
+        if (next.length === 0) return { ...opts, categoryFilter: null }
+        return { ...opts, categoryFilter: next }
+      })
+    },
+    [
+      usingRealMicrosoft,
+      defaultMicrosoftAccountId,
+      outlookMasterCategories,
+      localCategories,
+      reloadOutlookCategories,
+      refreshMicrosoft,
+    ],
+  )
 
   const handleSaveItem = useCallback(
     async (item: CalendarItem, options?: SaveItemOptions) => {
@@ -1308,7 +1426,24 @@ export default function App() {
         }
       }
 
-      upsertLocal(normalized)
+      const categoryMatch = categories.find((entry) => entry.id === normalized.categoryId)
+      const isTaskLike =
+        categoryMatch?.kind === 'task' ||
+        categoryMatch?.kind === 'reminder' ||
+        normalized.categoryId === 'task'
+      const forSync: CalendarItem = {
+        ...normalized,
+        outlookCategories:
+          useGoogle || !usingRealMicrosoft || isTaskLike
+            ? normalized.outlookCategories
+            : normalized.outlookCategories !== undefined
+              ? normalized.outlookCategories
+              : categoryMatch?.name
+                ? [categoryMatch.name]
+                : [],
+      }
+
+      upsertLocal(forSync)
 
       if (options?.createLinkedTask) {
         const taskCategory =
@@ -1396,7 +1531,7 @@ export default function App() {
       const defaultTodoListId = integrationAccountDefaults.tasks?.defaultTodoListId
 
       try {
-        const result = await syncItemToProvider(normalized, categories, {
+        const result = await syncItemToProvider(forSync, categories, {
           connectedAccountId,
           defaultCalendarId,
           defaultTodoListId,
@@ -1411,7 +1546,7 @@ export default function App() {
         })
 
         const synced: CalendarItem = {
-          ...normalized,
+          ...forSync,
           externalId: result.externalId,
           provider: useGoogle ? 'google' : 'microsoft',
           connectedAccountId,

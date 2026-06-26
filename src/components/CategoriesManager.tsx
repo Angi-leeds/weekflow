@@ -7,8 +7,9 @@ import { CategoryFormModal } from './CategoryFormModal'
 interface CategoriesManagerProps {
   categories: Category[]
   itemCounts: Record<string, number>
-  onSave: (category: Category) => void
-  onDelete: (id: string) => void
+  onSave: (category: Category) => void | Promise<void>
+  onDelete: (id: string) => void | Promise<void>
+  outlookSynced?: boolean
 }
 
 export function CategoriesManager({
@@ -16,6 +17,7 @@ export function CategoriesManager({
   itemCounts,
   onSave,
   onDelete,
+  outlookSynced = false,
 }: CategoriesManagerProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Category | null>(null)
@@ -57,7 +59,9 @@ export function CategoriesManager({
             <div className="min-w-0 flex-1">
               <p className="truncate text-body font-medium text-wf-text">{cat.name}</p>
               <p className="text-caption text-wf-text-tertiary">
-                {CATEGORY_KIND_LABELS[cat.kind]}
+                {outlookSynced
+                  ? 'Synced with Outlook'
+                  : CATEGORY_KIND_LABELS[cat.kind]}
                 {(itemCounts[cat.id] ?? 0) > 0 && ` · ${itemCounts[cat.id]} items`}
               </p>
             </div>
@@ -96,6 +100,7 @@ export function CategoriesManager({
         category={editing}
         onSave={onSave}
         onClose={() => setModalOpen(false)}
+        outlookMode={outlookSynced}
       />
     </>
   )

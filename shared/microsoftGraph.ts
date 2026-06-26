@@ -100,6 +100,12 @@ export interface GraphTodoListDto {
   isDefault?: boolean;
 }
 
+export interface OutlookCategoryDto {
+  id: string;
+  displayName: string;
+  color?: string;
+}
+
 export interface GraphDriveItemDto {
   id: string;
   name: string;
