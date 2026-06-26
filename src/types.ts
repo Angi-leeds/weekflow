@@ -315,6 +315,7 @@ export interface EmailAttachment {
   contentType?: string
   size?: number
   isInline?: boolean
+  contentId?: string
 }
 
 export type EmailInboxMode = 'merged' | 'account' | 'folder'
@@ -332,6 +333,7 @@ export interface EmailMessage {
   subject: string
   preview: string
   body: string
+  bodyContentType?: 'html' | 'text'
   date: string
   unread: boolean
   starred: boolean
@@ -341,6 +343,7 @@ export interface EmailMessage {
   externalId?: string
   provider?: 'microsoft' | 'google' | 'apple' | 'mock'
   connectedAccountId?: string
+  hasAttachments?: boolean
   attachmentCount?: number
 }
 

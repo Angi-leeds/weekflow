@@ -641,6 +641,9 @@ function mapGraphMessageToDto(
   folder: Pick<GraphMailFolderDto, "id" | "graphFolderId">,
 ): GraphEmailDto {
   const accountKey = accountKeyFromRecord(account);
+  const bodyContentType =
+    message.body?.contentType?.toLowerCase() === "html" ? ("html" as const) : ("text" as const);
+  const rawBody = message.body?.content ?? message.bodyPreview ?? "";
   return {
     id: `graph-${message.id}`,
     accountId: accountKey,
@@ -650,10 +653,11 @@ function mapGraphMessageToDto(
     fromEmail: message.from?.emailAddress?.address ?? "",
     subject: message.subject ?? "(No subject)",
     preview: message.bodyPreview ?? "",
-    body: normalizeEmailBody(
-      message.body?.content ?? message.bodyPreview ?? "",
-      message.body?.contentType,
-    ),
+    body:
+      bodyContentType === "html"
+        ? rawBody
+        : normalizeEmailBody(rawBody, message.body?.contentType),
+    bodyContentType,
     date: message.receivedDateTime ?? new Date().toISOString(),
     unread: !message.isRead,
     starred: false,
@@ -662,7 +666,7 @@ function mapGraphMessageToDto(
     labels: ["Outlook"],
     externalId: message.id,
     provider: "microsoft",
-    attachmentCount: message.hasAttachments ? 1 : 0,
+    hasAttachments: Boolean(message.hasAttachments),
   };
 }
 
@@ -823,7 +827,7 @@ export async function fetchMicrosoftMessageAttachments(
 ): Promise<GraphMailAttachmentDto[]> {
   const response = await graphFetch(
     accountId,
-    `/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`,
+    `/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline,contentId`,
   );
   const payload = (await response.json()) as {
     value?: Array<{
@@ -832,6 +836,7 @@ export async function fetchMicrosoftMessageAttachments(
       contentType?: string;
       size?: number;
       isInline?: boolean;
+      contentId?: string;
     }>;
   };
 
@@ -841,6 +846,7 @@ export async function fetchMicrosoftMessageAttachments(
     contentType: entry.contentType,
     size: entry.size,
     isInline: entry.isInline,
+    contentId: entry.contentId,
   }));
 }
 

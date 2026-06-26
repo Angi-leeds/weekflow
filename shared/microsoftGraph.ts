@@ -69,6 +69,7 @@ export interface GraphMailAttachmentDto {
   contentType?: string;
   size?: number;
   isInline?: boolean;
+  contentId?: string;
 }
 
 export interface GraphCalendarDto {

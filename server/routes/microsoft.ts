@@ -333,8 +333,15 @@ export function registerMicrosoftRoutes(app: Express): void {
 
     try {
       const file = await downloadMicrosoftMessageAttachment(accountId, externalId, attachmentId);
+      const inline =
+        req.query.inline === "true" || file.contentType.startsWith("image/");
       res.setHeader("Content-Type", file.contentType);
-      res.setHeader("Content-Disposition", `attachment; filename="${file.name.replace(/"/g, "")}"`);
+      res.setHeader(
+        "Content-Disposition",
+        inline
+          ? `inline; filename="${file.name.replace(/"/g, "")}"`
+          : `attachment; filename="${file.name.replace(/"/g, "")}"`,
+      );
       res.send(file.buffer);
     } catch (error) {
       console.error("GET attachment download failed:", error);

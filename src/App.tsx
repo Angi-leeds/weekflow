@@ -1632,26 +1632,122 @@ export default function App() {
   const handleDeleteEmail = useCallback(
     async (email: EmailMessage) => {
       const connectedAccountId = resolveEmailConnectedAccountId(email)
-      if (!email.externalId || !connectedAccountId) return
-      const useGoogle = isGoogleEmail(email)
-      const confirmMessage = useGoogle
-        ? 'Move this message to Gmail Trash?'
-        : 'Move this message to Deleted Items in Outlook?'
+      const isRemote = Boolean(email.externalId && connectedAccountId)
+
+      const confirmMessage = isRemote
+        ? isGoogleEmail(email)
+          ? 'Move this message to Gmail Trash?'
+          : 'Move this message to Deleted Items in Outlook?'
+        : 'Remove this message from your inbox?'
       if (!window.confirm(confirmMessage)) return
 
       try {
-        if (useGoogle) {
-          await deleteGoogleMail(connectedAccountId, email.externalId)
+        if (isRemote) {
+          if (isGoogleEmail(email)) {
+            await deleteGoogleMail(connectedAccountId!, email.externalId!)
+          } else {
+            await deleteMicrosoftMail(connectedAccountId!, email.externalId!)
+          }
+          setGraphEmails((prev) => prev.filter((entry) => entry.id !== email.id))
         } else {
-          await deleteMicrosoftMail(connectedAccountId, email.externalId)
+          setEmails((prev) => prev.filter((entry) => entry.id !== email.id))
         }
-        setGraphEmails((prev) => prev.filter((entry) => entry.id !== email.id))
         setEmailSelectedId((current) => (current === email.id ? null : current))
         setToastMessage('Message deleted')
       } catch (error) {
         console.error(error)
         setToastMessage(error instanceof Error ? error.message : 'Failed to delete message')
       }
+    },
+    [resolveEmailConnectedAccountId],
+  )
+
+  const handleBulkDeleteEmails = useCallback(
+    async (targets: EmailMessage[]) => {
+      if (targets.length === 0) return
+      if (
+        !window.confirm(
+          `Delete ${targets.length} message${targets.length === 1 ? '' : 's'}?`,
+        )
+      ) {
+        return
+      }
+
+      const remote = targets.filter(
+        (email) => email.externalId && resolveEmailConnectedAccountId(email),
+      )
+      const local = targets.filter((email) => !email.externalId)
+
+      const results = await Promise.allSettled(
+        remote.map(async (email) => {
+          const connectedAccountId = resolveEmailConnectedAccountId(email)!
+          if (isGoogleEmail(email)) {
+            await deleteGoogleMail(connectedAccountId, email.externalId!)
+          } else {
+            await deleteMicrosoftMail(connectedAccountId, email.externalId!)
+          }
+        }),
+      )
+
+      const removedRemoteIds = new Set(
+        remote.filter((_, index) => results[index].status === 'fulfilled').map((e) => e.id),
+      )
+      const removedLocalIds = new Set(local.map((e) => e.id))
+      const removedIds = new Set([...removedRemoteIds, ...removedLocalIds])
+
+      if (removedIds.size === 0) {
+        setToastMessage('Failed to delete messages')
+        return
+      }
+
+      setGraphEmails((prev) => prev.filter((entry) => !removedIds.has(entry.id)))
+      setEmails((prev) => prev.filter((entry) => !removedIds.has(entry.id)))
+      setEmailSelectedId((current) => (current && removedIds.has(current) ? null : current))
+      setToastMessage(
+        removedIds.size === targets.length
+          ? `Deleted ${removedIds.size} message${removedIds.size === 1 ? '' : 's'}`
+          : `Deleted ${removedIds.size} of ${targets.length} messages`,
+      )
+    },
+    [resolveEmailConnectedAccountId],
+  )
+
+  const handleBulkMarkEmailsRead = useCallback(
+    async (targets: EmailMessage[], isRead: boolean) => {
+      await Promise.all(targets.map((email) => handleToggleEmailRead(email.id, isRead)))
+      setToastMessage(
+        isRead
+          ? `Marked ${targets.length} as read`
+          : `Marked ${targets.length} as unread`,
+      )
+    },
+    [handleToggleEmailRead],
+  )
+
+  const handleBulkMoveEmails = useCallback(
+    async (targets: EmailMessage[], destinationFolderGraphId: string) => {
+      const actionable = targets.filter(
+        (email) => email.externalId && resolveEmailConnectedAccountId(email),
+      )
+      if (actionable.length === 0) return
+
+      const results = await Promise.allSettled(
+        actionable.map((email) =>
+          moveMicrosoftMail(resolveEmailConnectedAccountId(email)!, email.externalId!, destinationFolderGraphId),
+        ),
+      )
+
+      const movedIds = new Set(
+        actionable.filter((_, index) => results[index].status === 'fulfilled').map((e) => e.id),
+      )
+      if (movedIds.size === 0) {
+        setToastMessage('Failed to move messages')
+        return
+      }
+
+      setGraphEmails((prev) => prev.filter((entry) => !movedIds.has(entry.id)))
+      setEmailSelectedId((current) => (current && movedIds.has(current) ? null : current))
+      setToastMessage(`Moved ${movedIds.size} message${movedIds.size === 1 ? '' : 's'}`)
     },
     [resolveEmailConnectedAccountId],
   )
@@ -1985,7 +2081,8 @@ export default function App() {
         )}
 
         {section === 'email' && (
-          <EmailView
+          <div className="absolute inset-0 flex min-h-0 flex-col overflow-hidden">
+            <EmailView
             emails={displayEmails}
             emailAccounts={emailAccounts}
             emailFolders={emailFolders}
@@ -2001,6 +2098,7 @@ export default function App() {
               )
             }
             onToggleRead={(id) => void handleToggleEmailRead(id, true)}
+            onSetReadState={(id, isRead) => void handleToggleEmailRead(id, isRead)}
             onCreateTask={handleCreateTaskFromEmail}
             onLinkExisting={openLinkPickerForEmail}
             onNavigateLink={handleNavigateLink}
@@ -2018,7 +2116,11 @@ export default function App() {
             onMoveMail={handleMoveEmail}
             onServerSearch={usingRealMicrosoft ? handleSearchMicrosoftMail : undefined}
             onDelete={handleDeleteEmail}
+            onBulkDelete={handleBulkDeleteEmails}
+            onBulkMarkRead={handleBulkMarkEmailsRead}
+            onBulkMove={handleBulkMoveEmails}
           />
+          </div>
         )}
 
         {section === 'contacts' && (

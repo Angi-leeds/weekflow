@@ -1,21 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
-  CalendarPlus,
+  Archive,
+  CheckSquare,
   ChevronLeft,
   ClipboardList,
-  Clock,
   Flag,
+  FolderInput,
   Link2,
+  Mail,
+  MailOpen,
   PenLine,
   Reply,
+  ReplyAll,
   Search,
   Share2,
+  Square,
   Star,
   Trash2,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { EntityType, ItemLink } from '../../shared/links'
-import { normalizeEmailBody } from '../../shared/emailBody'
+import {
+  enrichEmailHtmlWithInlineAttachments,
+  isHtmlEmailBody,
+  normalizeEmailBody,
+} from '../../shared/emailBody'
 import type { BoardDisplay, ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { CalendarItem, EmailMessage, EmailAttachment } from '../types'
 import { useIsWide } from '../hooks/useMediaQuery'
@@ -26,7 +36,8 @@ import type { EmailAccount, EmailFolder } from '../types'
 import { getShareForEntity } from '../lib/itemShares'
 import { icloudMailUrl, openExternalUrl } from '../lib/appleLinks'
 import { fetchMicrosoftMessageAttachments, microsoftAttachmentDownloadUrl } from '../lib/microsoft'
-import { Badge } from './ui/Badge'
+import { EmailHtmlBody } from './EmailHtmlBody'
+import { IconButton } from './ui/IconButton'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
 
@@ -50,6 +61,7 @@ interface EmailViewProps {
   onOpenActionFlow: (email: EmailMessage) => void
   onToggleStar: (id: string) => void
   onToggleRead: (id: string) => void
+  onSetReadState?: (id: string, isRead: boolean) => void
   onCreateTask: (email: EmailMessage) => void
   onLinkExisting: (email: EmailMessage) => void
   onNavigateLink: (type: EntityType, id: string) => void
@@ -64,6 +76,9 @@ interface EmailViewProps {
   onMoveMail?: (email: EmailMessage, destinationFolderGraphId: string) => void
   onServerSearch?: (query: string, accountId: string) => void | Promise<void>
   onDelete?: (email: EmailMessage) => void
+  onBulkDelete?: (emails: EmailMessage[]) => void | Promise<void>
+  onBulkMarkRead?: (emails: EmailMessage[], isRead: boolean) => void | Promise<void>
+  onBulkMove?: (emails: EmailMessage[], destinationFolderGraphId: string) => void | Promise<void>
 }
 
 export function EmailView({
@@ -81,6 +96,7 @@ export function EmailView({
   onOpenActionFlow,
   onToggleStar,
   onToggleRead,
+  onSetReadState,
   onCreateTask,
   onLinkExisting,
   onNavigateLink,
@@ -95,9 +111,14 @@ export function EmailView({
   onMoveMail,
   onServerSearch,
   onDelete,
+  onBulkDelete,
+  onBulkMarkRead,
+  onBulkMove,
 }: EmailViewProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(emails[0]?.id ?? null)
   const selectedId = controlledSelectedId ?? internalSelectedId
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
 
   const setSelectedId = (id: string | null) => {
     if (onSelectedIdChange) onSelectedIdChange(id)
@@ -175,6 +196,45 @@ export function EmailView({
 
   const selected = emails.find((e) => e.id === selectedId) ?? filtered[0] ?? null
   const unreadCount = emails.filter((e) => e.unread).length
+  const selectedEmails = useMemo(
+    () => filtered.filter((email) => selectedIds.has(email.id)),
+    [filtered, selectedIds],
+  )
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((email) => selectedIds.has(email.id))
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }, [])
+
+  const toggleEmailSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const selectAllFiltered = useCallback(() => {
+    setSelectedIds(new Set(filtered.map((email) => email.id)))
+  }, [filtered])
+
+  const setReadState = onSetReadState ?? ((id: string) => onToggleRead(id))
+
+  const bulkMoveFolders = useMemo(() => {
+    if (selectedEmails.length === 0) return []
+    const accountId = selectedEmails[0]?.accountId
+    if (!selectedEmails.every((email) => email.accountId === accountId)) return []
+    return emailFolders.filter(
+      (folder) =>
+        folder.accountId === accountId &&
+        folder.graphFolderId &&
+        !selectedEmails.some((email) => email.folderId === folder.id),
+    )
+  }, [emailFolders, selectedEmails])
+
   const selectedShare = selected
     ? getShareForEntity(itemShares, 'email', selected.id)
     : undefined
@@ -190,16 +250,65 @@ export function EmailView({
               {unreadCount} unread
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onCompose}
-            disabled={!usingRealIntegrations || !onCompose}
-            className="flex h-10 items-center gap-2 rounded-full bg-wf-accent px-4 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-95 disabled:opacity-50"
-          >
-            <PenLine size={16} strokeWidth={2} />
-            Compose
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectionMode) exitSelectionMode()
+                else setSelectionMode(true)
+              }}
+              className={`flex h-10 items-center gap-2 rounded-full px-4 text-subhead font-semibold transition-transform active:scale-95 ${
+                selectionMode
+                  ? 'bg-wf-surface text-wf-text shadow-[var(--shadow-card)]'
+                  : 'bg-wf-surface text-wf-text-secondary shadow-[var(--shadow-card)]'
+              }`}
+            >
+              {selectionMode ? <X size={16} strokeWidth={2} /> : <CheckSquare size={16} strokeWidth={2} />}
+              {selectionMode ? 'Cancel' : 'Select'}
+            </button>
+            <button
+              type="button"
+              onClick={onCompose}
+              disabled={!usingRealIntegrations || !onCompose || selectionMode}
+              className="flex h-10 items-center gap-2 rounded-full bg-wf-accent px-4 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-95 disabled:opacity-50"
+            >
+              <PenLine size={16} strokeWidth={2} />
+              Compose
+            </button>
+          </div>
         </div>
+
+        {selectionMode && selectedIds.size === 0 && (
+          <p className="mb-3 rounded-xl bg-wf-accent-soft px-3 py-2 text-caption font-medium text-wf-accent">
+            Tap messages to select them, or use Select all after choosing your first message.
+          </p>
+        )}
+        {selectionMode && selectedIds.size > 0 && (
+          <EmailBulkActionBar
+            count={selectedIds.size}
+            allSelected={allFilteredSelected}
+            moveFolders={bulkMoveFolders}
+            usingRealIntegrations={usingRealIntegrations}
+            onSelectAll={selectAllFiltered}
+            onClearSelection={() => setSelectedIds(new Set())}
+            onMarkRead={() => {
+              void onBulkMarkRead?.(selectedEmails, true)
+              exitSelectionMode()
+            }}
+            onMarkUnread={() => {
+              void onBulkMarkRead?.(selectedEmails, false)
+              exitSelectionMode()
+            }}
+            onDelete={() => {
+              void onBulkDelete?.(selectedEmails)
+              exitSelectionMode()
+            }}
+            onMove={(folderGraphId) => {
+              void onBulkMove?.(selectedEmails, folderGraphId)
+              exitSelectionMode()
+            }}
+          />
+        )}
 
         <div className="relative mb-3">
           <Search
@@ -274,7 +383,7 @@ export function EmailView({
       <div className={`flex min-h-0 flex-1 ${isWide ? 'flex-row' : 'flex-col'}`}>
         <div
           className={`min-h-0 overflow-y-auto ${
-            isWide ? 'w-[340px] shrink-0 border-r border-wf-border' : 'flex-1'
+            isWide ? 'w-[min(100%,380px)] min-w-[280px] shrink-0 border-r border-wf-border' : 'flex-1'
           }`}
         >
           {filtered.length === 0 ? (
@@ -300,27 +409,47 @@ export function EmailView({
                 key={email.id}
                 email={email}
                 emailAccounts={emailAccounts}
+                emailFolders={emailFolders}
                 selected={selected?.id === email.id}
+                selectionMode={selectionMode}
+                checked={selectedIds.has(email.id)}
                 showAccountBadge={inboxFilter.mode === 'merged'}
+                usingRealIntegrations={usingRealIntegrations}
                 onSelect={() => {
+                  if (selectionMode) {
+                    toggleEmailSelection(email.id)
+                    return
+                  }
                   setSelectedId(email.id)
                   if (email.unread) onToggleRead(email.id)
                 }}
+                onToggleSelect={() => toggleEmailSelection(email.id)}
                 onToggleStar={() => onToggleStar(email.id)}
+                onReply={onReply}
+                onReplyAll={onReplyAll}
+                onForward={onForward}
+                onDelete={onDelete}
+                onSetReadState={setReadState}
+                onCreateTask={onCreateTask}
+                onLinkExisting={onLinkExisting}
+                onMoveMail={onMoveMail}
               />
             ))
           )}
         </div>
 
-        {(isWide || selected) && (
-          <MessagePreview
+        {(isWide || selected) && !selectionMode && (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <MessagePreview
             email={selected}
             links={links}
             items={items}
             emails={emails}
+            emailFolders={emailFolders}
             usingRealIntegrations={usingRealIntegrations}
             onClose={isWide ? undefined : () => setSelectedId(null)}
             onToggleStar={selected ? () => onToggleStar(selected.id) : undefined}
+            onSetReadState={setReadState}
             onCreateTask={onCreateTask}
             onLinkExisting={onLinkExisting}
             onNavigateLink={onNavigateLink}
@@ -334,12 +463,110 @@ export function EmailView({
             onReplyAll={onReplyAll}
             onForward={onForward}
             onMoveMail={onMoveMail}
-            emailFolders={emailFolders}
             onDelete={onDelete}
           />
+          </div>
         )}
       </div>
     </div>
+  )
+}
+
+function EmailBulkActionBar({
+  count,
+  allSelected,
+  moveFolders,
+  usingRealIntegrations,
+  onSelectAll,
+  onClearSelection,
+  onMarkRead,
+  onMarkUnread,
+  onDelete,
+  onMove,
+}: {
+  count: number
+  allSelected: boolean
+  moveFolders: EmailFolder[]
+  usingRealIntegrations: boolean
+  onSelectAll: () => void
+  onClearSelection: () => void
+  onMarkRead: () => void
+  onMarkUnread: () => void
+  onDelete: () => void
+  onMove: (folderGraphId: string) => void
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-wf-accent/20 bg-wf-accent-soft px-3 py-2">
+      <span className="text-subhead font-semibold text-wf-accent">{count} selected</span>
+      <button
+        type="button"
+        onClick={allSelected ? onClearSelection : onSelectAll}
+        className="rounded-full bg-wf-surface px-3 py-1 text-caption font-semibold text-wf-text-secondary shadow-[var(--shadow-card)]"
+      >
+        {allSelected ? 'Deselect all' : 'Select all'}
+      </button>
+      <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <BulkActionButton icon={MailOpen} label="Read" onClick={onMarkRead} />
+        <BulkActionButton icon={Mail} label="Unread" onClick={onMarkUnread} />
+        {usingRealIntegrations && moveFolders.length > 0 && (
+          <label className="inline-flex items-center gap-1 rounded-full bg-wf-surface px-2 py-1 text-caption font-semibold text-wf-text-secondary shadow-[var(--shadow-card)]">
+            <FolderInput size={12} strokeWidth={2} />
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const folder = moveFolders.find((entry) => entry.id === event.target.value)
+                if (folder?.graphFolderId) {
+                  onMove(folder.graphFolderId)
+                  event.target.value = ''
+                }
+              }}
+              className="max-w-[120px] bg-transparent text-caption font-semibold outline-none"
+            >
+              <option value="">Move…</option>
+              {moveFolders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <BulkActionButton icon={Trash2} label="Delete" onClick={onDelete} variant="danger" />
+      </div>
+    </div>
+  )
+}
+
+function BulkActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  variant = 'default',
+}: {
+  icon: LucideIcon
+  label: string
+  onClick: () => void
+  variant?: 'default' | 'danger'
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-caption font-semibold shadow-[var(--shadow-card)] transition-transform active:scale-95 ${
+        variant === 'danger'
+          ? 'bg-wf-surface text-wf-red'
+          : 'bg-wf-surface text-wf-text-secondary'
+      }`}
+    >
+      <Icon size={12} strokeWidth={2} />
+      {label}
+    </button>
+  )
+}
+
+function deletedFolderForEmail(email: EmailMessage, folders: EmailFolder[]): EmailFolder | undefined {
+  return folders.find(
+    (folder) => folder.accountId === email.accountId && folder.wellKnown === 'deleteditems',
   )
 }
 
@@ -379,21 +606,49 @@ function FilterChip({
 function EmailRow({
   email,
   emailAccounts,
+  emailFolders,
   selected,
+  selectionMode,
+  checked,
   showAccountBadge,
+  usingRealIntegrations,
   onSelect,
+  onToggleSelect,
   onToggleStar,
+  onReply,
+  onReplyAll,
+  onForward,
+  onDelete,
+  onSetReadState,
+  onCreateTask,
+  onLinkExisting,
+  onMoveMail,
 }: {
   email: EmailMessage
   emailAccounts: EmailAccount[]
+  emailFolders: EmailFolder[]
   selected: boolean
+  selectionMode: boolean
+  checked: boolean
   showAccountBadge?: boolean
+  usingRealIntegrations?: boolean
   onSelect: () => void
+  onToggleSelect: () => void
   onToggleStar: () => void
+  onReply?: (email: EmailMessage) => void
+  onReplyAll?: (email: EmailMessage) => void
+  onForward?: (email: EmailMessage) => void
+  onDelete?: (email: EmailMessage) => void
+  onSetReadState?: (id: string, isRead: boolean) => void
+  onCreateTask?: (email: EmailMessage) => void
+  onLinkExisting?: (email: EmailMessage) => void
+  onMoveMail?: (email: EmailMessage, destinationFolderGraphId: string) => void
 }) {
   const account = showAccountBadge
     ? emailAccounts.find((entry) => entry.id === email.accountId)
     : undefined
+  const canSyncRemote = usingRealIntegrations && Boolean(email.externalId)
+  const archiveFolder = deletedFolderForEmail(email, emailFolders)
 
   return (
     <div
@@ -406,61 +661,271 @@ function EmailRow({
           onSelect()
         }
       }}
-      className={`flex w-full cursor-pointer gap-3 border-b border-wf-border/50 px-4 py-3.5 text-left transition-colors ${
-        selected ? 'bg-wf-accent-soft' : 'hover:bg-black/[0.02]'
-      }`}
+      className={`group relative flex w-full min-w-0 cursor-pointer gap-2 border-b border-wf-border/50 px-3 text-left transition-colors sm:gap-3 sm:px-4 ${
+        selectionMode ? 'py-3.5' : 'pb-9 pt-3.5'
+      } ${selected || checked ? 'bg-wf-accent-soft' : 'hover:bg-black/[0.02]'}`}
     >
-      <Avatar name={email.from} />
+      {selectionMode ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleSelect()
+          }}
+          className="mt-1 shrink-0 text-wf-accent"
+          aria-label={checked ? 'Deselect message' : 'Select message'}
+        >
+          {checked ? <CheckSquare size={20} strokeWidth={2} /> : <Square size={20} strokeWidth={2} />}
+        </button>
+      ) : (
+        <Avatar name={email.from} />
+      )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className={`truncate text-body ${email.unread ? 'font-bold text-wf-text' : 'font-medium text-wf-text-secondary'}`}>
+      <div className="min-w-0 flex-1 overflow-hidden pb-0.5 pr-1">
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <span className={`min-w-0 truncate text-body ${email.unread ? 'font-bold text-wf-text' : 'font-medium text-wf-text-secondary'}`}>
             {email.from}
           </span>
           <span className="shrink-0 tabular-nums text-caption text-wf-text-tertiary">
             {formatEmailDate(email.date)}
           </span>
         </div>
-        <p className={`flex items-center gap-1 truncate text-subhead ${email.unread ? 'font-semibold text-wf-text' : 'text-wf-text'}`}>
+        <p className={`flex min-w-0 items-center gap-1 truncate text-subhead ${email.unread ? 'font-semibold text-wf-text' : 'text-wf-text'}`}>
           {email.flagged && <Flag size={12} className="shrink-0 fill-wf-orange text-wf-orange" />}
-          {email.subject}
+          <span className="truncate">{email.subject}</span>
         </p>
         <p className="truncate text-caption text-wf-text-tertiary">{email.preview}</p>
-        {(account || email.labels.length > 0) && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            {account && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-                style={{ backgroundColor: account.colour }}
-              >
-                {account.label}
-              </span>
-            )}
-            {email.labels.map((label) => (
-              <Badge key={label} label={label} />
-            ))}
-          </div>
-        )}
       </div>
 
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onToggleStar()
-        }}
-        className="mt-1 shrink-0 text-wf-text-tertiary transition-colors hover:text-wf-orange"
-        aria-label={email.starred ? 'Unstar' : 'Star'}
-      >
-        <Star
-          size={18}
-          strokeWidth={1.75}
-          className={email.starred ? 'fill-wf-orange text-wf-orange' : ''}
-        />
-      </button>
+      {!selectionMode && (
+        <>
+          <div className="pointer-events-none absolute bottom-2 left-14 right-10 z-10 flex items-center justify-between gap-2">
+            {showAccountBadge && account ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-wf-text-secondary"
+                title={account.email}
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: account.colour }}
+                  aria-hidden
+                />
+                {account.label}
+              </span>
+            ) : (
+              <span aria-hidden />
+            )}
+            <div
+              className={`pointer-events-none transition-opacity ${
+                selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+              }`}
+            >
+              <div
+                className={`pointer-events-auto flex items-center gap-0.5 rounded-lg py-1 pl-2 pr-1 shadow-[var(--shadow-card)] ${
+                  selected ? 'bg-wf-accent-soft/95' : 'bg-wf-surface/95'
+                }`}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <EmailRowQuickActions
+                  email={email}
+                  canSyncRemote={canSyncRemote}
+                  archiveFolder={archiveFolder}
+                  onReply={onReply}
+                  onForward={onForward}
+                  onDelete={onDelete}
+                  onSetReadState={onSetReadState}
+                  onMoveMail={onMoveMail}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex w-8 shrink-0 flex-col items-center gap-1 self-start pt-0.5">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggleStar()
+              }}
+              className="text-wf-text-tertiary transition-colors hover:text-wf-orange"
+              aria-label={email.starred ? 'Unstar' : 'Star'}
+            >
+              <Star
+                size={18}
+                strokeWidth={1.75}
+                className={email.starred ? 'fill-wf-orange text-wf-orange' : ''}
+              />
+            </button>
+            {email.unread && (
+              <span className="h-2 w-2 rounded-full bg-wf-accent" aria-hidden />
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
-      {email.unread && (
-        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-wf-accent" />
+function EmailRowQuickActions({
+  email,
+  canSyncRemote,
+  archiveFolder,
+  onReply,
+  onForward,
+  onDelete,
+  onSetReadState,
+  onMoveMail,
+}: {
+  email: EmailMessage
+  canSyncRemote: boolean
+  archiveFolder?: EmailFolder
+  onReply?: (email: EmailMessage) => void
+  onForward?: (email: EmailMessage) => void
+  onDelete?: (email: EmailMessage) => void
+  onSetReadState?: (id: string, isRead: boolean) => void
+  onMoveMail?: (email: EmailMessage, destinationFolderGraphId: string) => void
+}) {
+  return (
+    <>
+      {onReply && (
+        <IconButton icon={Reply} label="Reply" size="sm" variant="ghost" onClick={() => onReply(email)} />
+      )}
+      {onForward && (
+        <IconButton icon={Share2} label="Forward" size="sm" variant="ghost" onClick={() => onForward(email)} />
+      )}
+      {onDelete && (
+        <IconButton icon={Trash2} label="Delete" size="sm" variant="ghost" onClick={() => onDelete(email)} />
+      )}
+      {onSetReadState && (
+        <IconButton
+          icon={email.unread ? MailOpen : Mail}
+          label={email.unread ? 'Mark read' : 'Mark unread'}
+          size="sm"
+          variant="ghost"
+          onClick={() => onSetReadState(email.id, email.unread)}
+        />
+      )}
+      {canSyncRemote && archiveFolder?.graphFolderId && onMoveMail && (
+        <IconButton
+          icon={Archive}
+          label="Archive"
+          size="sm"
+          variant="ghost"
+          onClick={() => onMoveMail(email, archiveFolder.graphFolderId!)}
+        />
+      )}
+    </>
+  )
+}
+
+function EmailMessageToolbar({
+  email,
+  usingRealIntegrations,
+  moveFolders,
+  archiveFolder,
+  onReply,
+  onReplyAll,
+  onForward,
+  onDelete,
+  onSetReadState,
+  onCreateTask,
+  onLinkExisting,
+  onMoveMail,
+  onToggleStar,
+  compact = false,
+  className = '',
+}: {
+  email: EmailMessage
+  usingRealIntegrations: boolean
+  moveFolders: EmailFolder[]
+  archiveFolder?: EmailFolder
+  onReply?: (email: EmailMessage) => void
+  onReplyAll?: (email: EmailMessage) => void
+  onForward?: (email: EmailMessage) => void
+  onDelete?: (email: EmailMessage) => void
+  onSetReadState?: (id: string, isRead: boolean) => void
+  onCreateTask: (email: EmailMessage) => void
+  onLinkExisting: (email: EmailMessage) => void
+  onMoveMail?: (email: EmailMessage, destinationFolderGraphId: string) => void
+  onToggleStar?: () => void
+  compact?: boolean
+  className?: string
+}) {
+  const canSyncRemote = usingRealIntegrations && Boolean(email.externalId)
+
+  if (compact) {
+    return (
+      <div className={`flex flex-wrap gap-1.5 ${className}`}>
+        {onReply && (
+          <ActionChip icon={Reply} label="Reply" onClick={() => onReply(email)} />
+        )}
+        {onReplyAll && (
+          <ActionChip icon={ReplyAll} label="Reply all" onClick={() => onReplyAll(email)} />
+        )}
+        {onForward && (
+          <ActionChip icon={Share2} label="Forward" onClick={() => onForward(email)} />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {onReply && (
+          <ActionChip icon={Reply} label="Reply" onClick={() => onReply(email)} />
+        )}
+        {onReplyAll && (
+          <ActionChip icon={ReplyAll} label="Reply all" onClick={() => onReplyAll(email)} />
+        )}
+        {onForward && (
+          <ActionChip icon={Share2} label="Forward" onClick={() => onForward(email)} />
+        )}
+        {onDelete && (
+          <ActionChip icon={Trash2} label="Delete" onClick={() => onDelete(email)} />
+        )}
+        {onSetReadState && (
+          <ActionChip
+            icon={email.unread ? MailOpen : Mail}
+            label={email.unread ? 'Mark read' : 'Mark unread'}
+            onClick={() => onSetReadState(email.id, email.unread)}
+          />
+        )}
+        {canSyncRemote && archiveFolder?.graphFolderId && onMoveMail && (
+          <ActionChip
+            icon={Archive}
+            label="Archive"
+            onClick={() => onMoveMail(email, archiveFolder.graphFolderId!)}
+          />
+        )}
+        {onToggleStar && (
+          <ActionChip icon={Star} label={email.starred ? 'Unstar' : 'Star'} onClick={onToggleStar} />
+        )}
+        <ActionChip icon={ClipboardList} label="Task" onClick={() => onCreateTask(email)} />
+        <ActionChip icon={Link2} label="Link" onClick={() => onLinkExisting(email)} />
+      </div>
+      {canSyncRemote && onMoveMail && moveFolders.length > 0 && (
+        <label className="flex items-center gap-2">
+          <FolderInput size={16} className="shrink-0 text-wf-text-tertiary" strokeWidth={1.75} />
+          <select
+            defaultValue=""
+            onChange={(event) => {
+              const folder = moveFolders.find((entry) => entry.id === event.target.value)
+              if (folder?.graphFolderId) {
+                onMoveMail(email, folder.graphFolderId)
+                event.target.value = ''
+              }
+            }}
+            className="min-w-0 flex-1 rounded-xl border border-wf-border bg-wf-bg px-3 py-2 text-caption font-semibold text-wf-text-secondary"
+          >
+            <option value="">Move to folder…</option>
+            {moveFolders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.label}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
     </div>
   )
@@ -494,6 +959,7 @@ function MessagePreview({
   usingRealIntegrations = false,
   onClose,
   onToggleStar,
+  onSetReadState,
   onCreateTask,
   onLinkExisting,
   onNavigateLink,
@@ -515,6 +981,7 @@ function MessagePreview({
   usingRealIntegrations?: boolean
   onClose?: () => void
   onToggleStar?: () => void
+  onSetReadState?: (id: string, isRead: boolean) => void
   onCreateTask: (email: EmailMessage) => void
   onLinkExisting: (email: EmailMessage) => void
   onNavigateLink: (type: EntityType, id: string) => void
@@ -530,20 +997,57 @@ function MessagePreview({
   onDelete?: (email: EmailMessage) => void
 }) {
   const [attachments, setAttachments] = useState<EmailAttachment[]>([])
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false)
 
   useEffect(() => {
     if (!email?.externalId || !email.connectedAccountId || email.provider !== 'microsoft') {
       setAttachments([])
       return
     }
-    if (!email.attachmentCount) {
-      setAttachments([])
-      return
-    }
+
+    let cancelled = false
+    setAttachmentsLoading(true)
     void fetchMicrosoftMessageAttachments(email.connectedAccountId, email.externalId)
-      .then(setAttachments)
-      .catch(() => setAttachments([]))
-  }, [email?.id, email?.externalId, email?.connectedAccountId, email?.provider, email?.attachmentCount])
+      .then((items) => {
+        if (!cancelled) setAttachments(items)
+      })
+      .catch(() => {
+        if (!cancelled) setAttachments([])
+      })
+      .finally(() => {
+        if (!cancelled) setAttachmentsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [email?.id, email?.externalId, email?.connectedAccountId, email?.provider])
+
+  const fileAttachments = useMemo(
+    () => attachments.filter((attachment) => !attachment.isInline),
+    [attachments],
+  )
+
+  const htmlBody = useMemo(() => {
+    if (!email || !isHtmlEmailBody(email.body, email.bodyContentType)) return null
+    if (email.provider !== 'microsoft' || !email.externalId || !email.connectedAccountId) {
+      return email.body
+    }
+    return enrichEmailHtmlWithInlineAttachments(email.body, attachments, (attachmentId) =>
+      microsoftAttachmentDownloadUrl(
+        email.connectedAccountId!,
+        email.externalId!,
+        attachmentId,
+        { inline: true },
+      ),
+    )
+  }, [attachments, email])
+
+  const plainBody = useMemo(() => {
+    if (!email) return ''
+    if (htmlBody) return ''
+    return normalizeEmailBody(email.body, email.bodyContentType) || email.preview || ''
+  }, [email, htmlBody])
 
   const moveFolders = email
     ? emailFolders.filter(
@@ -554,6 +1058,8 @@ function MessagePreview({
       )
     : []
 
+  const archiveFolder = email ? deletedFolderForEmail(email, emailFolders) : undefined
+
   if (!email) {
     return (
       <div className="hidden flex-1 items-center justify-center text-subhead text-wf-text-tertiary md:flex">
@@ -563,10 +1069,10 @@ function MessagePreview({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-wf-surface">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-wf-surface">
       <div className="shrink-0 border-b border-wf-border px-4 py-3">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          {onClose ? (
+        {onClose ? (
+          <div className="mb-3 flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -575,26 +1081,8 @@ function MessagePreview({
               <ChevronLeft size={20} strokeWidth={2} />
               Inbox
             </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-1.5">
-            {usingRealIntegrations && email.externalId && (
-              <>
-                <ActionChip icon={Reply} label="Reply" onClick={() => onReply?.(email)} />
-                <ActionChip icon={Reply} label="Reply all" onClick={() => onReplyAll?.(email)} />
-                <ActionChip icon={Share2} label="Forward" onClick={() => onForward?.(email)} />
-              </>
-            )}
-            <ActionChip
-              icon={ClipboardList}
-              label="Task"
-              onClick={() => onCreateTask(email)}
-            />
-            <ActionChip icon={CalendarPlus} label="Event" disabled />
-            <ActionChip icon={Clock} label="Snooze" disabled />
           </div>
-        </div>
+        ) : null}
         <h2 className="font-display text-body font-bold leading-snug">{email.subject}</h2>
         <div className="mt-2">
           <LinkChips
@@ -629,12 +1117,32 @@ function MessagePreview({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {attachments.length > 0 && (
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4">
+        <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-wf-border bg-wf-surface px-4 pb-3 pt-1">
+          <EmailMessageToolbar
+            email={email}
+            usingRealIntegrations={usingRealIntegrations}
+            moveFolders={moveFolders}
+            archiveFolder={archiveFolder}
+            onReply={onReply}
+            onReplyAll={onReplyAll}
+            onForward={onForward}
+            onDelete={onDelete}
+            onSetReadState={onSetReadState}
+            onCreateTask={onCreateTask}
+            onLinkExisting={onLinkExisting}
+            onMoveMail={onMoveMail}
+            onToggleStar={onToggleStar}
+          />
+        </div>
+        {attachmentsLoading && fileAttachments.length === 0 && email.hasAttachments && (
+          <p className="mb-4 text-caption text-wf-text-tertiary">Loading attachments…</p>
+        )}
+        {fileAttachments.length > 0 && (
           <div className="mb-4 rounded-xl border border-wf-border bg-wf-bg p-3">
             <p className="mb-2 text-caption font-semibold text-wf-text-secondary">Attachments</p>
             <ul className="space-y-2">
-              {attachments.map((attachment) => (
+              {fileAttachments.map((attachment) => (
                 <li key={attachment.id}>
                   <a
                     href={
@@ -660,9 +1168,24 @@ function MessagePreview({
             </ul>
           </div>
         )}
-        <p className="whitespace-pre-wrap text-body leading-relaxed text-wf-text">
-          {normalizeEmailBody(email.body) || email.preview || '(No message body)'}
-        </p>
+        {htmlBody ? (
+          <EmailHtmlBody html={htmlBody} />
+        ) : (
+          <p className="whitespace-pre-wrap break-words text-body leading-relaxed text-wf-text">
+            {plainBody || '(No message body)'}
+          </p>
+        )}
+        <EmailMessageToolbar
+          email={email}
+          usingRealIntegrations={usingRealIntegrations}
+          moveFolders={moveFolders}
+          archiveFolder={archiveFolder}
+          onReply={onReply}
+          onReplyAll={onReplyAll}
+          onForward={onForward}
+          compact
+          className="mt-6 border-t border-wf-border pt-4"
+        />
       </div>
 
       <div className="shrink-0 border-t border-wf-border bg-wf-bg px-4 py-3">
@@ -687,71 +1210,13 @@ function MessagePreview({
             })
           }
         />
-
-        <p className="mb-2 mt-4 text-caption font-semibold text-wf-text-secondary">
-          Email actions
-        </p>
-        {usingRealIntegrations && email.externalId && onMoveMail && moveFolders.length > 0 && (
-          <label className="mb-3 block">
-            <span className="mb-1 block text-caption font-semibold text-wf-text-secondary">
-              Move to folder
-            </span>
-            <select
-              defaultValue=""
-              onChange={(event) => {
-                const folder = moveFolders.find((entry) => entry.id === event.target.value)
-                if (folder?.graphFolderId) {
-                  onMoveMail(email, folder.graphFolderId)
-                  event.target.value = ''
-                }
-              }}
-              className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-subhead"
-            >
-              <option value="">Choose folder…</option>
-              {moveFolders.map((folder) => (
-                <option key={folder.id} value={folder.id}>
-                  {folder.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {usingRealIntegrations && email.externalId && onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete(email)}
-            className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-wf-red/30 py-2.5 text-subhead font-semibold text-wf-red"
-          >
-            <Trash2 size={16} strokeWidth={1.75} />
-            Delete message
-          </button>
-        )}
         <button
           type="button"
           onClick={onOpenActionFlow}
-          className="mb-3 w-full rounded-xl bg-wf-accent py-3 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-[0.98]"
+          className="mt-3 w-full rounded-xl bg-wf-accent py-2.5 text-subhead font-semibold text-white shadow-[var(--shadow-fab)] transition-transform active:scale-[0.98]"
         >
           Action flow — calendar + task + folder
         </button>
-        <div className="flex flex-wrap gap-2">
-          <EmailAction
-            icon={ClipboardList}
-            label="Convert to task"
-            onClick={() => onCreateTask(email)}
-          />
-          <EmailAction icon={CalendarPlus} label="Add to calendar" disabled />
-          <EmailAction icon={Clock} label="Snooze until date" disabled />
-          <EmailAction
-            icon={Link2}
-            label="Link to appointment"
-            onClick={() => onLinkExisting(email)}
-          />
-        </div>
-        <p className="mt-3 text-caption text-wf-text-tertiary">
-          {usingRealIntegrations
-            ? 'Sent via connected Gmail or Outlook account.'
-            : 'Future integrations: Gmail · Outlook · Apple Mail'}
-        </p>
       </div>
     </div>
   )
@@ -784,30 +1249,6 @@ function ActionChip({
       className="inline-flex items-center gap-1 rounded-full bg-wf-accent-soft px-2.5 py-1 text-caption font-semibold text-wf-accent transition-transform active:scale-95"
     >
       <Icon size={12} strokeWidth={2} />
-      {label}
-    </button>
-  )
-}
-
-function EmailAction({
-  icon: Icon,
-  label,
-  onClick,
-  disabled,
-}: {
-  icon: LucideIcon
-  label: string
-  onClick?: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex items-center gap-2 rounded-xl bg-wf-surface px-3 py-2 text-subhead font-medium text-wf-text-secondary shadow-[var(--shadow-card)] transition-transform active:scale-[0.98] disabled:opacity-60"
-    >
-      <Icon size={16} strokeWidth={1.75} />
       {label}
     </button>
   )

@@ -131,8 +131,10 @@ export function microsoftAttachmentDownloadUrl(
   accountId: string,
   externalId: string,
   attachmentId: string,
+  options?: { inline?: boolean },
 ): string {
   const params = new URLSearchParams({ accountId });
+  if (options?.inline) params.set("inline", "true");
   return `/api/microsoft/mail/${encodeURIComponent(externalId)}/attachments/${encodeURIComponent(attachmentId)}?${params.toString()}`;
 }
 
