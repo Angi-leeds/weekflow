@@ -1,15 +1,11 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { CalendarFilter, CalendarViewMode, Category, EmailAccount, ListDisplayOptions } from '../types'
-import { formatMonthYear, formatWeekRange, isToday } from '../dateUtils'
-import { IconButton } from './ui/IconButton'
+import { isToday } from '../dateUtils'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { getPrimaryTab, ViewsMenu, type PrimaryCalendarTab } from './ui/ViewsMenu'
 import { CalendarAccountFilter } from './CalendarAccountFilter'
 
 interface CalendarNavProps {
-  weekStart: Date
-  displayDate: Date
   viewMode: CalendarViewMode
   selectedDay: Date
   categories: Category[]
@@ -18,8 +14,6 @@ interface CalendarNavProps {
   calendarAccounts: EmailAccount[]
   onCalendarFilterChange: (filter: CalendarFilter) => void
   onListOptionsChange: (options: ListDisplayOptions) => void
-  onPrevWeek: () => void
-  onNextWeek: () => void
   onToday: () => void
   onViewChange: (mode: CalendarViewMode) => void
   onPrimaryTabChange: (tab: PrimaryCalendarTab) => void
@@ -32,8 +26,6 @@ const PRIMARY_SEGMENTS: { id: PrimaryCalendarTab; label: string }[] = [
 ]
 
 export function CalendarNav({
-  weekStart,
-  displayDate,
   viewMode,
   selectedDay,
   categories,
@@ -42,8 +34,6 @@ export function CalendarNav({
   calendarAccounts,
   onCalendarFilterChange,
   onListOptionsChange,
-  onPrevWeek,
-  onNextWeek,
   onToday,
   onViewChange,
   onPrimaryTabChange,
@@ -51,10 +41,9 @@ export function CalendarNav({
   const isWeekBased = ['week-list', 'week-board', 'week-timeline'].includes(viewMode)
   const primaryTab = getPrimaryTab(viewMode, isToday(selectedDay)) ?? 'week'
 
-  const title = viewMode === 'month'
-    ? formatMonthYear(displayDate)
-    : isWeekBased
-      ? formatWeekRange(weekStart)
+  const title =
+    viewMode === 'month' || isWeekBased
+      ? 'Calendar'
       : viewMode === 'day'
         ? selectedDay.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
         : 'Calendar'
@@ -63,14 +52,7 @@ export function CalendarNav({
     <div className="sticky top-0 z-20 border-b border-wf-border bg-wf-bg/90 px-4 pb-3 pt-2 backdrop-blur-xl safe-top">
       {/* Top row: nav + title + today */}
       <div className="mb-3 flex items-center gap-2">
-        {isWeekBased ? (
-          <div className="flex items-center gap-1">
-            <IconButton icon={ChevronLeft} label="Previous week" onClick={onPrevWeek} size="sm" />
-            <IconButton icon={ChevronRight} label="Next week" onClick={onNextWeek} size="sm" />
-          </div>
-        ) : (
-          <div className="w-[72px]" />
-        )}
+        <div className="w-[72px]" />
 
         <div className="min-w-0 flex-1 text-center">
           <p className="truncate font-display text-body font-bold tracking-tight text-wf-text">

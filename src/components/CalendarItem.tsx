@@ -17,6 +17,7 @@ interface CalendarItemRowProps {
   categories: Category[]
   spanPosition?: SpanPosition
   compact?: boolean
+  dense?: boolean
   hideCategoryBadge?: boolean
   displayOptions?: ItemDisplayOptions
   onTap?: (item: CalendarItem) => void
@@ -29,6 +30,7 @@ export function CalendarItemRow({
   categories,
   spanPosition = 'single',
   compact = false,
+  dense = false,
   hideCategoryBadge = false,
   displayOptions = DEFAULT_ITEM_DISPLAY,
   onTap,
@@ -62,10 +64,17 @@ export function CalendarItemRow({
           : 'text-body'
 
   const paddingClass = isMinimalDensity
-    ? 'py-1.5 pr-2 pl-2'
+    ? dense
+      ? 'py-1 pr-1.5 pl-1.5'
+      : 'py-1.5 pr-2 pl-2'
     : isCompactDensity
-      ? 'py-2 pr-2 pl-2.5'
+      ? dense
+        ? 'py-1 pr-2 pl-2'
+        : 'py-2 pr-2 pl-2.5'
       : 'py-2.5 pr-3 pl-2.5'
+
+  const marginClass = dense ? 'my-0.5' : isCompactDensity ? 'my-1' : 'my-1.5'
+  const titleLeading = dense ? 'leading-tight' : 'leading-snug'
 
   const cardStyle = buildCardStyle(item.colour, displayOptions.colorStyle)
   const cardBorderClass = displayOptions.cardBorder
@@ -92,7 +101,7 @@ export function CalendarItemRow({
       onClick={() => onTap?.(item)}
       className={`group flex w-full gap-0 overflow-hidden text-left transition-all hover:bg-black/[0.02] active:scale-[0.99] active:bg-black/[0.04] ${
         completed ? 'opacity-55' : ''
-      } ${isCompactDensity ? 'my-1' : 'my-1.5'} ${cardStyle.outerClass} ${cardBorderClass} ${displayOptions.cardShadow ? 'shadow-[var(--shadow-card)]' : ''}`}
+      } ${marginClass} ${cardStyle.outerClass} ${cardBorderClass} ${displayOptions.cardShadow ? 'shadow-[var(--shadow-card)]' : ''}`}
       style={cardStyle.outerStyle}
     >
       {displayOptions.colorStyle === 'accent-bar' && (
@@ -130,7 +139,7 @@ export function CalendarItemRow({
         <span className="flex items-start gap-2">
           {displayOptions.colorStyle === 'dot-only' && (
             <span
-              className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+              className={`${dense ? 'mt-0.5' : 'mt-1.5'} h-2 w-2 shrink-0 rounded-full`}
               style={{ backgroundColor: item.colour }}
               aria-hidden
             />
@@ -144,7 +153,7 @@ export function CalendarItemRow({
                 e.stopPropagation()
                 onToggleComplete?.(item.id)
               }}
-              className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${
+              className={`${dense ? 'mt-0' : 'mt-0.5'} flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${
                 completed
                   ? 'border-wf-green bg-wf-green text-white scale-100'
                   : 'border-wf-text-tertiary group-hover:border-wf-accent'
@@ -162,7 +171,7 @@ export function CalendarItemRow({
             <span className={`flex items-baseline gap-2 ${showTimeInline ? 'flex-wrap' : ''}`}>
               {showTimeInline && timeLabel}
               <span
-                className={`font-medium leading-snug ${titleClass} ${
+                className={`font-medium ${titleLeading} ${titleClass} ${
                   displayOptions.colorStyle === 'filled' ? 'text-white' : 'text-wf-text'
                 } ${completed && displayOptions.showCompletedStrike ? 'line-through decoration-wf-text-tertiary' : ''}`}
               >

@@ -9,6 +9,7 @@ interface WeekListPortraitProps {
   categories: Category[]
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
+  showHeading?: boolean
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
 }
@@ -19,6 +20,7 @@ export function WeekListPortrait({
   categories,
   listOptions,
   displayOptions,
+  showHeading = true,
   onItemTap,
   onToggleComplete,
 }: WeekListPortraitProps) {
@@ -28,8 +30,10 @@ export function WeekListPortrait({
   const showSpanBar = shouldShowMultiDaySpanBar(spanSegments, multiDayLayout)
 
   return (
-    <div className="space-y-3 px-4 pb-6 pt-1">
-      <p className="px-1 text-subhead font-semibold text-wf-text-secondary">This week</p>
+    <div className="w-full min-w-0 space-y-3 px-4 pb-6 pt-1">
+      {showHeading && (
+        <p className="px-1 text-subhead font-semibold text-wf-text-secondary">This week</p>
+      )}
 
       {showSpanBar && (
         <div className="overflow-hidden rounded-[var(--radius-lg)] border border-wf-border bg-wf-surface shadow-[var(--shadow-card)]">

@@ -1,5 +1,11 @@
 import type { WeekSpanSegment } from '../dateUtils'
-import { formatDateRangeShort, formatDayColumnHeader, getItemEndDate, getWeekDays } from '../dateUtils'
+import {
+  formatDateRangeShort,
+  formatDayColumnHeader,
+  getItemEndDate,
+  getWeekDays,
+  packWeekSpanSegmentsIntoLanes,
+} from '../dateUtils'
 import type { CalendarItem } from '../types'
 
 interface MultiDaySpanBarProps {
@@ -22,11 +28,13 @@ export function MultiDaySpanBar({
 }: MultiDaySpanBarProps) {
   const days = getWeekDays(weekStart)
   const gridGap = seamless ? 'gap-0' : 'gap-1'
+  const lanes = compact && seamless ? packWeekSpanSegmentsIntoLanes(segments) : segments.map((segment) => [segment])
+  const rowGap = compact && seamless ? 'gap-0.5' : 'gap-1'
 
   if (segments.length === 0) return null
 
   return (
-    <div className={`space-y-1 ${seamless ? 'px-0' : ''}`}>
+    <div className={`flex flex-col ${rowGap} ${seamless ? 'px-0' : ''}`}>
       {showDayLabels && (
         <div className={`grid grid-cols-7 ${gridGap} ${seamless ? 'px-2 pt-2' : ''}`}>
           {days.map((day) => (
@@ -40,9 +48,20 @@ export function MultiDaySpanBar({
         </div>
       )}
 
-      {segments.map((seg) => (
-        <div key={seg.item.id} className={`grid grid-cols-7 ${gridGap} ${seamless ? 'pb-2' : ''}`}>
-          <SpanBar segment={seg} onItemTap={onItemTap} compact={compact} seamless={seamless} />
+      {lanes.map((lane, laneIndex) => (
+        <div
+          key={`lane-${laneIndex}`}
+          className={`grid grid-cols-7 ${gridGap}`}
+        >
+          {lane.map((seg) => (
+            <SpanBar
+              key={seg.item.id}
+              segment={seg}
+              onItemTap={onItemTap}
+              compact={compact}
+              seamless={seamless}
+            />
+          ))}
         </div>
       ))}
     </div>
@@ -63,7 +82,7 @@ function SpanBar({
   const { item, startCol, spanCols, continuesBefore, continuesAfter } = segment
   const range = formatDateRangeShort(item.date, getItemEndDate(item))
 
-  const radius = seamless ? 6 : 8
+  const radius = seamless ? 4 : 8
   const borderRadius = `${continuesBefore ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesBefore ? 0 : radius}px`
 
   return (
@@ -71,7 +90,11 @@ function SpanBar({
       type="button"
       onClick={() => onItemTap?.(item)}
       className={`relative z-10 flex items-center overflow-hidden text-left transition-opacity hover:opacity-90 active:scale-[0.995] ${
-        compact ? 'h-7 px-2 text-[11px]' : 'h-8 px-2.5 text-caption'
+        compact
+          ? seamless
+            ? 'h-[18px] px-1.5 text-[10px] leading-none'
+            : 'h-7 px-2 text-[11px]'
+          : 'h-8 px-2.5 text-caption'
       } ${seamless ? 'mx-0' : ''}`}
       style={{
         gridColumn: `${startCol + 1} / span ${spanCols}`,
@@ -81,16 +104,16 @@ function SpanBar({
       }}
     >
       <span className="truncate font-semibold" style={{ color: item.colour }}>
-        {continuesBefore && <span className="mr-1 opacity-60">←</span>}
+        {continuesBefore && <span className="mr-0.5 opacity-60">←</span>}
         {!continuesBefore && seamless && (
           <span
-            className="mr-1.5 inline-block h-3 w-0.5 shrink-0 rounded-full align-middle"
+            className="mr-1 inline-block h-2.5 w-0.5 shrink-0 rounded-full align-middle"
             style={{ backgroundColor: item.colour }}
           />
         )}
         {item.title}
         {!compact && <span className="ml-1.5 font-normal opacity-70">{range}</span>}
-        {continuesAfter && <span className="ml-1 opacity-60">→</span>}
+        {continuesAfter && <span className="ml-0.5 opacity-60">→</span>}
       </span>
     </button>
   )

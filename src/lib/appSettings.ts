@@ -64,6 +64,7 @@ export function loadCalendarPreferences(): CalendarPreferences {
       weekStartsOn: parsed.weekStartsOn === 0 ? 0 : 1,
       timeFormat: parsed.timeFormat === "12h" ? "12h" : "24h",
       monthViewExpandWeeks: parsed.monthViewExpandWeeks === true,
+      weekViewAnchor: parsed.weekViewAnchor === 'today' ? 'today' : 'week-start',
     };
     applyTimeFormat(prefs.timeFormat);
     return prefs;

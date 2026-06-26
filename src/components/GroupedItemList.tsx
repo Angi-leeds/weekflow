@@ -12,6 +12,8 @@ interface GroupedItemListProps {
   listOptions: ListDisplayOptions
   displayOptions?: ItemDisplayOptions
   compact?: boolean
+  /** Tighter padding/margins for narrow week columns — layout unchanged. */
+  dense?: boolean
   emptyMessage?: string
   onItemTap?: (item: CalendarItem) => void
   onToggleComplete?: (id: string) => void
@@ -24,6 +26,7 @@ export function GroupedItemList({
   listOptions,
   displayOptions = DEFAULT_ITEM_DISPLAY,
   compact = false,
+  dense = false,
   emptyMessage = 'Nothing scheduled',
   onItemTap,
   onToggleComplete,
@@ -33,7 +36,7 @@ export function GroupedItemList({
 
   if (groups.length === 0 || groups.every((g) => g.entries.length === 0)) {
     return (
-      <p className={`text-wf-text-tertiary ${compact ? 'px-1 py-4 text-center text-[12px]' : 'px-2 py-4 text-subhead'}`}>
+      <p className={`text-wf-text-tertiary ${dense ? 'px-1 py-2 text-center text-[12px]' : compact ? 'px-1 py-3 text-center text-[12px]' : 'px-2 py-4 text-subhead'}`}>
         {emptyMessage}
       </p>
     )
@@ -53,6 +56,7 @@ export function GroupedItemList({
             spanPosition={spanPosition}
             viewDate={viewDate}
             compact={compact || displayOptions.density !== 'comfortable'}
+            dense={dense}
             displayOptions={displayOptions}
             hideCategoryBadge={!displayOptions.showCategoryBadge || listOptions.groupBy === 'category'}
             onTap={onItemTap}
@@ -72,6 +76,7 @@ export function GroupedItemList({
             colour={group.colour}
             count={group.entries.length}
             compact={compact}
+            dense={dense}
           />
           <div className={compact ? 'px-0.5' : 'px-0'}>
             {group.entries.map(({ item, spanPosition }) => (
@@ -82,6 +87,7 @@ export function GroupedItemList({
                 spanPosition={spanPosition}
                 viewDate={viewDate}
                 compact={compact || displayOptions.density !== 'comfortable'}
+                dense={dense}
                 displayOptions={displayOptions}
                 hideCategoryBadge={!displayOptions.showCategoryBadge || !showCategoryBadge}
                 onTap={onItemTap}
@@ -90,7 +96,7 @@ export function GroupedItemList({
             ))}
           </div>
           {gi < groups.length - 1 && (
-            <div className={`${compact ? 'mx-1' : 'mx-2'} my-1 border-b border-wf-border/60`} />
+            <div className={`${compact ? 'mx-1' : 'mx-2'} ${dense ? 'my-0.5' : 'my-1'} border-b border-wf-border/60`} />
           )}
         </div>
       ))}

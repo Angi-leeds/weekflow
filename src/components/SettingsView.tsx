@@ -17,6 +17,7 @@ import type {
   ListSortBy,
   MultiDayAllDayLayout,
   WeekStartsOn,
+  WeekViewAnchor,
 } from '../types'
 import {
   DEFAULT_ITEM_DISPLAY,
@@ -32,6 +33,7 @@ import {
   SETTINGS_DEFAULT_VIEWS,
   TIME_FORMAT_LABELS,
   WEEK_START_LABELS,
+  WEEK_VIEW_ANCHOR_LABELS,
   applyItemDisplayPreset,
 } from '../types'
 import type { AuthUser } from '../../shared/auth'
@@ -520,6 +522,17 @@ export function SettingsView({
           }))}
           onChange={(weekStartsOn) =>
             onCalendarPreferencesChange({ ...calendarPreferences, weekStartsOn })
+          }
+        />
+        <SettingsSelectRow
+          label="Week view opens on"
+          value={calendarPreferences.weekViewAnchor}
+          options={(['week-start', 'today'] as WeekViewAnchor[]).map((value) => ({
+            value,
+            label: WEEK_VIEW_ANCHOR_LABELS[value],
+          }))}
+          onChange={(weekViewAnchor) =>
+            onCalendarPreferencesChange({ ...calendarPreferences, weekViewAnchor })
           }
         />
         <SettingsSelectRow

@@ -9,7 +9,7 @@ import type { AppSection, CalendarItem, CalendarViewMode, Category, Contact, Ema
 import { type ListDisplayOptions, type ItemDisplayOptions } from './types'
 import { memberCan } from '../shared/householdPermissions'
 import { initialEmails, getMockCloudFolder, calendarAccountForCategory } from './mockData'
-import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate } from './dateUtils'
+import { addWeeks, addDays, generateId, parseDate, startOfWeek, toISODate, getDefaultWeekViewStart } from './dateUtils'
 import type { EmailActionFlowOptions } from '../shared/emailActionFlow'
 import { createLink, fetchAllLinks, removeLink } from './lib/links'
 import { fetchAllItemShares, getShareForEntity, upsertItemShare } from './lib/itemShares'
@@ -190,6 +190,7 @@ export default function App() {
   )
   const [selectedDay, setSelectedDay] = useState(new Date())
   const [monthDate, setMonthDate] = useState(new Date())
+  const [weekViewScrollDate, setWeekViewScrollDate] = useState<Date | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<CalendarItem | null>(null)
@@ -542,14 +543,6 @@ export default function App() {
   }, [displayCalendarItems, calendarFilter])
 
   useEffect(() => {
-    const hasConnectedCalendarAccounts = calendarAccounts.some(
-      (account) =>
-        account.id.startsWith('ms-') ||
-        account.id.startsWith('google-') ||
-        account.id.startsWith('apple-'),
-    )
-    if (!hasConnectedCalendarAccounts) return
-
     const accountIds = calendarAccounts.map((account) => account.id)
     setCalendarFilter((prev) => sanitizeCalendarFilter(prev, accountIds))
   }, [calendarAccounts])
@@ -1828,6 +1821,10 @@ export default function App() {
 
   const goToday = () => {
     const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    setWeekViewScrollDate(
+      getDefaultWeekViewStart(calendarPreferences.weekViewAnchor, calendarPreferences.weekStartsOn, today),
+    )
     setWeekStart(startOfWeek(today, calendarPreferences.weekStartsOn))
     setSelectedDay(today)
     setMonthDate(today)
@@ -1992,8 +1989,6 @@ export default function App() {
         {section === 'calendar' && (
           <>
             <CalendarNav
-              weekStart={weekStart}
-              displayDate={viewMode === 'month' ? monthDate : viewMode === 'day' ? selectedDay : weekStart}
               viewMode={viewMode}
               selectedDay={selectedDay}
               categories={categories}
@@ -2002,21 +1997,23 @@ export default function App() {
               calendarAccounts={calendarAccounts}
               onCalendarFilterChange={setCalendarFilter}
               onListOptionsChange={setListOptions}
-              onPrevWeek={() => setWeekStart((w) => addWeeks(w, -1))}
-              onNextWeek={() => setWeekStart((w) => addWeeks(w, 1))}
               onToday={goToday}
               onViewChange={setViewMode}
               onPrimaryTabChange={handlePrimaryTabChange}
             />
-            <div className={viewMode === 'week-board' || viewMode === 'week-list' ? 'h-[calc(100%-130px)] min-h-[400px]' : ''}>
+            <div className={viewMode === 'week-board' || viewMode === 'week-list' || viewMode === 'week-timeline' || viewMode === 'month' ? 'h-[calc(100%-130px)] min-h-[400px]' : ''}>
               {viewMode === 'week-list' || viewMode === 'week-board' || viewMode === 'week-timeline' ? (
                 <WeekView
-                  weekStart={weekStart}
+                  weekStartsOn={calendarPreferences.weekStartsOn}
+                  weekViewAnchor={calendarPreferences.weekViewAnchor}
+                  scrollToDate={weekViewScrollDate}
+                  onScrollToDateApplied={() => setWeekViewScrollDate(null)}
                   items={calendarItems}
                   categories={categories}
                   viewMode={viewMode}
                   listOptions={listOptions}
                   displayOptions={itemDisplayOptions}
+                  onWeekChange={setWeekStart}
                   onItemTap={openEditModal}
                   onToggleComplete={handleToggleComplete}
                 />

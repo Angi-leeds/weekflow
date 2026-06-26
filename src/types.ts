@@ -190,6 +190,9 @@ export type TimeFormat = '12h' | '24h'
 
 export type WeekStartsOn = 0 | 1
 
+/** Where the week view window starts when opening the app or tapping Today. */
+export type WeekViewAnchor = 'week-start' | 'today'
+
 export const TIME_FORMAT_LABELS: Record<TimeFormat, string> = {
   '12h': '12 hour',
   '24h': '24 hour',
@@ -198,6 +201,11 @@ export const TIME_FORMAT_LABELS: Record<TimeFormat, string> = {
 export const WEEK_START_LABELS: Record<WeekStartsOn, string> = {
   0: 'Sunday',
   1: 'Monday',
+}
+
+export const WEEK_VIEW_ANCHOR_LABELS: Record<WeekViewAnchor, string> = {
+  'week-start': 'Start of week',
+  today: 'Today onwards',
 }
 
 export const DEFAULT_VIEW_LABELS: Record<CalendarViewMode, string> = {
@@ -225,6 +233,8 @@ export interface CalendarPreferences {
   timeFormat: TimeFormat
   /** When true, month view week rows grow to show every event instead of "+N more". */
   monthViewExpandWeeks: boolean
+  /** Default left edge of the 7-day rolling week view window. */
+  weekViewAnchor: WeekViewAnchor
 }
 
 export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
@@ -232,6 +242,7 @@ export const DEFAULT_CALENDAR_PREFERENCES: CalendarPreferences = {
   weekStartsOn: 1,
   timeFormat: '24h',
   monthViewExpandWeeks: false,
+  weekViewAnchor: 'week-start',
 }
 
 export interface IntegrationPreferences {

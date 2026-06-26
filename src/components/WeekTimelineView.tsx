@@ -16,16 +16,16 @@ export function WeekTimelineView({
   const days = getWeekDays(weekStart)
 
   return (
-    <div className="overflow-x-auto px-2 pb-6">
-      <div className="min-w-[640px]">
-        <div className="grid grid-cols-[48px_repeat(7,1fr)] gap-px rounded-2xl bg-wf-border overflow-hidden shadow-[var(--shadow-card)]">
+    <div className="flex h-full w-full min-w-0 flex-col px-2 pb-4">
+      <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="grid w-full min-w-0 grid-cols-[36px_repeat(7,minmax(0,1fr))] gap-px overflow-hidden rounded-2xl bg-wf-border shadow-[var(--shadow-card)]">
           <div className="bg-wf-bg" />
           {days.map((day) => (
-            <div key={day.toISOString()} className="bg-wf-surface px-2 py-2 text-center">
-              <p className="text-[11px] font-medium text-wf-text-secondary">
+            <div key={day.toISOString()} className="min-w-0 bg-wf-surface px-1 py-2 text-center">
+              <p className="truncate text-[10px] font-medium text-wf-text-secondary">
                 {day.toLocaleDateString('en-GB', { weekday: 'short' })}
               </p>
-              <p className="font-display text-[16px] font-semibold">{day.getDate()}</p>
+              <p className="font-display text-[15px] font-semibold">{day.getDate()}</p>
             </div>
           ))}
 
@@ -63,8 +63,8 @@ function TimelineRow({
 
   return (
     <>
-      <div className="flex items-start justify-end bg-wf-bg pr-2 pt-2">
-        <span className="text-[11px] text-wf-text-tertiary">{label}</span>
+      <div className="flex items-start justify-end bg-wf-bg pr-1.5 pt-2">
+        <span className="text-[10px] text-wf-text-tertiary">{label}</span>
       </div>
       {days.map((day) => {
         const dayItems = getItemsForDate(items, day).filter((i) => {
@@ -74,14 +74,14 @@ function TimelineRow({
         })
 
         return (
-          <div key={day.toISOString()} className="min-h-[52px] bg-wf-surface p-1">
+          <div key={day.toISOString()} className="min-h-[52px] min-w-0 bg-wf-surface p-0.5">
             {dayItems.map((item) => (
               <div
                 key={item.id}
-                className="mb-1 rounded-lg px-2 py-1 text-[12px] font-medium text-white"
+                className="mb-1 rounded-lg px-1.5 py-1 text-[11px] font-medium text-white"
                 style={{ backgroundColor: item.colour }}
               >
-                <button type="button" className="w-full text-left" onClick={() => onItemTap?.(item)}>
+                <button type="button" className="w-full truncate text-left" onClick={() => onItemTap?.(item)}>
                   {formatTime(item.startTime!)} {item.title}
                 </button>
               </div>

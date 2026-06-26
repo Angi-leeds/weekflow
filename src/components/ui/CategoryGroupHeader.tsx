@@ -3,13 +3,14 @@ interface CategoryGroupHeaderProps {
   colour?: string
   count: number
   compact?: boolean
+  dense?: boolean
 }
 
-export function CategoryGroupHeader({ label, colour, count, compact = false }: CategoryGroupHeaderProps) {
+export function CategoryGroupHeader({ label, colour, count, compact = false, dense = false }: CategoryGroupHeaderProps) {
   if (!label) return null
 
   return (
-    <div className={`flex items-center gap-2 ${compact ? 'px-1 py-1.5' : 'px-2 py-2'}`}>
+    <div className={`flex items-center gap-2 ${compact ? (dense ? 'px-1 py-1' : 'px-1 py-1.5') : 'px-2 py-2'}`}>
       {colour && (
         <span
           className="h-2 w-2 shrink-0 rounded-full"

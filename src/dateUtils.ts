@@ -1,4 +1,4 @@
-import type { CalendarItem } from './types'
+import type { CalendarItem, WeekViewAnchor } from './types'
 import { getTimeFormat } from './lib/appSettings'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -140,12 +140,36 @@ export function formatMonthYear(date: Date): string {
 }
 
 export function formatWeekRange(weekStart: Date): string {
-  const weekEnd = addDays(weekStart, 6)
-  const sameMonth = weekStart.getMonth() === weekEnd.getMonth()
+  return formatVisibleDayRange(weekStart, addDays(weekStart, 6))
+}
+
+export function formatVisibleDayRange(rangeStart: Date, rangeEnd: Date): string {
+  const sameMonth =
+    rangeStart.getMonth() === rangeEnd.getMonth() &&
+    rangeStart.getFullYear() === rangeEnd.getFullYear()
   if (sameMonth) {
-    return `${weekStart.getDate()} – ${weekEnd.getDate()} ${FULL_MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getFullYear()}`
+    return `${rangeStart.getDate()} – ${rangeEnd.getDate()} ${FULL_MONTH_NAMES[rangeStart.getMonth()]} ${rangeStart.getFullYear()}`
   }
-  return `${formatDayHeader(weekStart)} – ${formatDayHeader(weekEnd)}`
+  return `${formatDayHeader(rangeStart)} – ${formatDayHeader(rangeEnd)}`
+}
+
+export function daysBetween(start: Date, end: Date): number {
+  const a = new Date(start)
+  const b = new Date(end)
+  a.setHours(0, 0, 0, 0)
+  b.setHours(0, 0, 0, 0)
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000)
+}
+
+export function getDefaultWeekViewStart(
+  anchor: WeekViewAnchor,
+  weekStartsOn: number,
+  today = new Date(),
+): Date {
+  const d = new Date(today)
+  d.setHours(0, 0, 0, 0)
+  if (anchor === 'today') return d
+  return startOfWeek(d, weekStartsOn)
 }
 
 export function formatTime(time: string): string {
@@ -308,6 +332,36 @@ export function getWeekSpanSegments(items: CalendarItem[], weekStart: Date): Wee
   }
 
   return segments
+}
+
+function spanSegmentEndCol(segment: WeekSpanSegment): number {
+  return segment.startCol + segment.spanCols - 1
+}
+
+function spanSegmentsOverlap(a: WeekSpanSegment, b: WeekSpanSegment): boolean {
+  return a.startCol <= spanSegmentEndCol(b) && b.startCol <= spanSegmentEndCol(a)
+}
+
+/** Pack span bars into the fewest horizontal lanes (rows). */
+export function packWeekSpanSegmentsIntoLanes(segments: WeekSpanSegment[]): WeekSpanSegment[][] {
+  const sorted = [...segments].sort(
+    (a, b) => a.startCol - b.startCol || spanSegmentEndCol(b) - spanSegmentEndCol(a),
+  )
+  const lanes: WeekSpanSegment[][] = []
+
+  for (const segment of sorted) {
+    let placed = false
+    for (const lane of lanes) {
+      if (!lane.some((existing) => spanSegmentsOverlap(existing, segment))) {
+        lane.push(segment)
+        placed = true
+        break
+      }
+    }
+    if (!placed) lanes.push([segment])
+  }
+
+  return lanes
 }
 
 /** Agenda list — multi-day items appear once on their start date. */
