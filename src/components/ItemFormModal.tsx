@@ -8,6 +8,7 @@ import type { GoogleCalendarDto } from '../../shared/googleApi'
 import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset, ItemShowInDiaryMode, SaveItemOptions, CalendarPreferences } from '../types'
 import { ITEM_REMINDER_PRESET_LABELS, DEFAULT_CALENDAR_PREFERENCES } from '../types'
 import { isTaskCategory, resolveItemColour } from '../categories'
+import { CategoryPicker } from './CategoryPicker'
 import { generateId, toISODate } from '../dateUtils'
 import { ITEM_FORM_DIARY } from '../lib/diaryHelpCopy'
 import { resolveItemDiaryVisibility } from '../lib/diaryVisibility'
@@ -385,17 +386,20 @@ export function ItemFormModal({
         : ITEM_FORM_DIARY.visibilityCategoryOff(selectedCategory.name)
       : null
 
-  const selectCategory = (categoryId: string) => {
-    const match = categories.find((entry) => entry.id === categoryId)
+  const applyCategoryChange = (update: {
+    categoryId: string
+    outlookCategories?: string[]
+    colour: string
+  }) => {
     const next = {
       ...form,
-      categoryId,
-      colour: resolveItemColour(categories, categoryId),
+      categoryId: update.categoryId,
+      colour: update.colour,
+      outlookCategories:
+        update.outlookCategories !== undefined ? update.outlookCategories : form.outlookCategories,
       calendarId: undefined,
       calendarName: undefined,
       todoListId: undefined,
-      outlookCategories:
-        usingRealMicrosoft && match && !isTask ? [match.name] : form.outlookCategories,
     }
     setForm(
       normalizeItemSchedule(
@@ -414,12 +418,7 @@ export function ItemFormModal({
     )
   }
 
-  const clearOutlookCategory = () => {
-    setForm((prev) => ({
-      ...prev,
-      outlookCategories: [],
-    }))
-  }
+  const categoryPickerOptions = isTask ? categories : eventCategories
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden sm:items-center sm:p-4">
@@ -496,40 +495,13 @@ export function ItemFormModal({
           </div>
 
           <Field label="Category">
-            <div className="flex flex-wrap gap-2">
-              {usingRealMicrosoft && !isTask && (
-                <button
-                  type="button"
-                  onClick={clearOutlookCategory}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-body transition-all active:scale-[0.98] ${
-                    (form.outlookCategories?.length ?? 0) === 0
-                      ? 'border-wf-accent bg-wf-accent-soft font-medium text-wf-accent'
-                      : 'border-wf-border bg-wf-bg text-wf-text hover:border-wf-accent/30'
-                  }`}
-                >
-                  None
-                </button>
-              )}
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => selectCategory(cat.id)}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-body transition-all active:scale-[0.98] ${
-                    form.categoryId === cat.id &&
-                    (form.outlookCategories?.length ?? 0) !== 0
-                      ? 'border-wf-accent bg-wf-accent-soft font-medium text-wf-accent'
-                      : 'border-wf-border bg-wf-bg text-wf-text hover:border-wf-accent/30'
-                  }`}
-                >
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: cat.colour }}
-                  />
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+            <CategoryPicker
+              categories={categoryPickerOptions}
+              categoryId={form.categoryId}
+              outlookCategories={form.outlookCategories}
+              multiSelect={usingRealMicrosoft && !isTask}
+              onChange={applyCategoryChange}
+            />
           </Field>
 
           {usingRealMicrosoft && isTask && todoListOptions.length > 0 && (

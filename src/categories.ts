@@ -58,7 +58,7 @@ export function getCategoryName(categories: Category[], id: string): string {
 }
 
 export function getItemCategoryLabel(item: CalendarItem, categories: Category[]): string {
-  if (item.outlookCategories?.[0]) return item.outlookCategories[0]
+  if (item.outlookCategories?.length) return item.outlookCategories.join(', ')
   return getCategoryName(categories, item.categoryId)
 }
 

@@ -302,18 +302,30 @@ export default function App() {
   }, [usingRealMicrosoft, outlookCategoriesLoaded, outlookMasterCategories, localCategories])
 
   const defaultMicrosoftAccountId = microsoftStatus?.accounts[0]?.id
+  const microsoftStatusRef = useRef(microsoftStatus)
+  microsoftStatusRef.current = microsoftStatus
+  const refreshMicrosoftInFlightRef = useRef(false)
 
-  const reloadOutlookCategories = useCallback(async () => {
-    const accounts = microsoftStatus?.accounts ?? []
-    if (accounts.length === 0) {
-      setOutlookMasterCategories([])
-      setOutlookCategoriesLoaded(false)
-      return
-    }
-    const list = await fetchAllOutlookMasterCategories(accounts)
-    setOutlookMasterCategories(list)
-    setOutlookCategoriesLoaded(true)
-  }, [microsoftStatus?.accounts])
+  const reloadOutlookCategories = useCallback(
+    async (accountsOverride?: MicrosoftIntegrationStatus['accounts']) => {
+      const accounts = accountsOverride ?? microsoftStatusRef.current?.accounts ?? []
+      if (accounts.length === 0) {
+        setOutlookMasterCategories([])
+        setOutlookCategoriesLoaded(false)
+        return
+      }
+      try {
+        const list = await fetchAllOutlookMasterCategories(accounts)
+        setOutlookMasterCategories(list)
+      } catch (error) {
+        console.error('Outlook categories', error)
+        setOutlookMasterCategories([])
+      } finally {
+        setOutlookCategoriesLoaded(true)
+      }
+    },
+    [],
+  )
   const emailAccounts = useMemo(
     () => resolveEmailAccounts(microsoftStatus, googleStatus, appleStatus),
     [microsoftStatus, googleStatus, appleStatus],
@@ -328,6 +340,8 @@ export default function App() {
   )
 
   const refreshMicrosoft = useCallback(async () => {
+    if (refreshMicrosoftInFlightRef.current) return
+    refreshMicrosoftInFlightRef.current = true
     setMicrosoftLoading(true)
     notesLoadedRef.current = false
     try {
@@ -347,7 +361,7 @@ export default function App() {
         return
       }
 
-      void reloadOutlookCategories()
+      void reloadOutlookCategories(accounts)
 
       console.info('[MyAxis] Loading Microsoft calendar and tasks…')
 
@@ -443,6 +457,7 @@ export default function App() {
     } catch (error) {
       console.error(error)
     } finally {
+      refreshMicrosoftInFlightRef.current = false
       setMicrosoftLoading(false)
     }
   }, [integrationAccountDefaults.sharedMailboxEmail, reloadOutlookCategories])

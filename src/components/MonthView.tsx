@@ -17,8 +17,8 @@ import { useScrollPan } from '../hooks/useScrollPan'
 import { useDayContextMenu, useItemContextMenu } from '../hooks/useCalendarContextMenu'
 import { CalendarViewHeader } from './CalendarViewHeader'
 import { DayHeaderMetaLabels } from './DayHeaderMetaLabels'
-import type { CalendarItem, DateHeaderDisplayOptions, ItemDisplayOptions, TodayHighlightOptions, WeekStartsOn } from '../types'
-import { DEFAULT_ITEM_DISPLAY, DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT } from '../types'
+import type { CalendarItem, DateHeaderDisplayOptions, ItemDisplayOptions, ItemTitleSize, TodayHighlightOptions, WeekStartsOn } from '../types'
+import { DEFAULT_ITEM_DISPLAY, DEFAULT_DATE_HEADER_DISPLAY, DEFAULT_TODAY_HIGHLIGHT, getItemTimeSizeClass, getItemTitleSizeClass } from '../types'
 import {
   mergeHighlightStyle,
   monthCellSelectionClass,
@@ -352,6 +352,7 @@ export function MonthView({
                 items={items}
                 selectedDay={selectedDay}
                 multiDayLayout={multiDayLayout}
+                displayOptions={displayOptions}
                 todayHighlight={todayHighlight}
                 dateHeaderDisplay={dateHeaderDisplay}
                 weekStartsOn={weekStartsOn}
@@ -376,6 +377,7 @@ function MonthGrid({
   items,
   selectedDay,
   multiDayLayout,
+  displayOptions,
   todayHighlight,
   dateHeaderDisplay,
   weekStartsOn,
@@ -389,6 +391,7 @@ function MonthGrid({
   items: CalendarItem[]
   selectedDay?: Date
   multiDayLayout: 'span-bar' | 'repeat-daily'
+  displayOptions: ItemDisplayOptions
   todayHighlight: TodayHighlightOptions
   dateHeaderDisplay: DateHeaderDisplayOptions
   weekStartsOn: WeekStartsOn
@@ -409,6 +412,7 @@ function MonthGrid({
           items={items}
           selectedDay={selectedDay}
           multiDayLayout={multiDayLayout}
+          displayOptions={displayOptions}
           todayHighlight={todayHighlight}
           dateHeaderDisplay={dateHeaderDisplay}
           weekStartsOn={weekStartsOn}
@@ -428,6 +432,7 @@ function MonthWeekRow({
   items,
   selectedDay,
   multiDayLayout,
+  displayOptions,
   todayHighlight,
   dateHeaderDisplay,
   weekStartsOn,
@@ -441,6 +446,7 @@ function MonthWeekRow({
   items: CalendarItem[]
   selectedDay?: Date
   multiDayLayout: 'span-bar' | 'repeat-daily'
+  displayOptions: ItemDisplayOptions
   todayHighlight: TodayHighlightOptions
   dateHeaderDisplay: DateHeaderDisplayOptions
   weekStartsOn: WeekStartsOn
@@ -511,6 +517,7 @@ function MonthWeekRow({
               <MonthSpanChip
                 segment={segment}
                 viewDate={weekDays[segment.startCol]}
+                titleSize={displayOptions.titleSize}
                 onItemTap={onItemTap}
               />
             </div>
@@ -531,6 +538,7 @@ function MonthWeekRow({
             expandWeekRows={expandWeekRows}
             selected={selected}
             todayHighlight={todayHighlight}
+            titleSize={displayOptions.titleSize}
             style={{ gridRow: eventsRow, gridColumn: colIndex + 1 }}
             onDaySelect={onDaySelect}
             onItemTap={onItemTap}
@@ -623,6 +631,7 @@ function MonthDayEventsCell({
   expandWeekRows,
   selected,
   todayHighlight,
+  titleSize,
   style,
   onDaySelect,
   onItemTap,
@@ -634,10 +643,12 @@ function MonthDayEventsCell({
   expandWeekRows: boolean
   selected: boolean
   todayHighlight: TodayHighlightOptions
+  titleSize: ItemTitleSize
   style: CSSProperties
   onDaySelect: (date: Date) => void
   onItemTap?: (item: CalendarItem) => void
 }) {
+  const overflowClass = getItemTimeSizeClass(titleSize)
   const eventLimit = expandWeekRows ? entries.length : MAX_VISIBLE_EVENTS
   const visibleEntries = entries.slice(0, eventLimit)
   const overflowCount = expandWeekRows ? 0 : entries.length - visibleEntries.length
@@ -661,6 +672,7 @@ function MonthDayEventsCell({
             key={`${entry.item.id}-${entry.spanPosition}`}
             entry={entry}
             viewDate={day}
+            titleSize={titleSize}
             onItemTap={onItemTap}
           />
         ))}
@@ -669,7 +681,7 @@ function MonthDayEventsCell({
           <button
             type="button"
             onClick={() => onDaySelect(day)}
-            className="w-full truncate px-1 text-left text-[10px] font-semibold text-wf-accent hover:underline"
+            className={`w-full truncate px-1 text-left font-semibold text-wf-accent hover:underline ${overflowClass}`}
           >
             +{overflowCount} more
           </button>
@@ -682,14 +694,17 @@ function MonthDayEventsCell({
 function MonthSpanChip({
   segment,
   viewDate,
+  titleSize,
   onItemTap,
 }: {
   segment: WeekSpanSegment
   viewDate: Date
+  titleSize: ItemTitleSize
   onItemTap?: (item: CalendarItem) => void
 }) {
   const { item, continuesBefore, continuesAfter } = segment
   const itemMenu = useItemContextMenu(item, viewDate)
+  const titleClass = getItemTitleSizeClass(titleSize)
   const radius = 3
   const borderRadius = `${continuesBefore ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesAfter ? 0 : radius}px ${continuesBefore ? 0 : radius}px`
 
@@ -698,7 +713,7 @@ function MonthSpanChip({
       type="button"
       onClick={() => onItemTap?.(item)}
       {...itemMenu}
-      className="pointer-events-auto flex h-full w-full min-w-0 items-center overflow-hidden px-1 py-0.5 text-left text-[10px] leading-tight transition-opacity hover:opacity-90 active:scale-[0.99]"
+      className={`pointer-events-auto flex h-full w-full min-w-0 items-center overflow-hidden px-1 py-0.5 text-left leading-tight transition-opacity hover:opacity-90 active:scale-[0.99] ${titleClass}`}
       style={{
         backgroundColor: `${item.colour}28`,
         borderLeft: continuesBefore ? undefined : `2px solid ${item.colour}`,
@@ -718,14 +733,18 @@ function MonthSpanChip({
 function MonthEventChip({
   entry,
   viewDate,
+  titleSize,
   onItemTap,
 }: {
   entry: DayItemEntry
   viewDate: Date
+  titleSize: ItemTitleSize
   onItemTap?: (item: CalendarItem) => void
 }) {
   const { item } = entry
   const itemMenu = useItemContextMenu(item, viewDate)
+  const titleClass = getItemTitleSizeClass(titleSize)
+  const timeClass = getItemTimeSizeClass(titleSize)
   const timePrefix =
     !item.allDay && item.startTime ? `${formatTime(item.startTime)} ` : ''
 
@@ -737,7 +756,7 @@ function MonthEventChip({
         onItemTap?.(item)
       }}
       {...itemMenu}
-      className="flex w-full min-w-0 items-start overflow-hidden rounded px-1 py-0.5 text-left text-[10px] leading-tight transition-opacity hover:opacity-90 active:scale-[0.99]"
+      className={`flex w-full min-w-0 items-start overflow-hidden rounded px-1 py-0.5 text-left leading-tight transition-opacity hover:opacity-90 active:scale-[0.99] ${titleClass}`}
       style={{
         backgroundColor: `${item.colour}28`,
         borderLeft: `2px solid ${item.colour}`,
@@ -746,7 +765,7 @@ function MonthEventChip({
     >
       <span className="min-w-0 break-words font-medium text-wf-text">
         {timePrefix && (
-          <span className="font-semibold tabular-nums text-wf-text-secondary">{timePrefix}</span>
+          <span className={`font-semibold tabular-nums text-wf-text-secondary ${timeClass}`}>{timePrefix}</span>
         )}
         {item.title}
       </span>
