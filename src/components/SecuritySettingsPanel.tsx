@@ -6,12 +6,14 @@ interface SecuritySettingsPanelProps {
   user: AuthUser;
   onUserUpdated: (user: AuthUser) => void;
   onShowToast?: (message: string) => void;
+  embedded?: boolean;
 }
 
 export function SecuritySettingsPanel({
   user,
   onUserUpdated,
   onShowToast,
+  embedded = false,
 }: SecuritySettingsPanelProps) {
   const [setupSecret, setSetupSecret] = useState<string | null>(null);
   const [setupUrl, setSetupUrl] = useState<string | null>(null);
@@ -64,8 +66,22 @@ export function SecuritySettingsPanel({
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-wf-border bg-wf-surface shadow-[var(--shadow-card)]">
-      <h2 className="border-b border-wf-border px-4 py-3 text-subhead font-bold text-wf-text">Security</h2>
+    <section
+      className={
+        embedded
+          ? 'border-t border-wf-border/50'
+          : 'overflow-hidden rounded-2xl border border-wf-border bg-wf-surface shadow-[var(--shadow-card)]'
+      }
+    >
+      <h2
+        className={
+          embedded
+            ? 'px-4 pb-2 pt-3 text-subhead font-semibold text-wf-text-secondary'
+            : 'border-b border-wf-border px-4 py-3 text-subhead font-bold text-wf-text'
+        }
+      >
+        Security
+      </h2>
       <div className="px-4 py-4">
         <p className="text-body font-medium text-wf-text">Two-factor authentication</p>
         <p className="mt-1 text-caption text-wf-text-tertiary">

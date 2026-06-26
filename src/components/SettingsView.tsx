@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useMemo, useRef, useState } from 'react'
 import type {
   CalendarItem,
   CalendarPreferences,
@@ -7,40 +7,16 @@ import type {
   EmailAccount,
   IntegrationAccountDefaults,
   IntegrationPreferences,
-  ItemCardDensity,
-  ItemColorStyle,
   ItemDisplayOptions,
   ItemDisplayPreset,
-  ItemTimePlacement,
-  ItemTitleSize,
   ListDisplayOptions,
-  ListGroupBy,
-  ListSortBy,
-  MultiDayAllDayLayout,
   TodayHighlightOptions,
   UnifiedCalendarSource,
-  WeekStartsOn,
-  WeekViewAnchor,
 } from '../types'
 import {
-  DEFAULT_ITEM_DISPLAY,
   DEFAULT_VIEW_LABELS,
-  DIARY_TASKS_MODE_LABELS,
-  DIARY_TASKS_MODE_OPTIONS,
-  DIARY_TASKS_MODE_DESCRIPTIONS,
-  ITEM_COLOR_STYLE_LABELS,
-  ITEM_DENSITY_LABELS,
   ITEM_DISPLAY_PRESET_LABELS,
-  ITEM_TIME_PLACEMENT_LABELS,
-  ITEM_TITLE_SIZE_LABELS,
-  ITEM_TITLE_SIZE_OPTIONS,
   LIST_GROUP_LABELS,
-  LIST_SORT_LABELS,
-  MULTI_DAY_ALL_DAY_LAYOUT_LABELS,
-  SETTINGS_DEFAULT_VIEWS,
-  TIME_FORMAT_LABELS,
-  WEEK_START_LABELS,
-  WEEK_VIEW_ANCHOR_LABELS,
   applyItemDisplayPreset,
 } from '../types'
 import type { AuthUser } from '../../shared/auth'
@@ -55,33 +31,18 @@ import type {
 } from '../../shared/microsoftGraph'
 import type { GoogleCalendarDto, GoogleIntegrationStatus } from '../../shared/googleApi'
 import type { AppleIntegrationStatus } from '../../shared/appleApi'
-import { loadKioskPin, saveKioskPin } from './KioskPinGate'
-import { SecuritySettingsPanel } from './SecuritySettingsPanel'
+import { loadKioskPin } from './KioskPinGate'
 import { HouseholdPermissionsView } from './HouseholdPermissionsView'
-import { MicrosoftConnectPanel } from './MicrosoftConnectPanel'
-import { OneDriveFileManager } from './OneDriveFileManager'
-import { OutlookPowerPanel } from './OutlookPowerPanel'
-import { TeamsPanel } from './TeamsPanel'
-import { GoogleConnectPanel } from './GoogleConnectPanel'
-import { AppleConnectPanel } from './AppleConnectPanel'
-import { CategoriesManager } from './CategoriesManager'
-import { CalendarItemRow } from './CalendarItem'
-import { MultiDaySpanBar } from './MultiDaySpanBar'
-import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
 import {
-  SettingsActionRow,
-  SettingsCategoryFilterRow,
-  SettingsInfoCallout,
-  SettingsIntegrationRow,
-  SettingsSelectRow,
-  SettingsToggleRow,
-} from './ui/SettingsControls'
-import { categoryDiaryStatusLabel, shouldShowInDiary } from '../lib/diaryVisibility'
-import { TASK_PROVIDER_CALENDAR_TOGGLE_DESCRIPTIONS, TASK_PROVIDER_LABELS } from '../lib/providerTasks'
-import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
-import { TodayHighlightSettingsPanel } from './TodayHighlightSettingsPanel'
-import { CalendarPresetSettingsPanel } from './CalendarPresetSettingsPanel'
+  isSettingsSectionOpen,
+  loadSettingsSectionState,
+  saveSettingsSectionState,
+  setSettingsSectionOpen,
+  type SettingsSectionId,
+} from '../lib/settingsSectionState'
+import { SyncHelpView } from './SyncHelpView'
+import { SettingsPageSections } from './settings/SettingsPageSections'
 
 interface SettingsViewProps {
   categories: Category[]
@@ -135,21 +96,6 @@ interface SettingsViewProps {
   /** Rendered inside the side panel — hides duplicate page header. */
   embedded?: boolean
 }
-
-const GROUP_OPTIONS: ListGroupBy[] = ['none', 'category', 'time', 'kind']
-const SORT_OPTIONS: ListSortBy[] = ['time', 'alpha']
-const ITEM_PRESET_OPTIONS: ItemDisplayPreset[] = ['classic', 'minimal', 'dense', 'bold', 'custom']
-const DENSITY_OPTIONS: ItemCardDensity[] = ['comfortable', 'compact', 'minimal']
-const COLOR_STYLE_OPTIONS: ItemColorStyle[] = [
-  'accent-bar',
-  'tinted',
-  'left-border',
-  'dot-only',
-  'filled',
-]
-const TIME_PLACEMENT_OPTIONS: ItemTimePlacement[] = ['above-title', 'inline-title', 'hidden']
-const TITLE_SIZE_OPTIONS: ItemTitleSize[] = ITEM_TITLE_SIZE_OPTIONS
-const MULTI_DAY_LAYOUT_OPTIONS: MultiDayAllDayLayout[] = ['span-bar', 'repeat-daily']
 
 export function SettingsView({
   categories,
@@ -205,6 +151,7 @@ export function SettingsView({
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const [showSyncHelp, setShowSyncHelp] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
+  const [sectionState, setSectionState] = useState(() => loadSettingsSectionState())
   const outlookPanelRef = useRef<HTMLDivElement>(null)
   const googlePanelRef = useRef<HTMLDivElement>(null)
   const applePanelRef = useRef<HTMLDivElement>(null)
@@ -317,17 +264,66 @@ export function SettingsView({
     onItemDisplayOptionsChange(applyItemDisplayPreset(preset))
   }
 
+  const sectionOpen = useCallback(
+    (id: SettingsSectionId) => isSettingsSectionOpen(id, sectionState),
+    [sectionState],
+  )
+
+  const setSectionOpen = useCallback((id: SettingsSectionId, open: boolean) => {
+    setSectionState((prev) => {
+      const next = setSettingsSectionOpen(prev, id, open)
+      saveSettingsSectionState(next)
+      return next
+    })
+  }, [])
+
   const scrollToOutlook = () => {
+    setSectionOpen('connected-accounts', true)
     outlookPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const scrollToGoogle = () => {
-    googlePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
+  const connectedAccountsSummary = useMemo(() => {
+    const msCount = microsoftStatus?.accounts.length ?? 0
+    const googleCount = googleStatus?.accounts.length ?? 0
+    const appleCount = appleStatus?.accounts.length ?? 0
+    const labels: string[] = []
+    if (msCount > 0) labels.push('Microsoft')
+    if (googleCount > 0) labels.push('Google')
+    if (appleCount > 0) labels.push('Apple')
+    if (labels.length === 0) return 'Not connected'
+    const total = msCount + googleCount + appleCount
+    return `${labels.join(' · ')} · ${total} account${total === 1 ? '' : 's'}`
+  }, [microsoftStatus, googleStatus, appleStatus])
 
-  const scrollToApple = () => {
-    applePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
+  const calendarTasksSummary = useMemo(() => {
+    const parts = [DEFAULT_VIEW_LABELS[calendarPreferences.defaultView]]
+    if (usingRealMicrosoft) {
+      parts.push(
+        calendarSourcePrefs.showMicrosoftTodoTasks ? 'To Do on calendar' : 'To Do hidden on calendar',
+      )
+    }
+    return parts.join(' · ')
+  }, [calendarPreferences.defaultView, calendarSourcePrefs.showMicrosoftTodoTasks, usingRealMicrosoft])
+
+  const displaySummary = useMemo(
+    () =>
+      `${ITEM_DISPLAY_PRESET_LABELS[itemDisplayOptions.preset]} · ${LIST_GROUP_LABELS[listOptions.groupBy]}`,
+    [itemDisplayOptions.preset, listOptions.groupBy],
+  )
+
+  const householdSummary = useMemo(() => {
+    const member = MOCK_HOUSEHOLD_MEMBERS.find(
+      (entry) => entry.id === permissionsConfig.activeMemberId,
+    )
+    return `${member?.displayName ?? 'Member'} · ${sharedBoardCount} on board`
+  }, [permissionsConfig.activeMemberId, sharedBoardCount])
+
+  const accountSummary = useMemo(() => {
+    if (!authUser) return 'Sign in'
+    return authUser.totpEnabled ? `${authUser.displayName} · 2FA on` : authUser.displayName
+  }, [authUser])
+
+  const aboutSummary = useMemo(() => `${APP_NAME} · v0.1.0`, [])
 
   if (showSyncHelp) {
     return <SyncHelpView onBack={() => setShowSyncHelp(false)} />
@@ -346,931 +342,89 @@ export function SettingsView({
   return (
     <div className={embedded ? 'px-2 pb-6 pt-1' : 'px-4 pb-6 pt-2 safe-top'}>
       {!embedded && (
-        <div className="mb-4 flex items-start justify-between gap-2">
+        <div className="mb-4">
           <SectionHeader title="Settings" />
-          <ListOptionsMenu
-            categories={categories}
-            options={listOptions}
-            onChange={onListOptionsChange}
-          />
-        </div>
-      )}
-      {embedded && (
-        <div className="mb-3 flex justify-end px-1">
-          <ListOptionsMenu
-            categories={categories}
-            options={listOptions}
-            onChange={onListOptionsChange}
-          />
         </div>
       )}
 
-      <SettingsGroup title="Categories" id="settings-categories">
-        <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
-          {usingRealMicrosoft
-            ? 'These categories sync with Outlook — the same list as Categorize in Outlook calendar and mail.'
-            : 'Customise colours and labels. Items inherit their category colour.'}
-        </p>
-        <div className="px-4 pb-4">
-          <CategoriesManager
-            categories={categories}
-            itemCounts={itemCounts}
-            onSave={onSaveCategory}
-            onDelete={onDeleteCategory}
-            outlookSynced={usingRealMicrosoft}
-          />
-        </div>
-      </SettingsGroup>
-
-      <SettingsGroup title="List display">
-        <SettingsSelectRow
-          label="Group by"
-          value={listOptions.groupBy}
-          options={GROUP_OPTIONS.map((key) => ({ value: key, label: LIST_GROUP_LABELS[key] }))}
-          onChange={(groupBy) => onListOptionsChange({ ...listOptions, groupBy })}
-        />
-        <SettingsSelectRow
-          label="Sort"
-          value={listOptions.sortBy}
-          options={SORT_OPTIONS.map((key) => ({ value: key, label: LIST_SORT_LABELS[key] }))}
-          onChange={(sortBy) => onListOptionsChange({ ...listOptions, sortBy })}
-        />
-        <SettingsCategoryFilterRow
-          categories={categories}
-          categoryFilter={listOptions.categoryFilter}
-          onChange={(categoryFilter) => onListOptionsChange({ ...listOptions, categoryFilter })}
-        />
-        <SettingsToggleRow
-          label="Hide completed"
-          checked={listOptions.hideCompleted}
-          onChange={(hideCompleted) => onListOptionsChange({ ...listOptions, hideCompleted })}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Item appearance">
-        <p className="px-4 pb-3 pt-1 text-caption text-wf-text-tertiary">
-          How events and tasks look in week board, lists, To Do, and today.
-        </p>
-        <div className="mx-4 mb-4 rounded-2xl border border-wf-border bg-wf-bg p-2">
-          {itemDisplayOptions.multiDayAllDayLayout === 'span-bar' && previewSpanSegments.length > 0 && (
-            <div className="mb-2 overflow-hidden rounded-xl border border-wf-border bg-wf-surface">
-              <MultiDaySpanBar
-                segments={previewSpanSegments}
-                weekStart={previewWeekStart}
-                compact
-                seamless
-                showDayLabels={false}
-              />
-            </div>
-          )}
-          {previewItems
-            .filter((item) => item.id !== 'preview-multiday' || itemDisplayOptions.multiDayAllDayLayout === 'repeat-daily')
-            .map((item) => (
-            <CalendarItemRow
-              key={item.id}
-              item={item}
-              categories={categories}
-              displayOptions={itemDisplayOptions}
-              spanPosition={
-                item.id === 'preview-multiday' && itemDisplayOptions.multiDayAllDayLayout === 'repeat-daily'
-                  ? 'start'
-                  : 'single'
-              }
-            />
-          ))}
-        </div>
-        <SettingsSelectRow
-          label="Style preset"
-          value={itemDisplayOptions.preset}
-          options={ITEM_PRESET_OPTIONS.map((key) => ({
-            value: key,
-            label: ITEM_DISPLAY_PRESET_LABELS[key],
-          }))}
-          onChange={changeItemDisplayPreset}
-        />
-        <SettingsSelectRow
-          label="Multi-day all-day"
-          value={itemDisplayOptions.multiDayAllDayLayout}
-          options={MULTI_DAY_LAYOUT_OPTIONS.map((key) => ({
-            value: key,
-            label: MULTI_DAY_ALL_DAY_LAYOUT_LABELS[key],
-          }))}
-          onChange={(multiDayAllDayLayout) => changeItemDisplay({ multiDayAllDayLayout })}
-        />
-        <SettingsSelectRow
-          label="Density"
-          value={itemDisplayOptions.density}
-          options={DENSITY_OPTIONS.map((key) => ({ value: key, label: ITEM_DENSITY_LABELS[key] }))}
-          onChange={(density) => changeItemDisplay({ density })}
-        />
-        <SettingsSelectRow
-          label="Colour style"
-          value={itemDisplayOptions.colorStyle}
-          options={COLOR_STYLE_OPTIONS.map((key) => ({
-            value: key,
-            label: ITEM_COLOR_STYLE_LABELS[key],
-          }))}
-          onChange={(colorStyle) => changeItemDisplay({ colorStyle })}
-        />
-        <SettingsSelectRow
-          label="Time label"
-          value={itemDisplayOptions.timePlacement}
-          options={TIME_PLACEMENT_OPTIONS.map((key) => ({
-            value: key,
-            label: ITEM_TIME_PLACEMENT_LABELS[key],
-          }))}
-          onChange={(timePlacement) => changeItemDisplay({ timePlacement })}
-        />
-        <SettingsSelectRow
-          label="Title size"
-          value={itemDisplayOptions.titleSize}
-          options={TITLE_SIZE_OPTIONS.map((key) => ({
-            value: key,
-            label: ITEM_TITLE_SIZE_LABELS[key],
-          }))}
-          onChange={(titleSize) => changeItemDisplay({ titleSize })}
-        />
-        <SettingsToggleRow
-          label="Category badge"
-          checked={itemDisplayOptions.showCategoryBadge}
-          onChange={(showCategoryBadge) => changeItemDisplay({ showCategoryBadge })}
-        />
-        <SettingsToggleRow
-          label="Notes preview"
-          checked={itemDisplayOptions.showNotesPreview}
-          onChange={(showNotesPreview) => changeItemDisplay({ showNotesPreview })}
-        />
-        <SettingsToggleRow
-          label="Anytime label on tasks"
-          checked={itemDisplayOptions.showTaskAnytimeLabel}
-          onChange={(showTaskAnytimeLabel) => changeItemDisplay({ showTaskAnytimeLabel })}
-        />
-        <SettingsToggleRow
-          label="Strike completed items"
-          checked={itemDisplayOptions.showCompletedStrike}
-          onChange={(showCompletedStrike) => changeItemDisplay({ showCompletedStrike })}
-        />
-        <SettingsToggleRow
-          label="Card shadow"
-          checked={itemDisplayOptions.cardShadow}
-          onChange={(cardShadow) => changeItemDisplay({ cardShadow })}
-        />
-        <SettingsToggleRow
-          label="Card border"
-          checked={itemDisplayOptions.cardBorder}
-          onChange={(cardBorder) => changeItemDisplay({ cardBorder })}
-        />
-        <SettingsActionRow
-          label="Reset item appearance"
-          value="Defaults"
-          onClick={() => onItemDisplayOptionsChange({ ...DEFAULT_ITEM_DISPLAY })}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Finding today" id="settings-today-highlight">
-        <TodayHighlightSettingsPanel
-          options={todayHighlight}
-          onChange={onTodayHighlightChange}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Calendar">
-        <SettingsSelectRow
-          label="Default view"
-          value={calendarPreferences.defaultView}
-          options={SETTINGS_DEFAULT_VIEWS.map((mode) => ({
-            value: mode,
-            label: DEFAULT_VIEW_LABELS[mode],
-          }))}
-          onChange={(defaultView) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, defaultView })
-          }
-        />
-        <SettingsSelectRow
-          label="Week starts on"
-          value={calendarPreferences.weekStartsOn}
-          options={([0, 1] as WeekStartsOn[]).map((value) => ({
-            value,
-            label: WEEK_START_LABELS[value],
-          }))}
-          onChange={(weekStartsOn) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, weekStartsOn })
-          }
-        />
-        <SettingsSelectRow
-          label="Week view opens on"
-          value={calendarPreferences.weekViewAnchor}
-          options={(['week-start', 'today'] as WeekViewAnchor[]).map((value) => ({
-            value,
-            label: WEEK_VIEW_ANCHOR_LABELS[value],
-          }))}
-          onChange={(weekViewAnchor) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, weekViewAnchor })
-          }
-        />
-        <SettingsSelectRow
-          label="Time format"
-          value={calendarPreferences.timeFormat}
-          options={(['24h', '12h'] as const).map((value) => ({
-            value,
-            label: TIME_FORMAT_LABELS[value],
-          }))}
-          onChange={(timeFormat) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, timeFormat })
-          }
-        />
-        <SettingsToggleRow
-          label="Expand month weeks to fit"
-          description="Show every event in month view by growing each week row — no +N more."
-          checked={calendarPreferences.monthViewExpandWeeks}
-          onChange={(monthViewExpandWeeks) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, monthViewExpandWeeks })
-          }
-        />
-        <SettingsToggleRow
-          label="Show week number"
-          description="ISO week number on the left of day headers (e.g. W26)."
-          checked={calendarPreferences.showWeekNumber === true}
-          onChange={(showWeekNumber) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, showWeekNumber })
-          }
-        />
-        <SettingsToggleRow
-          label="Show day of year"
-          description="Day-of-year number on the left of day headers (e.g. D177)."
-          checked={calendarPreferences.showDayOfYear === true}
-          onChange={(showDayOfYear) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, showDayOfYear })
-          }
-        />
-        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          {calendarSources.length > 0
-            ? 'Use preset chips on the calendar view, or tap Calendars to show or hide individual sources.'
-            : usingRealMicrosoft
-              ? 'Tap a calendar to filter the week view to that account.'
-              : 'Demo calendars — tap to preview the account filter.'}
-        </p>
-        {calendarSources.length > 0 ? (
-          <CalendarPresetSettingsPanel
-            sources={calendarSources}
-            prefs={calendarSourcePrefs}
-            onChange={onCalendarSourcePrefsChange}
-          />
-        ) : (
-          calendarAccounts.map((account) => (
-            <SettingsActionRow
-              key={account.id}
-              label={account.label}
-              value={usingRealMicrosoft ? account.email : 'Demo · tap to filter'}
-              onClick={() => onShowCalendarAccount(account.id)}
-            />
-          ))
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup title={DIARY_SETTINGS.sectionTitle}>
-        <SettingsInfoCallout
-          title={DIARY_SETTINGS.openingTitle}
-          body={DIARY_SETTINGS.openingBody}
-        />
-        <SettingsInfoCallout
-          bullets={DIARY_SETTINGS.howItWorks.map(
-            (entry) => `${entry.label} — ${entry.text}`,
-          )}
-        />
-        <SettingsSelectRow
-          label="Tasks on diary"
-          description={
-            DIARY_TASKS_MODE_DESCRIPTIONS[
-              calendarPreferences.diaryTasksMode ?? 'category-rules'
-            ]
-          }
-          value={calendarPreferences.diaryTasksMode ?? 'category-rules'}
-          options={DIARY_TASKS_MODE_OPTIONS.map((mode) => ({
-            value: mode,
-            label: DIARY_TASKS_MODE_LABELS[mode],
-          }))}
-          onChange={(diaryTasksMode) =>
-            onCalendarPreferencesChange({ ...calendarPreferences, diaryTasksMode })
-          }
-        />
-        <DiaryPreviewPanel
-          categories={categories}
-          calendarPreferences={calendarPreferences}
-          calendarSourcePrefs={calendarSourcePrefs}
-          usingRealMicrosoft={usingRealMicrosoft}
-          displayOptions={itemDisplayOptions}
-        />
-        <p className="px-4 pb-2 pt-2 text-caption text-wf-text-tertiary">
-          {usingRealMicrosoft || usingRealGoogle || usingRealApple
-            ? 'Connected task lists sync with your provider. Edits in MyAxis or in the provider app stay in sync on refresh.'
-            : DIARY_SETTINGS.categoryTableIntro}
-        </p>
-        {usingRealMicrosoft && (
-          <SettingsToggleRow
-            label={`${TASK_PROVIDER_LABELS.microsoft} on calendar`}
-            description={TASK_PROVIDER_CALENDAR_TOGGLE_DESCRIPTIONS.microsoft}
-            checked={calendarSourcePrefs.showMicrosoftTodoTasks}
-            disabled={(calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules'}
-            onChange={(showMicrosoftTodoTasks) =>
-              onCalendarSourcePrefsChange({ ...calendarSourcePrefs, showMicrosoftTodoTasks })
-            }
-          />
-        )}
-        {usingRealGoogle && (
-          <SettingsInfoCallout
-            title={TASK_PROVIDER_LABELS.google}
-            body="Google Calendar events sync today. Google Tasks support is planned — tasks will appear here when connected."
-          />
-        )}
-        {usingRealApple && (
-          <SettingsInfoCallout
-            title={TASK_PROVIDER_LABELS.apple}
-            body="iCloud Calendar events sync today. iCloud Reminders support is planned — reminders will appear here when connected."
-          />
-        )}
-        {!usingRealMicrosoft &&
-          !usingRealGoogle &&
-          !usingRealApple &&
-          categories
-            .filter((cat) => cat.kind === 'task' || cat.kind === 'reminder')
-            .map((cat) => (
-              <SettingsToggleRow
-                key={cat.id}
-                label={cat.name}
-                description={categoryDiaryStatusLabel(cat, calendarPreferences)}
-                checked={cat.showInDiary ?? false}
-                disabled={(calendarPreferences.diaryTasksMode ?? 'category-rules') !== 'category-rules'}
-                onChange={(showInDiary) => onSaveCategory({ ...cat, showInDiary })}
-              />
-            ))}
-        <SettingsInfoCallout title="Example setups">
-          <div className="mt-2 space-y-2">
-            {DIARY_SETTINGS.examplePresets.map((row) => (
-              <div key={row.name} className="flex gap-2 text-caption">
-                <span className="min-w-[7rem] font-medium text-wf-text">{row.name}</span>
-                <span className="shrink-0 font-semibold text-wf-accent">{row.suggested}</span>
-                <span className="text-wf-text-tertiary">— {row.why}</span>
-              </div>
-            ))}
-          </div>
-        </SettingsInfoCallout>
-        <SettingsInfoCallout title="Reminders vs linked tasks">
-          <div className="mt-2 space-y-3">
-            {DIARY_SETTINGS.faq.map((entry) => (
-              <div key={entry.q}>
-                <p className="font-semibold text-wf-text">{entry.q}</p>
-                <p className="mt-0.5">{entry.a}</p>
-              </div>
-            ))}
-          </div>
-        </SettingsInfoCallout>
-        <div className="px-4 pb-4">
-          <a
-            href="#settings-categories"
-            className="text-caption font-semibold text-wf-accent"
-          >
-            {DIARY_SETTINGS.manageCategoriesLink}
-          </a>
-        </div>
-      </SettingsGroup>
-
-      <SettingsGroup title="Household">
-        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          Prototype profile — permissions apply to the signed-in household member.
-        </p>
-        <div className="border-b border-wf-border/50 px-4 py-3.5">
-          <label className="block">
-            <span className="text-body font-medium text-wf-text">Signed in as</span>
-            <select
-              value={permissionsConfig.activeMemberId}
-              onChange={(event) =>
-                onPermissionsChange({
-                  ...permissionsConfig,
-                  activeMemberId: event.target.value,
-                })
-              }
-              className="mt-2 w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body outline-none focus:border-wf-accent"
-            >
-              {MOCK_HOUSEHOLD_MEMBERS.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.displayName} ({member.role})
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowPermissions(true)}
-          className="mx-4 mb-4 mt-2 w-[calc(100%-2rem)] rounded-xl bg-wf-accent-soft py-2.5 text-body font-semibold text-wf-accent"
-        >
-          Household permissions
-        </button>
-      </SettingsGroup>
-
-      <SettingsGroup title="Family board">
-        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          Corky-style noticeboard for shared household items. Share events from the item editor or email view.
-        </p>
-        {onOpenBoard && (
-          <button
-            type="button"
-            onClick={onOpenBoard}
-            className="mx-4 mb-3 w-[calc(100%-2rem)] rounded-xl bg-wf-accent-soft py-2.5 text-body font-semibold text-wf-accent"
-          >
-            Open family board
-          </button>
-        )}
-        <SettingsRow label="Shared on board" value={String(sharedBoardCount)} />
-        <div className="border-b border-wf-border/50 px-4 py-3.5">
-          <label className="block">
-            <span className="text-body font-medium text-wf-text">Kiosk exit PIN</span>
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              value={kioskPin}
-              onChange={(event) => {
-                const next = event.target.value.replace(/\D/g, '').slice(0, 4)
-                setKioskPin(next)
-                if (next.length === 4) saveKioskPin(next)
-              }}
-              className="mt-2 w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body tracking-[0.3em] outline-none focus:border-wf-accent"
-            />
-          </label>
-          <p className="mt-1.5 text-caption text-wf-text-tertiary">
-            Required to leave fullscreen kiosk mode on the family board.
-          </p>
-        </div>
-        {onEnterKiosk && (
-          <button
-            type="button"
-            onClick={onEnterKiosk}
-            className="mx-4 mb-4 w-[calc(100%-2rem)] rounded-xl border border-wf-border py-2.5 text-body font-semibold text-wf-text-secondary"
-          >
-            Enter kiosk mode
-          </button>
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup title="Data &amp; sync">
-        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          What stays in Gmail/Outlook vs what {APP_NAME} stores.
-        </p>
-        <button
-          type="button"
-          onClick={() => setShowSyncHelp(true)}
-          className="mx-4 mb-4 w-[calc(100%-2rem)] rounded-xl bg-wf-accent-soft py-2.5 text-body font-semibold text-wf-accent"
-        >
-          View sync matrix
-        </button>
-      </SettingsGroup>
-
-      <SettingsGroup title="Email">
-        <div ref={outlookPanelRef}>
-          <MicrosoftConnectPanel
-            status={microsoftStatus}
-            loading={microsoftLoading}
-            onRefresh={onMicrosoftRefresh}
-          />
-        </div>
-
-        <div ref={googlePanelRef}>
-          <GoogleConnectPanel
-            status={googleStatus}
-            loading={googleLoading}
-            onRefresh={onGoogleRefresh}
-          />
-        </div>
-
-        <div ref={applePanelRef}>
-          <AppleConnectPanel
-            status={appleStatus}
-            loading={appleLoading}
-            onRefresh={onAppleRefresh}
-            onShowToast={onShowToast}
-          />
-        </div>
-
-        {usingRealMicrosoft && (microsoftStatus?.accounts.length ?? 0) > 0 && (
-          <>
-            <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-              Defaults for new calendar events, tasks, and contacts when an item does not already
-              specify an account.
-            </p>
-            <SettingsSelectRow
-              label="Default Outlook account"
-              value={
-                integrationAccountDefaults.defaultMicrosoftAccountId ??
-                microsoftStatus?.accounts[0]?.id ??
-                ''
-              }
-              options={(microsoftStatus?.accounts ?? []).map((account) => ({
-                value: account.id,
-                label: account.email,
-              }))}
-              onChange={(defaultMicrosoftAccountId) =>
-                onIntegrationAccountDefaultsChange({
-                  ...integrationAccountDefaults,
-                  defaultMicrosoftAccountId,
-                })
-              }
-            />
-            {calendarsForDefaultAccount.length > 0 && (
-              <SettingsSelectRow
-                label="Default calendar"
-                value={integrationAccountDefaults.calendar?.defaultCalendarId ?? ''}
-                options={calendarsForDefaultAccount.map((calendar) => ({
-                  value: calendar.graphCalendarId,
-                  label: `${calendar.name}${calendar.isDefault ? ' (Outlook default)' : ''}`,
-                }))}
-                onChange={(defaultCalendarId) =>
-                  onIntegrationAccountDefaultsChange({
-                    ...integrationAccountDefaults,
-                    calendar: {
-                      ...integrationAccountDefaults.calendar,
-                      defaultAccountId: defaultMicrosoftAccountId,
-                      defaultCalendarId,
-                    },
-                  })
-                }
-              />
-            )}
-            {todoListsForDefaultAccount.length > 0 && (
-              <SettingsSelectRow
-                label="Default To Do list"
-                value={integrationAccountDefaults.tasks?.defaultTodoListId ?? ''}
-                options={todoListsForDefaultAccount.map((list) => ({
-                  value: list.graphListId,
-                  label: `${list.name}${list.isDefault ? ' (Outlook default)' : ''}`,
-                }))}
-                onChange={(defaultTodoListId) =>
-                  onIntegrationAccountDefaultsChange({
-                    ...integrationAccountDefaults,
-                    tasks: {
-                      ...integrationAccountDefaults.tasks,
-                      defaultAccountId: defaultMicrosoftAccountId,
-                      defaultTodoListId,
-                    },
-                  })
-                }
-              />
-            )}
-            <p className="px-4 pb-3 text-caption text-wf-text-tertiary">
-              Reconnect Google after scope updates (send, Drive). Reconnect Outlook after Contacts scope changes.
-            </p>
-          </>
-        )}
-
-        {usingRealMicrosoft && (microsoftStatus?.accounts.length ?? 0) > 0 && (
-          <div className="border-t border-wf-border/50 px-4 py-4">
-            <p className="mb-3 text-caption font-semibold text-wf-text-secondary">OneDrive files</p>
-            <OneDriveFileManager
-              accounts={microsoftStatus?.accounts ?? []}
-              defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
-            />
-            <OutlookPowerPanel
-              accounts={microsoftStatus?.accounts ?? []}
-              defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
-              integrationAccountDefaults={integrationAccountDefaults}
-              onIntegrationAccountDefaultsChange={onIntegrationAccountDefaultsChange}
-            />
-            <TeamsPanel
-              accounts={microsoftStatus?.accounts ?? []}
-              upcomingItems={items}
-              defaultAccountId={integrationAccountDefaults.defaultMicrosoftAccountId}
-            />
-          </div>
-        )}
-
-        {usingRealGoogle && (googleStatus?.accounts.length ?? 0) > 0 && (
-          <>
-            <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-              Defaults for new Gmail messages and Google Calendar events.
-            </p>
-            <SettingsSelectRow
-              label="Default Google account"
-              value={
-                integrationAccountDefaults.defaultGoogleAccountId ??
-                googleStatus?.accounts[0]?.id ??
-                ''
-              }
-              options={(googleStatus?.accounts ?? []).map((account) => ({
-                value: account.id,
-                label: account.email,
-              }))}
-              onChange={(defaultGoogleAccountId) =>
-                onIntegrationAccountDefaultsChange({
-                  ...integrationAccountDefaults,
-                  defaultGoogleAccountId,
-                })
-              }
-            />
-            {calendarsForDefaultGoogleAccount.length > 0 && (
-              <SettingsSelectRow
-                label="Default Google calendar"
-                value={integrationAccountDefaults.googleCalendar?.defaultCalendarId ?? ''}
-                options={calendarsForDefaultGoogleAccount.map((calendar) => ({
-                  value: calendar.googleCalendarId,
-                  label: `${calendar.name}${calendar.isDefault ? ' (primary)' : ''}`,
-                }))}
-                onChange={(defaultCalendarId) =>
-                  onIntegrationAccountDefaultsChange({
-                    ...integrationAccountDefaults,
-                    googleCalendar: {
-                      ...integrationAccountDefaults.googleCalendar,
-                      defaultAccountId: defaultGoogleAccountId,
-                      defaultCalendarId,
-                    },
-                  })
-                }
-              />
-            )}
-            {googleMailLabels.length > 0 && (
-              <SettingsSelectRow
-                label="Default Gmail label"
-                value={integrationAccountDefaults.googleEmail?.defaultLabelId ?? 'INBOX'}
-                options={googleMailLabels.map((label) => ({
-                  value: label.value,
-                  label: label.label,
-                }))}
-                onChange={(defaultLabelId) =>
-                  onIntegrationAccountDefaultsChange({
-                    ...integrationAccountDefaults,
-                    googleEmail: {
-                      ...integrationAccountDefaults.googleEmail,
-                      defaultAccountId: defaultGoogleAccountId,
-                      defaultLabelId,
-                    },
-                  })
-                }
-              />
-            )}
-          </>
-        )}
-
-        {!usingRealMicrosoft && !microsoftStatus?.configured && (
-          <>
-            <p className="border-t border-wf-border/50 px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-              Demo inboxes — tap to jump to Outlook setup above.
-            </p>
-            {emailAccounts.map((account) => (
-              <SettingsActionRow
-                key={account.id}
-                label={account.label}
-                value={`${account.email} · Demo`}
-                onClick={scrollToOutlook}
-              />
-            ))}
-          </>
-        )}
-
-        <SettingsIntegrationRow
-          label="Gmail"
-          description="Google mail and calendar sync."
-          phaseLabel={googleStatus?.configured ? 'Connect' : 'Phase 10'}
-          notifyChecked={integrationPreferences.googleInterest}
-          onNotifyChange={(googleInterest) =>
-            onIntegrationPreferencesChange({ ...integrationPreferences, googleInterest })
-          }
-          onConnect={scrollToGoogle}
-        />
-        <SettingsIntegrationRow
-          label="Apple Mail"
-          description="iCloud mail with hyperlink fallbacks where APIs are limited."
-          phaseLabel={usingRealApple ? 'Linked' : 'Link in Settings'}
-          notifyChecked={integrationPreferences.appleInterest}
-          onNotifyChange={(appleInterest) =>
-            onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
-          }
-          onConnect={scrollToApple}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Integrations">
-        <p className="px-4 pb-2 pt-3 text-caption text-wf-text-tertiary">
-          Outlook contacts import when connected (Contacts tab). Notes stay local until OneNote API.
-        </p>
-        <SettingsIntegrationRow
-          label="Google Calendar"
-          description="Sync events from Google Calendar accounts."
-          phaseLabel={
-            googleStatus?.connected && (googleStatus.accounts.length ?? 0) > 0
-              ? 'Connected'
-              : googleStatus?.configured
-                ? 'Connect'
-                : 'Phase 10'
-          }
-          notifyChecked={integrationPreferences.googleInterest}
-          onNotifyChange={(googleInterest) =>
-            onIntegrationPreferencesChange({ ...integrationPreferences, googleInterest })
-          }
-          onConnect={scrollToGoogle}
-        />
-        <SettingsIntegrationRow
-          label="Apple Calendar"
-          description="Subscribe to iCloud calendars via public calendar link."
-          phaseLabel={usingRealApple ? 'Linked' : 'Link in Settings'}
-          notifyChecked={integrationPreferences.appleInterest}
-          onNotifyChange={(appleInterest) =>
-            onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
-          }
-          onConnect={scrollToApple}
-        />
-        <SettingsIntegrationRow
-          label="Apple Notes"
-          description="No public iCloud Notes API — open iCloud Notes or copy note text."
-          phaseLabel={usingRealApple ? 'Linked' : 'Link in Settings'}
-          notifyChecked={integrationPreferences.appleInterest}
-          onNotifyChange={(appleInterest) =>
-            onIntegrationPreferencesChange({ ...integrationPreferences, appleInterest })
-          }
-          onConnect={scrollToApple}
-        />
-        <SettingsToggleRow
-          label="Push notifications"
-          description="Reminders and household updates (Phase 10)."
-          checked={integrationPreferences.notificationsEnabled}
-          onChange={(notificationsEnabled) =>
-            onIntegrationPreferencesChange({ ...integrationPreferences, notificationsEnabled })
-          }
-        />
-      </SettingsGroup>
-
-      {authEnabled && (
-        <SettingsGroup title="Account">
-          {authUser && (
-            <>
-              <SettingsRow label="Signed in as" value={authUser.displayName} />
-              <SettingsRow label="Email" value={authUser.email} muted />
-            </>
-          )}
-          {authUser?.isSuperAdmin && onOpenSuperAdmin && (
-            <SettingsActionRow
-              label="Super admin"
-              value="Open console"
-              onClick={onOpenSuperAdmin}
-            />
-          )}
-          {onLogout && (
-            <SettingsActionRow
-              label="Sign out"
-              value="End session"
-              onClick={() => void onLogout()}
-            />
-          )}
-        </SettingsGroup>
-      )}
-
-      {authEnabled && authUser && onAuthUserUpdated && (
-        <SecuritySettingsPanel
-          user={authUser}
-          onUserUpdated={onAuthUserUpdated}
-          onShowToast={onShowToast}
-        />
-      )}
-
-      <SettingsGroup title="About">
-        <SettingsRow label="Version" value="0.1.0 prototype" />
-        <SettingsRow label="App" value={APP_NAME} />
-      </SettingsGroup>
-    </div>
-  )
-}
-
-function SettingsGroup({
-  title,
-  children,
-  id,
-}: {
-  title: string
-  children: React.ReactNode
-  id?: string
-}) {
-  return (
-    <section className="mb-5" id={id}>
-      <h2 className="mb-2 px-3 text-subhead font-semibold text-wf-text-secondary">
-        {title}
-      </h2>
-      <div className="overflow-hidden rounded-2xl bg-wf-surface shadow-[var(--shadow-card)]">
-        {children}
-      </div>
-    </section>
-  )
-}
-
-function DiaryPreviewPanel({
-  categories,
-  calendarPreferences,
-  calendarSourcePrefs,
-  usingRealMicrosoft,
-  displayOptions,
-}: {
-  categories: Category[]
-  calendarPreferences: CalendarPreferences
-  calendarSourcePrefs: CalendarSourcePreferences
-  usingRealMicrosoft: boolean
-  displayOptions: ItemDisplayOptions
-}) {
-  const jobsCategory =
-    categories.find((cat) => cat.name.toLowerCase().includes('jobs')) ??
-    categories.find((cat) => cat.kind === 'task' && cat.showInDiary) ??
-    categories.find((cat) => cat.kind === 'task')
-  const shoppingCategory =
-    categories.find((cat) => cat.name.toLowerCase().includes('shopping')) ??
-    categories.find((cat) => cat.kind === 'task' && !cat.showInDiary) ??
-    jobsCategory
-
-  const previewItems = useMemo((): CalendarItem[] => {
-    const today = toISODate(new Date())
-    if (usingRealMicrosoft) {
-      return [
-        {
-          id: 'diary-preview-ms-todo',
-          title: 'Pick up prescription',
-          date: today,
-          allDay: true,
-          categoryId: 'task',
-          colour: '#4A5A9C',
-          accountId: 'demo',
-          completed: false,
-          provider: 'microsoft',
-          externalId: 'preview',
-          todoListId: 'preview-list',
-        },
-      ]
-    }
-    if (!jobsCategory || !shoppingCategory) return []
-    return [
-      {
-        id: 'diary-preview-jobs',
-        title: 'Fix boiler',
-        date: today,
-        allDay: true,
-        categoryId: jobsCategory.id,
-        colour: jobsCategory.colour,
-        accountId: 'demo',
-        completed: false,
-      },
-      {
-        id: 'diary-preview-shopping',
-        title: 'Milk',
-        date: today,
-        allDay: true,
-        categoryId: shoppingCategory.id,
-        colour: shoppingCategory.colour,
-        accountId: 'demo',
-        completed: false,
-      },
-    ]
-  }, [jobsCategory, shoppingCategory, usingRealMicrosoft])
-
-  const jobsVisible = previewItems[0]
-    ? shouldShowInDiary(previewItems[0], categories, calendarPreferences, calendarSourcePrefs)
-    : false
-  const shoppingVisible = previewItems[1]
-    ? shouldShowInDiary(previewItems[1], categories, calendarPreferences, calendarSourcePrefs)
-    : false
-
-  if (previewItems.length === 0) return null
-
-  return (
-    <div className="mx-4 mb-3 rounded-2xl border border-wf-border bg-wf-bg p-2">
-      <p className="mb-2 px-1 text-caption font-semibold text-wf-text-secondary">Preview</p>
-      <div className="space-y-1">
-        <div>
-          <CalendarItemRow item={previewItems[0]} categories={categories} displayOptions={displayOptions} dense />
-          <p className="px-1 text-caption text-wf-text-tertiary">
-            {jobsVisible ? 'Shows on diary' : 'To Do only'}
-          </p>
-        </div>
-        <div>
-          <CalendarItemRow item={previewItems[1]} categories={categories} displayOptions={displayOptions} dense />
-          <p className="px-1 text-caption text-wf-text-tertiary">
-            {shoppingVisible ? 'Shows on diary' : 'To Do only'}
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SettingsRow({
-  label,
-  value,
-  muted = false,
-}: {
-  label: string
-  value: string
-  muted?: boolean
-}) {
-  return (
-    <div className="flex items-center justify-between border-b border-wf-border/50 px-4 py-3.5 last:border-0">
-      <span className="text-body font-medium text-wf-text">{label}</span>
-      <span className={`text-body ${muted ? 'text-wf-text-tertiary' : 'text-wf-text-secondary'}`}>
-        {value}
-      </span>
+      <SettingsPageSections
+        sectionOpen={sectionOpen}
+        setSectionOpen={setSectionOpen}
+        connectedAccountsSummary={connectedAccountsSummary}
+        calendarTasksSummary={calendarTasksSummary}
+        displaySummary={displaySummary}
+        householdSummary={householdSummary}
+        accountSummary={accountSummary}
+        aboutSummary={aboutSummary}
+        categories={categories}
+        items={items}
+        itemCounts={itemCounts}
+        listOptions={listOptions}
+        onListOptionsChange={onListOptionsChange}
+        itemDisplayOptions={itemDisplayOptions}
+        onItemDisplayOptionsChange={onItemDisplayOptionsChange}
+        changeItemDisplay={changeItemDisplay}
+        changeItemDisplayPreset={changeItemDisplayPreset}
+        previewItems={previewItems}
+        previewSpanSegments={previewSpanSegments}
+        previewWeekStart={previewWeekStart}
+        todayHighlight={todayHighlight}
+        onTodayHighlightChange={onTodayHighlightChange}
+        calendarPreferences={calendarPreferences}
+        onCalendarPreferencesChange={onCalendarPreferencesChange}
+        calendarSources={calendarSources}
+        calendarSourcePrefs={calendarSourcePrefs}
+        onCalendarSourcePrefsChange={onCalendarSourcePrefsChange}
+        calendarAccounts={calendarAccounts}
+        usingRealMicrosoft={usingRealMicrosoft}
+        usingRealGoogle={usingRealGoogle}
+        usingRealApple={usingRealApple}
+        onShowCalendarAccount={onShowCalendarAccount}
+        onSaveCategory={onSaveCategory}
+        onDeleteCategory={onDeleteCategory}
+        permissionsConfig={permissionsConfig}
+        onPermissionsChange={onPermissionsChange}
+        onShowPermissions={() => setShowPermissions(true)}
+        onOpenBoard={onOpenBoard}
+        onEnterKiosk={onEnterKiosk}
+        sharedBoardCount={sharedBoardCount}
+        kioskPin={kioskPin}
+        onKioskPinChange={setKioskPin}
+        onShowSyncHelp={() => setShowSyncHelp(true)}
+        microsoftStatus={microsoftStatus}
+        microsoftLoading={microsoftLoading}
+        onMicrosoftRefresh={onMicrosoftRefresh}
+        googleStatus={googleStatus}
+        googleLoading={googleLoading}
+        onGoogleRefresh={onGoogleRefresh}
+        appleStatus={appleStatus}
+        appleLoading={appleLoading}
+        onAppleRefresh={onAppleRefresh}
+        onShowToast={onShowToast}
+        integrationPreferences={integrationPreferences}
+        onIntegrationPreferencesChange={onIntegrationPreferencesChange}
+        integrationAccountDefaults={integrationAccountDefaults}
+        onIntegrationAccountDefaultsChange={onIntegrationAccountDefaultsChange}
+        graphCalendars={graphCalendars}
+        graphGoogleCalendars={graphGoogleCalendars}
+        graphTodoLists={graphTodoLists}
+        emailAccounts={emailAccounts}
+        defaultMicrosoftAccountId={defaultMicrosoftAccountId}
+        defaultGoogleAccountId={defaultGoogleAccountId}
+        calendarsForDefaultAccount={calendarsForDefaultAccount}
+        calendarsForDefaultGoogleAccount={calendarsForDefaultGoogleAccount}
+        todoListsForDefaultAccount={todoListsForDefaultAccount}
+        googleMailLabels={googleMailLabels}
+        scrollToOutlook={scrollToOutlook}
+        outlookPanelRef={outlookPanelRef}
+        googlePanelRef={googlePanelRef}
+        applePanelRef={applePanelRef}
+        authEnabled={authEnabled}
+        authUser={authUser}
+        onAuthUserUpdated={onAuthUserUpdated}
+        onLogout={onLogout}
+        onOpenSuperAdmin={onOpenSuperAdmin}
+      />
     </div>
   )
 }

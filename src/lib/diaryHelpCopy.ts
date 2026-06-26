@@ -18,7 +18,7 @@ export const DIARY_SETTINGS = {
   categoryToggleLabel: 'Show on diary',
   categoryToggleDescription:
     'Dated items in this list appear on your calendar. They always remain in To Do.',
-  manageCategoriesLink: 'Add or rename lists →',
+  manageCategoriesLink: 'Manage event categories →',
   examplePresets: [
     { name: 'Jobs today', suggested: 'On', why: 'Daily work you need in front of you' },
     { name: 'Bills', suggested: 'On', why: 'Due dates matter on the calendar' },
