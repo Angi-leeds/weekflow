@@ -8,6 +8,7 @@ import { MOCK_CLOUD_FOLDERS } from '../mockData'
 import { OneDriveFolderPicker } from './OneDriveFolderPicker'
 import { GoogleDriveFolderPicker } from './GoogleDriveFolderPicker'
 import { isGoogleEmail, isMicrosoftEmail } from '../lib/connectedAccounts'
+import { ReminderTimingPicker } from './ReminderTimingPicker'
 
 interface EmailActionFlowModalProps {
   open: boolean
@@ -59,11 +60,27 @@ export function EmailActionFlowModal({
     }
   }, [open, email, defaultDueDate, usesRealCloud])
 
+  useEffect(() => {
+    if (options.taskReminderKind !== 'date' || !options.taskReminderDate || !options.dueDate) {
+      return
+    }
+    if (options.taskReminderDate >= options.dueDate) {
+      setOptions((prev) => ({
+        ...prev,
+        taskReminderKind: 'offset',
+        taskReminderDate: undefined,
+      }))
+    }
+  }, [options.dueDate, options.taskReminderKind, options.taskReminderDate])
+
   if (!open || !email) return null
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!options.dueDate) return
+    if (options.createTask && options.taskReminderKind === 'date' && !options.taskReminderDate) {
+      return
+    }
     if (options.tagFolder && !options.folderId) return
     setSubmitting(true)
     try {
@@ -140,31 +157,33 @@ export function EmailActionFlowModal({
 
           <FlowToggle
             icon={ClipboardList}
-            label="Create pay-before task"
+            label="Remind me before"
             checked={options.createTask}
             onChange={(createTask) => setOptions((prev) => ({ ...prev, createTask }))}
           />
 
           {options.createTask && (
-            <label className="block pl-8">
+            <div className="block pl-8">
               <span className="mb-1 block text-caption font-medium text-wf-text-secondary">
-                Task due (days before bill date)
+                When to remind me
               </span>
-              <select
-                value={options.taskLeadDays}
-                onChange={(event) =>
+              <ReminderTimingPicker
+                dueDate={options.dueDate}
+                value={{
+                  kind: options.taskReminderKind,
+                  leadDays: options.taskLeadDays,
+                  reminderDate: options.taskReminderDate,
+                }}
+                onChange={({ kind, leadDays, reminderDate }) =>
                   setOptions((prev) => ({
                     ...prev,
-                    taskLeadDays: Number(event.target.value),
+                    taskReminderKind: kind,
+                    taskLeadDays: leadDays,
+                    taskReminderDate: reminderDate,
                   }))
                 }
-                className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-2.5 text-body outline-none focus:border-wf-accent"
-              >
-                <option value={1}>1 day before</option>
-                <option value={3}>3 days before</option>
-                <option value={7}>1 week before</option>
-              </select>
-            </label>
+              />
+            </div>
           )}
 
           <FlowToggle
@@ -304,6 +323,9 @@ export function EmailActionFlowModal({
             disabled={
               submitting ||
               !options.dueDate ||
+              (options.createTask &&
+                options.taskReminderKind === 'date' &&
+                !options.taskReminderDate) ||
               (options.tagFolder && !options.folderId)
             }
             className="w-full rounded-xl bg-wf-accent py-3.5 text-body font-semibold text-white disabled:opacity-50"

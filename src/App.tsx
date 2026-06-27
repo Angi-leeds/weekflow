@@ -134,6 +134,7 @@ import { normalizeItemSchedule } from './lib/itemTimeHelpers'
 import { PLANNER_DIARY_HINT, buildPlannerCalendarHint } from './lib/diaryHelpCopy'
 import { connectedTaskListLabels } from './lib/providerTasks'
 import { shouldSyncOnFocus } from './lib/syncScheduler'
+import { resolveTaskReminderDate } from './lib/reminderTiming'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
@@ -1298,7 +1299,7 @@ export default function App() {
       if (options.createCalendar) {
         calendarItem = {
           id: generateId(),
-          title: `Pay: ${email.from}`,
+          title: `Due: ${email.from}`,
           date: options.dueDate,
           allDay: true,
           categoryId: eventCategory.id,
@@ -1317,16 +1318,16 @@ export default function App() {
       }
 
       if (options.createTask) {
-        const dueDate = parseDate(options.dueDate)
+        const reminderDate = resolveTaskReminderDate(options, options.dueDate)
         taskItem = {
           id: generateId(),
-          title: `Pay before due: ${email.from}`,
-          date: toISODate(addDays(dueDate, -options.taskLeadDays)),
+          title: `Remind me: ${email.from}`,
+          date: reminderDate,
           allDay: true,
           categoryId: taskCategory.id,
           colour: taskCategory.colour,
           accountId: email.accountId || calendarAccountForCategory(taskCategory.id),
-          notes: `Reminder linked to bill email: ${email.subject}`,
+          notes: `Reminder linked to email: ${email.subject}`,
           completed: false,
         }
         setItems((prev) => [...prev, taskItem!])
