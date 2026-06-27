@@ -9,6 +9,7 @@ import { isTaskOrReminder } from './itemHelpers'
 import { plannerSubtitle } from '../lib/providerTasks'
 import { ListOptionsMenu } from './ui/ListOptionsMenu'
 import { SectionHeader } from './ui/SectionHeader'
+import { SyncButton } from './ui/SyncButton'
 
 interface PlannerViewProps {
   items: CalendarItem[]
@@ -22,6 +23,10 @@ interface PlannerViewProps {
   onToggleComplete?: (id: string) => void
   /** Hint when dated tasks are hidden from the calendar. */
   calendarHint?: string
+  showSync?: boolean
+  calendarSyncing?: boolean
+  lastCalendarSyncAt?: number | null
+  onCalendarSync?: () => void
 }
 
 export function PlannerView({
@@ -57,11 +62,20 @@ export function PlannerView({
           }
           subtitle={plannerSubtitle(taskListLabel, pending.length, done.length)}
         />
-        <ListOptionsMenu
-          categories={categories}
-          options={listOptions}
-          onChange={onListOptionsChange}
-        />
+        <div className="flex shrink-0 items-center gap-1">
+          {showSync && onCalendarSync && (
+            <SyncButton
+              syncing={calendarSyncing}
+              lastSyncedAt={lastCalendarSyncAt}
+              onSync={onCalendarSync}
+            />
+          )}
+          <ListOptionsMenu
+            categories={categories}
+            options={listOptions}
+            onChange={onListOptionsChange}
+          />
+        </div>
       </div>
 
       {taskListLabel && (

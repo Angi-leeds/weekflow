@@ -18,6 +18,7 @@ import { CalendarAccountFilter } from './CalendarAccountFilter'
 import { CalendarPresetChips } from './CalendarPresetChips'
 import { CalendarSourcesPanel } from './CalendarSourcesPanel'
 import { enabledCalendarIdSet } from '../lib/calendarSources'
+import { SyncButton } from './ui/SyncButton'
 
 interface CalendarNavProps {
   viewMode: CalendarViewMode
@@ -35,6 +36,10 @@ interface CalendarNavProps {
   onViewChange: (mode: CalendarViewMode) => void
   onPrimaryTabChange: (tab: PrimaryCalendarTab) => void
   showTodoToggle?: boolean
+  showSync?: boolean
+  calendarSyncing?: boolean
+  lastCalendarSyncAt?: number | null
+  onCalendarSync?: () => void
 }
 
 const PRIMARY_SEGMENTS: { id: PrimaryCalendarTab; label: string }[] = [
@@ -59,6 +64,10 @@ export function CalendarNav({
   onViewChange,
   onPrimaryTabChange,
   showTodoToggle = true,
+  showSync = false,
+  calendarSyncing = false,
+  lastCalendarSyncAt = null,
+  onCalendarSync,
 }: CalendarNavProps) {
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const isWeekBased = ['week-list', 'week-board', 'week-timeline'].includes(viewMode)
@@ -76,7 +85,15 @@ export function CalendarNav({
   return (
     <div className="sticky top-0 z-20 border-b border-wf-border bg-wf-bg/90 px-4 pb-3 pt-2 backdrop-blur-xl safe-top">
       <div className="mb-3 flex items-center gap-2">
-        <div className="w-[72px]" />
+        {showSync && onCalendarSync ? (
+          <SyncButton
+            syncing={calendarSyncing}
+            lastSyncedAt={lastCalendarSyncAt}
+            onSync={onCalendarSync}
+          />
+        ) : (
+          <div className="w-10 shrink-0" />
+        )}
 
         <div className="min-w-0 flex-1 text-center">
           <p className="truncate font-display text-body font-bold tracking-tight text-wf-text">

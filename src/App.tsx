@@ -133,6 +133,7 @@ import { isLocalOnlyTask } from './lib/providerTasks'
 import { normalizeItemSchedule } from './lib/itemTimeHelpers'
 import { PLANNER_DIARY_HINT, buildPlannerCalendarHint } from './lib/diaryHelpCopy'
 import { connectedTaskListLabels } from './lib/providerTasks'
+import { shouldSyncOnFocus } from './lib/syncScheduler'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
@@ -308,7 +309,16 @@ export default function App() {
   const defaultMicrosoftAccountId = microsoftStatus?.accounts[0]?.id
   const microsoftStatusRef = useRef(microsoftStatus)
   microsoftStatusRef.current = microsoftStatus
+  const googleStatusRef = useRef(googleStatus)
+  googleStatusRef.current = googleStatus
+  const appleStatusRef = useRef(appleStatus)
+  appleStatusRef.current = appleStatus
   const refreshMicrosoftInFlightRef = useRef(false)
+  const calendarSyncInFlightRef = useRef(false)
+  const lastCalendarSyncAtRef = useRef<number | null>(null)
+  const [calendarSyncing, setCalendarSyncing] = useState(false)
+  const [lastCalendarSyncAt, setLastCalendarSyncAt] = useState<number | null>(null)
+  const [, setSyncLabelTick] = useState(0)
 
   const reloadOutlookCategories = useCallback(
     async (accountsOverride?: MicrosoftIntegrationStatus['accounts']) => {
@@ -550,6 +560,153 @@ export default function App() {
       setAppleLoading(false)
     }
   }, [])
+
+  const markCalendarSynced = useCallback(() => {
+    const now = Date.now()
+    lastCalendarSyncAtRef.current = now
+    setLastCalendarSyncAt(now)
+  }, [])
+
+  const syncCalendarAndTasks = useCallback(
+    async (options?: { force?: boolean; notify?: boolean }) => {
+      const { force = false, notify = false } = options ?? {}
+
+      if (calendarSyncInFlightRef.current || refreshMicrosoftInFlightRef.current) return
+      if (!force && !shouldSyncOnFocus(lastCalendarSyncAtRef.current)) return
+
+      const msAccounts = microsoftStatusRef.current?.accounts ?? []
+      const googleAccounts = googleStatusRef.current?.accounts ?? []
+      const appleAccounts = appleStatusRef.current?.accounts ?? []
+      if (msAccounts.length === 0 && googleAccounts.length === 0 && appleAccounts.length === 0) {
+        return
+      }
+
+      calendarSyncInFlightRef.current = true
+      setCalendarSyncing(true)
+
+      const settle = async <T,>(promise: Promise<T>): Promise<PromiseSettledResult<T>> => {
+        try {
+          return { status: 'fulfilled', value: await promise }
+        } catch (reason) {
+          return { status: 'rejected', reason }
+        }
+      }
+
+      const logRejected = (label: string, result: PromiseSettledResult<unknown>) => {
+        if (result.status === 'rejected') console.error(label, result.reason)
+      }
+
+      let hadError = false
+
+      try {
+        console.info('[MyAxis] Syncing calendar and tasks…')
+
+        const jobs: Promise<void>[] = []
+
+        if (msAccounts.length > 0) {
+          jobs.push(
+            (async () => {
+              const [calendarResult, todoResult] = await Promise.all([
+                settle(fetchAllMicrosoftCalendar(msAccounts)),
+                settle(fetchAllMicrosoftTodoListsAndTasks(msAccounts)),
+              ])
+
+              logRejected('Microsoft calendar sync', calendarResult)
+              logRejected('Microsoft todo sync', todoResult)
+
+              if (calendarResult.status === 'rejected' && todoResult.status === 'rejected') {
+                hadError = true
+                return
+              }
+
+              const calendar =
+                calendarResult.status === 'fulfilled' ? calendarResult.value : []
+              const todoTasks =
+                todoResult.status === 'fulfilled' ? todoResult.value.tasks : []
+
+              setGraphCalendarItems((prev) => {
+                const other = prev.filter((item) => item.provider !== 'microsoft')
+                return mergeGraphCalendar([], [...calendar, ...todoTasks, ...other])
+              })
+
+              if (todoResult.status === 'fulfilled') {
+                setGraphTodoLists(todoResult.value.lists)
+              } else {
+                hadError = true
+              }
+              if (calendarResult.status === 'rejected') hadError = true
+            })(),
+          )
+        }
+
+        if (googleAccounts.length > 0) {
+          jobs.push(
+            (async () => {
+              const [calendarResult, calendarsListResult] = await Promise.all([
+                settle(fetchAllGoogleCalendar(googleAccounts)),
+                settle(fetchAllGoogleCalendarsList(googleAccounts)),
+              ])
+
+              logRejected('Google calendar sync', calendarResult)
+              logRejected('Google calendars list sync', calendarsListResult)
+
+              if (calendarResult.status === 'fulfilled') {
+                setGraphCalendarItems((prev) => {
+                  const other = prev.filter((item) => item.provider !== 'google')
+                  return mergeGraphCalendar([], [...other, ...calendarResult.value])
+                })
+              } else {
+                hadError = true
+              }
+
+              if (calendarsListResult.status === 'fulfilled') {
+                setGraphGoogleCalendars(calendarsListResult.value)
+              }
+            })(),
+          )
+        }
+
+        if (appleAccounts.length > 0) {
+          jobs.push(
+            (async () => {
+              const calendarResult = await settle(fetchAllAppleCalendar(appleAccounts))
+              logRejected('Apple calendar sync', calendarResult)
+
+              if (calendarResult.status === 'fulfilled') {
+                setGraphCalendarItems((prev) => {
+                  const other = prev.filter((item) => item.provider !== 'apple')
+                  return mergeGraphCalendar([], [...other, ...calendarResult.value])
+                })
+              } else {
+                hadError = true
+              }
+            })(),
+          )
+        }
+
+        await Promise.all(jobs)
+        markCalendarSynced()
+
+        if (notify) {
+          setToastMessage(hadError ? 'Sync finished with some errors' : 'Calendar synced')
+        }
+        console.info('[MyAxis] Calendar and tasks sync complete')
+      } catch (error) {
+        console.error('[MyAxis] Calendar sync failed', error)
+        if (notify) {
+          setToastMessage(error instanceof Error ? error.message : 'Sync failed')
+        }
+      } finally {
+        calendarSyncInFlightRef.current = false
+        setCalendarSyncing(false)
+      }
+    },
+    [markCalendarSynced],
+  )
+
+  const handleManualCalendarSync = useCallback(() => {
+    void syncCalendarAndTasks({ force: true, notify: true })
+  }, [syncCalendarAndTasks])
 
   const handleLoadFolderMessages = useCallback(
     async (folder: EmailFolder) => {
@@ -797,6 +954,35 @@ export default function App() {
     void refreshGoogle()
     void refreshApple()
   }, [refreshMicrosoft, refreshGoogle, refreshApple])
+
+  useEffect(() => {
+    if (microsoftLoading || googleLoading || appleLoading) return
+    if (lastCalendarSyncAtRef.current != null) return
+    markCalendarSynced()
+  }, [microsoftLoading, googleLoading, appleLoading, markCalendarSynced])
+
+  useEffect(() => {
+    const id = window.setInterval(() => setSyncLabelTick((tick) => tick + 1), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const calendarSyncSections: AppSection[] = ['calendar', 'planner', 'board']
+  useEffect(() => {
+    if (!calendarSyncSections.includes(section)) return
+    if (!usingRealIntegrations) return
+
+    const tryFocusSync = () => {
+      if (document.visibilityState !== 'visible') return
+      void syncCalendarAndTasks()
+    }
+
+    document.addEventListener('visibilitychange', tryFocusSync)
+    window.addEventListener('focus', tryFocusSync)
+    return () => {
+      document.removeEventListener('visibilitychange', tryFocusSync)
+      window.removeEventListener('focus', tryFocusSync)
+    }
+  }, [section, usingRealIntegrations, syncCalendarAndTasks])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -2444,6 +2630,10 @@ export default function App() {
               onViewChange={setViewMode}
               onPrimaryTabChange={handlePrimaryTabChange}
               showTodoToggle={usingRealMicrosoft}
+              showSync={usingRealIntegrations}
+              calendarSyncing={calendarSyncing}
+              lastCalendarSyncAt={lastCalendarSyncAt}
+              onCalendarSync={handleManualCalendarSync}
             />
             <div className={viewMode === 'week-board' || viewMode === 'week-list' || viewMode === 'week-timeline' || viewMode === 'month' ? 'h-[calc(100%-170px)] min-h-[400px]' : ''}>
               {viewMode === 'week-list' || viewMode === 'week-board' || viewMode === 'week-timeline' ? (
@@ -2535,6 +2725,10 @@ export default function App() {
             onItemTap={openEditModal}
             onToggleComplete={handleToggleComplete}
             calendarHint={plannerCalendarHintMessage}
+            showSync={usingRealIntegrations}
+            calendarSyncing={calendarSyncing}
+            lastCalendarSyncAt={lastCalendarSyncAt}
+            onCalendarSync={handleManualCalendarSync}
           />
         )}
 
