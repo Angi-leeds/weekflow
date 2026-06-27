@@ -4,14 +4,6 @@ import type { SharedBoardItem } from '../../shared/boardPins'
 import type { EntityType, ItemLink } from '../../shared/links'
 import type { BoardLayoutMode, KanbanGroupBy } from '../../shared/boardLayout'
 import type { CalendarItem, Category, EmailMessage, ItemDisplayOptions, ListDisplayOptions } from '../types'
-import {
-  loadBoardLayout,
-  loadKanbanGroupBy,
-  loadSleepModeEnabled,
-  saveBoardLayout,
-  saveKanbanGroupBy,
-  saveSleepModeEnabled,
-} from '../lib/boardSettings'
 import { createVoicePin } from '../lib/boardPins'
 import { WeekListPortrait } from './WeekListPortrait'
 import { FamilyBoardView } from './FamilyBoardView'
@@ -37,6 +29,12 @@ interface BoardSplitViewProps {
   onEnterKiosk?: () => void
   canDismissVoicePins?: boolean
   canManageBoardLayout?: boolean
+  boardLayout: BoardLayoutMode
+  onBoardLayoutChange: (mode: BoardLayoutMode) => void
+  kanbanGroupBy: KanbanGroupBy
+  onKanbanGroupByChange: (groupBy: KanbanGroupBy) => void
+  sleepModeEnabled: boolean
+  onSleepModeEnabledChange: (enabled: boolean) => void
 }
 
 export function BoardSplitView({
@@ -57,24 +55,15 @@ export function BoardSplitView({
   onEnterKiosk,
   canDismissVoicePins = false,
   canManageBoardLayout = true,
+  boardLayout,
+  onBoardLayoutChange,
+  kanbanGroupBy,
+  onKanbanGroupByChange,
+  sleepModeEnabled,
+  onSleepModeEnabledChange,
 }: BoardSplitViewProps) {
-  const [layout, setLayout] = useState<BoardLayoutMode>(() => loadBoardLayout())
-  const [kanbanGroupBy, setKanbanGroupBy] = useState<KanbanGroupBy>(() => loadKanbanGroupBy())
-  const [sleepModeEnabled, setSleepModeEnabled] = useState(() => loadSleepModeEnabled())
   const [sleepActive, setSleepActive] = useState(false)
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null)
-
-  useEffect(() => {
-    saveBoardLayout(layout)
-  }, [layout])
-
-  useEffect(() => {
-    saveKanbanGroupBy(kanbanGroupBy)
-  }, [kanbanGroupBy])
-
-  useEffect(() => {
-    saveSleepModeEnabled(sleepModeEnabled)
-  }, [sleepModeEnabled])
 
   useEffect(() => {
     if (!sleepModeEnabled) {
@@ -118,7 +107,7 @@ export function BoardSplitView({
   }
 
   const boardPanel =
-    layout === 'kanban' ? (
+    boardLayout === 'kanban' ? (
       <KanbanBoardView
         sharedItems={sharedItems}
         pins={pins}
@@ -127,7 +116,7 @@ export function BoardSplitView({
         links={links}
         emails={emails}
         groupBy={kanbanGroupBy}
-        onGroupByChange={setKanbanGroupBy}
+        onGroupByChange={onKanbanGroupByChange}
         onItemTap={onSharedItemTap}
         onNavigateLink={onNavigateLink}
         onPinUpdate={onPinUpdate}
@@ -155,18 +144,18 @@ export function BoardSplitView({
     <div className="flex h-full min-h-0 flex-col">
       {canManageBoardLayout && (
         <BoardLayoutToolbar
-          layout={layout}
+          layout={boardLayout}
           sleepModeEnabled={sleepModeEnabled}
           selectedPinStyle={selectedPin?.pinStyle}
-          onLayoutChange={setLayout}
-          onSleepModeToggle={setSleepModeEnabled}
-          onPinStyleChange={layout !== 'kanban' ? handlePinStyleChange : undefined}
+          onLayoutChange={onBoardLayoutChange}
+          onSleepModeToggle={onSleepModeEnabledChange}
+          onPinStyleChange={boardLayout !== 'kanban' ? handlePinStyleChange : undefined}
           onAddVoicePin={handleAddVoicePin}
         />
       )}
 
-      <div className={`flex min-h-0 flex-1 ${layout === 'split' ? 'flex-col md:flex-row' : 'flex-col'}`}>
-        {layout === 'split' && (
+      <div className={`flex min-h-0 flex-1 ${boardLayout === 'split' ? 'flex-col md:flex-row' : 'flex-col'}`}>
+        {boardLayout === 'split' && (
           <div className="min-h-[240px] shrink-0 border-b border-wf-border md:h-full md:w-[42%] md:min-h-0 md:border-b-0 md:border-r">
             <div className="border-b border-wf-border px-4 py-2">
               <h2 className="font-display text-body font-bold">This week</h2>

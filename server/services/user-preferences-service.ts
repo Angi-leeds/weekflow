@@ -20,6 +20,14 @@ function normalizeDocument(raw: unknown): UserPreferencesDocument {
     integrationAccountDefaults: doc.integrationAccountDefaults,
     householdPermissions: doc.householdPermissions,
     calendarFilter: doc.calendarFilter,
+    listOptions: doc.listOptions,
+    itemDisplayOptions: doc.itemDisplayOptions,
+    todayHighlight: doc.todayHighlight,
+    integrationPreferences: doc.integrationPreferences,
+    settingsPanelPreferences: doc.settingsPanelPreferences,
+    settingsSectionState: doc.settingsSectionState,
+    calendarNavigation: doc.calendarNavigation,
+    boardSettings: doc.boardSettings,
   };
 }
 
@@ -63,4 +71,12 @@ export async function saveUserPreferencesDocument(
     });
 
   return normalized;
+}
+
+export function documentNeedsTier3Upgrade(doc: UserPreferencesDocument): boolean {
+  return (
+    (doc.version ?? 0) < USER_PREFERENCES_VERSION ||
+    doc.boardSettings === undefined ||
+    doc.listOptions === undefined
+  );
 }

@@ -215,7 +215,16 @@ import { BoardSplitView } from './components/BoardSplitView'
 import { FamilyBoardView } from './components/FamilyBoardView'
 import { EmailActionFlowModal } from './components/EmailActionFlowModal'
 import { Toast } from './components/Toast'
-import { KioskPinGate } from './components/KioskPinGate'
+import {
+  loadBoardSettings,
+  saveBoardSettings,
+  type BoardSettings,
+} from './lib/boardSettings'
+import {
+  loadSettingsSectionState,
+  saveSettingsSectionState,
+  type SettingsSectionState,
+} from './lib/settingsSectionState'
 
 export default function App() {
   const { user, config, logout, setUser } = useAuth()
@@ -263,6 +272,10 @@ export default function App() {
   const [settingsExpanded, setSettingsExpanded] = useState(
     () => loadSettingsPanelPreferences().expanded,
   )
+  const [settingsSectionState, setSettingsSectionState] = useState<SettingsSectionState>(() =>
+    loadSettingsSectionState(),
+  )
+  const [boardSettings, setBoardSettings] = useState<BoardSettings>(() => loadBoardSettings())
   const [integrationPreferences, setIntegrationPreferences] = useState(() =>
     loadIntegrationPreferences(),
   )
@@ -878,6 +891,34 @@ export default function App() {
     saveCalendarFilter(calendarFilter)
   }, [calendarFilter])
 
+  useEffect(() => {
+    saveListOptions(listOptions)
+  }, [listOptions])
+
+  useEffect(() => {
+    saveItemDisplayOptions(itemDisplayOptions)
+  }, [itemDisplayOptions])
+
+  useEffect(() => {
+    saveTodayHighlightOptions(todayHighlight)
+  }, [todayHighlight])
+
+  useEffect(() => {
+    saveSettingsPanelPreferences({ expanded: settingsExpanded })
+  }, [settingsExpanded])
+
+  useEffect(() => {
+    saveSettingsSectionState(settingsSectionState)
+  }, [settingsSectionState])
+
+  useEffect(() => {
+    saveIntegrationPreferences(integrationPreferences)
+  }, [integrationPreferences])
+
+  useEffect(() => {
+    saveBoardSettings(boardSettings)
+  }, [boardSettings])
+
   const skipUserPreferencesSyncRef = useRef(true)
   const skipHouseholdLocalDataSyncRef = useRef(true)
 
@@ -908,6 +949,14 @@ export default function App() {
         integrationAccountDefaults,
         householdPermissions: permissionsConfig,
         calendarFilter,
+        listOptions,
+        itemDisplayOptions,
+        todayHighlight,
+        integrationPreferences,
+        settingsPanelPreferences: { expanded: settingsExpanded },
+        settingsSectionState,
+        calendarNavigation: { focusDate: toISODate(focusDate), viewMode },
+        boardSettings,
       })
     }, 400)
     return () => window.clearTimeout(timer)
@@ -918,6 +967,15 @@ export default function App() {
     integrationAccountDefaults,
     permissionsConfig,
     calendarFilter,
+    listOptions,
+    itemDisplayOptions,
+    todayHighlight,
+    integrationPreferences,
+    settingsExpanded,
+    settingsSectionState,
+    focusDate,
+    viewMode,
+    boardSettings,
   ])
 
   useEffect(() => {
@@ -971,26 +1029,6 @@ export default function App() {
   }, [localCategories])
 
   useEffect(() => {
-    saveListOptions(listOptions)
-  }, [listOptions])
-
-  useEffect(() => {
-    saveItemDisplayOptions(itemDisplayOptions)
-  }, [itemDisplayOptions])
-
-  useEffect(() => {
-    saveTodayHighlightOptions(todayHighlight)
-  }, [todayHighlight])
-
-  useEffect(() => {
-    saveSettingsPanelPreferences({ expanded: settingsExpanded })
-  }, [settingsExpanded])
-
-  useEffect(() => {
-    saveIntegrationPreferences(integrationPreferences)
-  }, [integrationPreferences])
-
-  useEffect(() => {
     setWeekStart(startOfWeek(focusDate, calendarPreferences.weekStartsOn))
   }, [calendarPreferences.weekStartsOn, focusDate])
 
@@ -1010,6 +1048,19 @@ export default function App() {
         setIntegrationAccountDefaults(prefs.integrationAccountDefaults)
         setPermissionsConfig(prefs.householdPermissions)
         setCalendarFilter(prefs.calendarFilter)
+        setListOptions(prefs.listOptions)
+        setItemDisplayOptions(prefs.itemDisplayOptions)
+        setTodayHighlight(prefs.todayHighlight)
+        setIntegrationPreferences(prefs.integrationPreferences)
+        setSettingsExpanded(prefs.settingsPanelPreferences.expanded)
+        setSettingsSectionState(prefs.settingsSectionState)
+        setBoardSettings(prefs.boardSettings)
+        if (prefs.calendarNavigation?.focusDate) {
+          setFocusDate(normalizeCalendarDate(parseDate(prefs.calendarNavigation.focusDate)))
+        }
+        if (prefs.calendarNavigation?.viewMode) {
+          setViewMode(prefs.calendarNavigation.viewMode)
+        }
       })
       .catch(console.error)
       .finally(() => {
@@ -2691,6 +2742,8 @@ export default function App() {
       onDeleteCategory={handleDeleteCategory}
       permissionsConfig={permissionsConfig}
       onPermissionsChange={setPermissionsConfig}
+      settingsSectionState={settingsSectionState}
+      onSettingsSectionStateChange={setSettingsSectionState}
       microsoftStatus={microsoftStatus}
       microsoftLoading={microsoftLoading}
       onMicrosoftRefresh={refreshMicrosoft}
@@ -2900,6 +2953,18 @@ export default function App() {
             onEnterKiosk={() => setKioskMode(true)}
             canDismissVoicePins={canDismissVoicePins}
             canManageBoardLayout={canManageBoardLayout}
+            boardLayout={boardSettings.layout}
+            onBoardLayoutChange={(layout) =>
+              setBoardSettings((prev) => ({ ...prev, layout }))
+            }
+            kanbanGroupBy={boardSettings.kanbanGroupBy}
+            onKanbanGroupByChange={(kanbanGroupBy) =>
+              setBoardSettings((prev) => ({ ...prev, kanbanGroupBy }))
+            }
+            sleepModeEnabled={boardSettings.sleepModeEnabled}
+            onSleepModeEnabledChange={(sleepModeEnabled) =>
+              setBoardSettings((prev) => ({ ...prev, sleepModeEnabled }))
+            }
           />
         )}
 

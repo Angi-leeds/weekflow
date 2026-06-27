@@ -94,10 +94,10 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     notes: `Default accounts, calendar visibility, calendar preferences, diary task rules, and household permissions — synced to your ${APP_NAME} household.`,
   },
   {
-    dataType: 'Settings (display & UI)',
+    dataType: 'Settings (display & board)',
     safeAtSource: false,
     appOnly: true,
-    notes: 'Item card appearance, today highlight, list layout, and board layout stay on this device for now.',
+    notes: `Item card appearance, today highlight, list layout, board layout, calendar position, and Settings panel state — synced to your ${APP_NAME} household.`,
   },
   {
     dataType: 'Contact overlays',

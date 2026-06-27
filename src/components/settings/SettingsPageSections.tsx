@@ -511,8 +511,8 @@ export function SettingsPageSections(props: SettingsPageSectionsProps) {
         >
           <div className="px-4 pb-4 pt-2">
             <p className="mb-3 text-caption text-wf-text-tertiary">
-              What stays in Gmail/Outlook vs what {APP_NAME} stores. Calendar preferences,
-              default accounts, and household permissions sync across your devices.
+              What stays in Gmail/Outlook vs what {APP_NAME} stores. Settings sync across your
+              devices — calendar prefs, display, board layout, and more.
             </p>
             <button
               type="button"

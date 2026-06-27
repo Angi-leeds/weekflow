@@ -37,10 +37,9 @@ import { HouseholdPermissionsView } from './HouseholdPermissionsView'
 import { SectionHeader } from './ui/SectionHeader'
 import {
   isSettingsSectionOpen,
-  loadSettingsSectionState,
-  saveSettingsSectionState,
   setSettingsSectionOpen,
   type SettingsSectionId,
+  type SettingsSectionState,
 } from '../lib/settingsSectionState'
 import { SyncHelpView } from './SyncHelpView'
 import { SettingsPageSections } from './settings/SettingsPageSections'
@@ -71,6 +70,8 @@ interface SettingsViewProps {
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
   onPermissionsChange: (config: HouseholdPermissionsConfig) => void
+  settingsSectionState: SettingsSectionState
+  onSettingsSectionStateChange: (state: SettingsSectionState) => void
   microsoftStatus: MicrosoftIntegrationStatus | null
   microsoftLoading: boolean
   onMicrosoftRefresh: () => void
@@ -125,6 +126,8 @@ export function SettingsView({
   onDeleteCategory,
   permissionsConfig,
   onPermissionsChange,
+  settingsSectionState,
+  onSettingsSectionStateChange,
   microsoftStatus,
   microsoftLoading,
   onMicrosoftRefresh,
@@ -154,7 +157,6 @@ export function SettingsView({
   const [kioskPin, setKioskPin] = useState(() => loadKioskPin())
   const [showSyncHelp, setShowSyncHelp] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
-  const [sectionState, setSectionState] = useState(() => loadSettingsSectionState())
   const outlookPanelRef = useRef<HTMLDivElement>(null)
   const googlePanelRef = useRef<HTMLDivElement>(null)
   const applePanelRef = useRef<HTMLDivElement>(null)
@@ -268,17 +270,16 @@ export function SettingsView({
   }
 
   const sectionOpen = useCallback(
-    (id: SettingsSectionId) => isSettingsSectionOpen(id, sectionState),
-    [sectionState],
+    (id: SettingsSectionId) => isSettingsSectionOpen(id, settingsSectionState),
+    [settingsSectionState],
   )
 
-  const setSectionOpen = useCallback((id: SettingsSectionId, open: boolean) => {
-    setSectionState((prev) => {
-      const next = setSettingsSectionOpen(prev, id, open)
-      saveSettingsSectionState(next)
-      return next
-    })
-  }, [])
+  const setSectionOpen = useCallback(
+    (id: SettingsSectionId, open: boolean) => {
+      onSettingsSectionStateChange(setSettingsSectionOpen(settingsSectionState, id, open))
+    },
+    [settingsSectionState, onSettingsSectionStateChange],
+  )
 
   const scrollToOutlook = () => {
     setSectionOpen('connected-accounts', true)

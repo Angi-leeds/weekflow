@@ -4,6 +4,12 @@ const LAYOUT_KEY = "weekflow-board-layout";
 const KANBAN_KEY = "weekflow-board-kanban-group";
 const SLEEP_KEY = "weekflow-board-sleep-mode";
 
+export interface BoardSettings {
+  layout: BoardLayoutMode;
+  kanbanGroupBy: KanbanGroupBy;
+  sleepModeEnabled: boolean;
+}
+
 export function loadBoardLayout(): BoardLayoutMode {
   const value = localStorage.getItem(LAYOUT_KEY);
   if (value === "freeform" || value === "kanban" || value === "split") return value;
@@ -28,4 +34,18 @@ export function loadSleepModeEnabled(): boolean {
 
 export function saveSleepModeEnabled(enabled: boolean): void {
   localStorage.setItem(SLEEP_KEY, enabled ? "true" : "false");
+}
+
+export function loadBoardSettings(): BoardSettings {
+  return {
+    layout: loadBoardLayout(),
+    kanbanGroupBy: loadKanbanGroupBy(),
+    sleepModeEnabled: loadSleepModeEnabled(),
+  };
+}
+
+export function saveBoardSettings(settings: BoardSettings): void {
+  saveBoardLayout(settings.layout);
+  saveKanbanGroupBy(settings.kanbanGroupBy);
+  saveSleepModeEnabled(settings.sleepModeEnabled);
 }
