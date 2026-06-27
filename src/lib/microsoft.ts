@@ -627,6 +627,7 @@ export async function syncCalendarToMicrosoft(
         externalId: item.externalId,
         attendees: item.attendees,
         recurringWeekly: item.recurringWeekly,
+        recurrence: item.recurrence,
         teamsMeeting: item.teamsMeeting,
         reminderPreset: item.reminderPreset,
         reminderCustomMinutes: item.reminderCustomMinutes,

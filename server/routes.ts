@@ -32,6 +32,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerItemShareRoutes(app);
   registerBoardPinRoutes(app);
   registerAttachmentRoutes(app);
+  const { registerCategoryAutomationRoutes } = await import("./routes/category-automation");
+  registerCategoryAutomationRoutes(app);
+  const { registerUserPreferencesRoutes } = await import("./routes/user-preferences");
+  registerUserPreferencesRoutes(app);
   registerMicrosoftRoutes(app);
   registerGoogleRoutes(app);
   registerAppleRoutes(app);

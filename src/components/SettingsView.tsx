@@ -13,6 +13,7 @@ import type {
   TodayHighlightOptions,
   UnifiedCalendarSource,
 } from '../types'
+import type { CategoryAutomation, CategoryAutomationMap } from '../../shared/categoryAutomation'
 import {
   DEFAULT_VIEW_LABELS,
   ITEM_DISPLAY_PRESET_LABELS,
@@ -47,6 +48,7 @@ import { SettingsPageSections } from './settings/SettingsPageSections'
 interface SettingsViewProps {
   categories: Category[]
   items: CalendarItem[]
+  categoryAutomationMap?: CategoryAutomationMap
   listOptions: ListDisplayOptions
   onListOptionsChange: (options: ListDisplayOptions) => void
   itemDisplayOptions: ItemDisplayOptions
@@ -65,7 +67,7 @@ interface SettingsViewProps {
   calendarSources: UnifiedCalendarSource[]
   calendarSourcePrefs: CalendarSourcePreferences
   onCalendarSourcePrefsChange: (prefs: CalendarSourcePreferences) => void
-  onSaveCategory: (category: Category) => void
+  onSaveCategory: (category: Category, automation?: CategoryAutomation) => void
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
   onPermissionsChange: (config: HouseholdPermissionsConfig) => void
@@ -100,6 +102,7 @@ interface SettingsViewProps {
 export function SettingsView({
   categories,
   items,
+  categoryAutomationMap = {},
   listOptions,
   onListOptionsChange,
   itemDisplayOptions,
@@ -380,6 +383,7 @@ export function SettingsView({
         usingRealGoogle={usingRealGoogle}
         usingRealApple={usingRealApple}
         onShowCalendarAccount={onShowCalendarAccount}
+        categoryAutomationMap={categoryAutomationMap}
         onSaveCategory={onSaveCategory}
         onDeleteCategory={onDeleteCategory}
         permissionsConfig={permissionsConfig}

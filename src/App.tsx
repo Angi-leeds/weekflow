@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
-import type { CreateLinkInput, EntityType, ItemLink } from '../shared/links'
+import type { CategoryAutomation } from '../shared/categoryAutomation'
 import { friendlyMicrosoftAuthError } from '../shared/microsoftAuthErrors'
 import type { ItemShare, UpsertItemShareInput } from '../shared/itemShares'
 import type { BoardPin } from '../shared/boardPins'
@@ -135,6 +135,17 @@ import { PLANNER_DIARY_HINT, buildPlannerCalendarHint } from './lib/diaryHelpCop
 import { connectedTaskListLabels } from './lib/providerTasks'
 import { shouldSyncOnFocus } from './lib/syncScheduler'
 import { resolveTaskReminderDate } from './lib/reminderTiming'
+import {
+  fetchCategoryAutomationMap,
+  loadCategoryAutomationMap,
+  persistAndSyncCategoryAutomation,
+  removeAndSyncCategoryAutomation,
+} from './lib/categoryAutomationStorage'
+import {
+  fetchUserPreferences,
+  syncUserPreferences,
+} from './lib/userPreferencesStorage'
+import type { CategoryAutomationMap } from '../shared/categoryAutomation'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
   INITIAL_NOTES,
@@ -205,6 +216,9 @@ export default function App() {
   const [section, setSection] = useState<AppSection>('calendar')
   const [localCategories, setLocalCategories] = useState<Category[]>(() =>
     migrateCategories(loadStoredCategories() ?? DEFAULT_CATEGORIES),
+  )
+  const [categoryAutomationMap, setCategoryAutomationMap] = useState<CategoryAutomationMap>(() =>
+    loadCategoryAutomationMap(),
   )
   const [outlookMasterCategories, setOutlookMasterCategories] = useState<OutlookCategoryDto[]>([])
   const [outlookCategoriesLoaded, setOutlookCategoriesLoaded] = useState(false)
@@ -277,6 +291,7 @@ export default function App() {
   const [permissionsConfig, setPermissionsConfig] = useState<HouseholdPermissionsConfig>(() =>
     loadHouseholdPermissions(),
   )
+  const [userPreferencesLoaded, setUserPreferencesLoaded] = useState(false)
   const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftIntegrationStatus | null>(null)
   const [microsoftLoading, setMicrosoftLoading] = useState(true)
   const [googleStatus, setGoogleStatus] = useState<GoogleIntegrationStatus | null>(null)
@@ -841,6 +856,49 @@ export default function App() {
   }, [calendarSourcePrefs])
 
   useEffect(() => {
+    saveCalendarPreferences(calendarPreferences)
+  }, [calendarPreferences])
+
+  useEffect(() => {
+    saveIntegrationAccountDefaults(integrationAccountDefaults)
+  }, [integrationAccountDefaults])
+
+  useEffect(() => {
+    saveHouseholdPermissions(permissionsConfig)
+  }, [permissionsConfig])
+
+  useEffect(() => {
+    saveCalendarFilter(calendarFilter)
+  }, [calendarFilter])
+
+  const skipUserPreferencesSyncRef = useRef(true)
+
+  useEffect(() => {
+    if (!userPreferencesLoaded) return
+    if (skipUserPreferencesSyncRef.current) {
+      skipUserPreferencesSyncRef.current = false
+      return
+    }
+    const timer = window.setTimeout(() => {
+      void syncUserPreferences({
+        calendarPreferences,
+        calendarSourcePreferences: calendarSourcePrefs,
+        integrationAccountDefaults,
+        householdPermissions: permissionsConfig,
+        calendarFilter,
+      })
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [
+    userPreferencesLoaded,
+    calendarPreferences,
+    calendarSourcePrefs,
+    integrationAccountDefaults,
+    permissionsConfig,
+    calendarFilter,
+  ])
+
+  useEffect(() => {
     setItems((prev) => {
       let changed = false
       const next = prev.map((item) => {
@@ -891,10 +949,6 @@ export default function App() {
   }, [localCategories])
 
   useEffect(() => {
-    saveCalendarFilter(calendarFilter)
-  }, [calendarFilter])
-
-  useEffect(() => {
     saveListOptions(listOptions)
   }, [listOptions])
 
@@ -911,32 +965,40 @@ export default function App() {
   }, [settingsExpanded])
 
   useEffect(() => {
-    saveCalendarPreferences(calendarPreferences)
-  }, [calendarPreferences])
-
-  useEffect(() => {
     saveIntegrationPreferences(integrationPreferences)
   }, [integrationPreferences])
-
-  useEffect(() => {
-    saveIntegrationAccountDefaults(integrationAccountDefaults)
-  }, [integrationAccountDefaults])
-
-  useEffect(() => {
-    saveCalendarNavigation({ focusDate: toISODate(focusDate), viewMode })
-  }, [focusDate, viewMode])
 
   useEffect(() => {
     setWeekStart(startOfWeek(focusDate, calendarPreferences.weekStartsOn))
   }, [calendarPreferences.weekStartsOn, focusDate])
 
   useEffect(() => {
-    saveHouseholdPermissions(permissionsConfig)
-  }, [permissionsConfig])
-
-  useEffect(() => {
     fetchAllLinks().then(setLinks).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    void fetchCategoryAutomationMap().then(setCategoryAutomationMap).catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    void fetchUserPreferences()
+      .then((prefs) => {
+        setCalendarPreferences(prefs.calendarPreferences)
+        setCalendarSourcePrefs(prefs.calendarSourcePreferences)
+        setIntegrationAccountDefaults(prefs.integrationAccountDefaults)
+        setPermissionsConfig(prefs.householdPermissions)
+        setCalendarFilter(prefs.calendarFilter)
+      })
+      .catch(console.error)
+      .finally(() => {
+        skipUserPreferencesSyncRef.current = true
+        setUserPreferencesLoaded(true)
+      })
+  }, [])
+
+  useEffect(() => {
+    saveCalendarNavigation({ focusDate: toISODate(focusDate), viewMode })
+  }, [focusDate, viewMode])
 
   useEffect(() => {
     fetchAllItemShares().then(setItemShares).catch(console.error)
@@ -1484,7 +1546,16 @@ export default function App() {
   }, [])
 
   const handleSaveCategory = useCallback(
-    async (incoming: Category) => {
+    async (incoming: Category, automation?: CategoryAutomation) => {
+      const saveAutomationForId = async (categoryId: string) => {
+        if (automation === undefined) return
+        const nextMap = await persistAndSyncCategoryAutomation(
+          categoryId,
+          automation.enabled && automation.keywords.length > 0 ? automation : null,
+          categoryAutomationMap,
+        )
+        setCategoryAutomationMap(nextMap)
+      }
       if (usingRealMicrosoft && defaultMicrosoftAccountId) {
         const preset = weekflowCategoryToOutlookPreset(incoming)
         const graphId =
@@ -1517,6 +1588,24 @@ export default function App() {
             })
           }
           await reloadOutlookCategories()
+          const accounts = microsoftStatusRef.current?.accounts ?? []
+          const list = await fetchAllOutlookMasterCategories(accounts)
+          const mapped = outlookCategoriesToWeekflowCategories(list)
+          const match =
+            mapped.find((entry) => entry.name === trimmedName) ??
+            (incoming.id ? mapped.find((entry) => entry.id === incoming.id) : undefined)
+          if (match) {
+            await saveAutomationForId(match.id)
+            if (existing && existing.displayName !== trimmedName) {
+              const nextMap = await removeAndSyncCategoryAutomation(
+                incoming.id,
+                categoryAutomationMap,
+              )
+              setCategoryAutomationMap(nextMap)
+            }
+          } else if (incoming.id) {
+            await saveAutomationForId(incoming.id)
+          }
           void refreshMicrosoft()
         } catch (error) {
           console.error(error)
@@ -1527,7 +1616,9 @@ export default function App() {
         return
       }
 
-      const savedId = incoming.id
+      const savedId = incoming.id || generateCategoryId(incoming.name, localCategories)
+      await saveAutomationForId(savedId)
+
       setLocalCategories((prev) => {
         if (incoming.id) {
           const idx = prev.findIndex((c) => c.id === incoming.id)
@@ -1537,8 +1628,7 @@ export default function App() {
             return next
           }
         }
-        const id = generateCategoryId(incoming.name, prev)
-        return [...prev, { ...incoming, id }]
+        return [...prev, { ...incoming, id: savedId }]
       })
 
       if (savedId) {
@@ -1553,6 +1643,8 @@ export default function App() {
       usingRealMicrosoft,
       defaultMicrosoftAccountId,
       outlookMasterCategories,
+      localCategories,
+      categoryAutomationMap,
       reloadOutlookCategories,
       refreshMicrosoft,
     ],
@@ -1571,6 +1663,8 @@ export default function App() {
         try {
           await deleteOutlookMasterCategory(defaultMicrosoftAccountId, graphId)
           await reloadOutlookCategories()
+          const nextMap = await removeAndSyncCategoryAutomation(id, categoryAutomationMap)
+          setCategoryAutomationMap(nextMap)
           void refreshMicrosoft()
         } catch (error) {
           console.error(error)
@@ -1580,6 +1674,9 @@ export default function App() {
         }
         return
       }
+
+      const nextMap = await removeAndSyncCategoryAutomation(id, categoryAutomationMap)
+      setCategoryAutomationMap(nextMap)
 
       const fallbackId = localCategories.find((c) => c.id === 'work')?.id ?? localCategories[0]?.id ?? id
       const fallbackColour =
@@ -1607,6 +1704,7 @@ export default function App() {
       defaultMicrosoftAccountId,
       outlookMasterCategories,
       localCategories,
+      categoryAutomationMap,
       reloadOutlookCategories,
       refreshMicrosoft,
     ],
@@ -1679,6 +1777,10 @@ export default function App() {
 
       upsertLocal(forSync)
 
+      const rulePrefix = options?.appliedCategoryRule
+        ? `Applied ${options.appliedCategoryRule} rules. `
+        : ''
+
       if (options?.createLinkedTask) {
         const taskCategory =
           categories.find((entry) => entry.id === options.createLinkedTask!.categoryId) ??
@@ -1749,7 +1851,12 @@ export default function App() {
             integrationAccountDefaults,
             normalized.accountId,
           )
-      if (!connectedAccountId) return
+      if (!connectedAccountId) {
+        if (options?.appliedCategoryRule) {
+          setToastMessage(`Applied ${options.appliedCategoryRule} rules`)
+        }
+        return
+      }
 
       const linkType = getItemLinkType(normalized, categories)
       const photoAttachment = attachments.find(
@@ -1796,13 +1903,15 @@ export default function App() {
 
         const category = categories.find((entry) => entry.id === normalized.categoryId)
         if (category?.kind === 'task') {
-          setToastMessage('Task synced to Microsoft To Do')
+          setToastMessage(`${rulePrefix}Task synced to Microsoft To Do`.trim())
         } else if (result.photoAttached) {
-          setToastMessage('Synced to Outlook calendar with photo')
+          setToastMessage(`${rulePrefix}Synced to Outlook calendar with photo`.trim())
         } else if (photoAttachment) {
-          setToastMessage('Synced to Outlook calendar (photo upload skipped)')
+          setToastMessage(`${rulePrefix}Synced to Outlook calendar (photo upload skipped)`.trim())
         } else {
-          setToastMessage(useGoogle ? 'Synced to Google Calendar' : 'Synced to Outlook calendar')
+          setToastMessage(
+            `${rulePrefix}${useGoogle ? 'Synced to Google Calendar' : 'Synced to Outlook calendar'}`.trim(),
+          )
         }
       } catch (error) {
         console.error(error)
@@ -2521,6 +2630,7 @@ export default function App() {
       embedded
       categories={categories}
       items={displayCalendarItems}
+      categoryAutomationMap={categoryAutomationMap}
       listOptions={listOptions}
       onListOptionsChange={setListOptions}
       itemDisplayOptions={itemDisplayOptions}
@@ -2885,6 +2995,7 @@ export default function App() {
         open={modalOpen}
         item={editingItem}
         categories={categories}
+        categoryAutomationMap={categoryAutomationMap}
         defaultDate={section === 'today' ? new Date() : focusDate}
         links={links}
         emails={displayEmails}

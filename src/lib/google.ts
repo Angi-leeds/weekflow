@@ -202,6 +202,8 @@ export async function syncCalendarToGoogle(
         reminderCustomMinutes: item.reminderCustomMinutes,
         reminderAt: item.reminderAt,
         timeZone: getClientTimeZone(),
+        recurrence: item.recurrence,
+        recurringWeekly: item.recurringWeekly,
       },
     }),
   });

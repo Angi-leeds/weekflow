@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { Category } from '../types'
+import type { CategoryAutomation, CategoryAutomationMap } from '../../shared/categoryAutomation'
 import { CATEGORY_KIND_LABELS } from '../categories'
 import { CategoryFormModal } from './CategoryFormModal'
 
 interface CategoriesManagerProps {
   categories: Category[]
   itemCounts: Record<string, number>
-  onSave: (category: Category) => void | Promise<void>
+  categoryAutomationMap?: CategoryAutomationMap
+  onSave: (category: Category, automation?: CategoryAutomation) => void | Promise<void>
   onDelete: (id: string) => void | Promise<void>
   outlookSynced?: boolean
 }
@@ -15,6 +17,7 @@ interface CategoriesManagerProps {
 export function CategoriesManager({
   categories,
   itemCounts,
+  categoryAutomationMap = {},
   onSave,
   onDelete,
   outlookSynced = false,
@@ -62,6 +65,10 @@ export function CategoriesManager({
                 {outlookSynced
                   ? 'Synced with Outlook'
                   : CATEGORY_KIND_LABELS[cat.kind]}
+                {categoryAutomationMap[cat.id]?.enabled &&
+                  categoryAutomationMap[cat.id]?.keywords.length
+                  ? ' · Auto-apply'
+                  : ''}
                 {(itemCounts[cat.id] ?? 0) > 0 && ` · ${itemCounts[cat.id]} items`}
               </p>
             </div>
@@ -98,6 +105,7 @@ export function CategoriesManager({
       <CategoryFormModal
         open={modalOpen}
         category={editing}
+        automation={editing ? categoryAutomationMap[editing.id] : undefined}
         onSave={onSave}
         onClose={() => setModalOpen(false)}
         outlookMode={outlookSynced}

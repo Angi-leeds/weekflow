@@ -620,9 +620,13 @@ export function applyTodayHighlightPreset(
 
 export type ItemShowInDiaryMode = 'category' | 'always' | 'never'
 
+import type { ItemRecurrence } from '../../shared/itemRecurrence'
+
 export interface SaveItemOptions {
   createLinkedTask?: { categoryId: string }
   createLinkedCalendarEvent?: { categoryId: string }
+  /** Category rule name applied on save (for toast). */
+  appliedCategoryRule?: string
 }
 
 export interface IntegrationPreferences {
@@ -679,7 +683,10 @@ export interface CalendarItem {
   /** Target Microsoft To Do list when creating tasks. */
   todoListId?: string
   attendees?: string[]
+  /** @deprecated Use recurrence — kept for imported items. */
   recurringWeekly?: boolean
+  /** Recurrence pattern for calendar events. */
+  recurrence?: ItemRecurrence
   teamsMeeting?: boolean
   onlineMeetingUrl?: string
   inviteResponse?: 'accepted' | 'declined' | 'tentativelyAccepted' | 'none'

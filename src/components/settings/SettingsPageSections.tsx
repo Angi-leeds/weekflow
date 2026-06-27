@@ -1,3 +1,4 @@
+import type { CategoryAutomation, CategoryAutomationMap } from '../../../shared/categoryAutomation'
 import type { AuthUser } from '../../../shared/auth'
 import { MOCK_HOUSEHOLD_MEMBERS } from '../../../shared/householdPermissions'
 import type { AppleIntegrationStatus } from '../../../shared/appleApi'
@@ -88,6 +89,7 @@ export interface SettingsPageSectionsProps {
   aboutSummary: string
   categories: Category[]
   items: CalendarItem[]
+  categoryAutomationMap?: CategoryAutomationMap
   itemCounts: Record<string, number>
   listOptions: ListDisplayOptions
   onListOptionsChange: (options: ListDisplayOptions) => void
@@ -110,7 +112,7 @@ export interface SettingsPageSectionsProps {
   usingRealGoogle: boolean
   usingRealApple: boolean
   onShowCalendarAccount: (accountId: string) => void
-  onSaveCategory: (category: Category) => void
+  onSaveCategory: (category: Category, automation?: CategoryAutomation) => void
   onDeleteCategory: (id: string) => void
   permissionsConfig: HouseholdPermissionsConfig
   onPermissionsChange: (config: HouseholdPermissionsConfig) => void
@@ -182,6 +184,7 @@ export function SettingsPageSections(props: SettingsPageSectionsProps) {
     aboutSummary,
     categories,
     items,
+    categoryAutomationMap = {},
     itemCounts,
     listOptions,
     onListOptionsChange,
@@ -508,7 +511,8 @@ export function SettingsPageSections(props: SettingsPageSectionsProps) {
         >
           <div className="px-4 pb-4 pt-2">
             <p className="mb-3 text-caption text-wf-text-tertiary">
-              What stays in Gmail/Outlook vs what {APP_NAME} stores.
+              What stays in Gmail/Outlook vs what {APP_NAME} stores. Calendar preferences,
+              default accounts, and household permissions sync across your devices.
             </p>
             <button
               type="button"
@@ -639,6 +643,7 @@ export function SettingsPageSections(props: SettingsPageSectionsProps) {
             <CategoriesManager
               categories={categories}
               itemCounts={itemCounts}
+              categoryAutomationMap={categoryAutomationMap}
               onSave={onSaveCategory}
               onDelete={onDeleteCategory}
               outlookSynced={usingRealMicrosoft}

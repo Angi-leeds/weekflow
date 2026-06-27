@@ -14,6 +14,11 @@ import {
   getReminderMinutesBefore,
   minutesToReminderPreset,
 } from "../../shared/reminders";
+import type { ItemRecurrence } from "../../shared/itemRecurrence";
+import {
+  buildMicrosoftGraphRecurrence,
+  importRecurrenceKindFromGraph,
+} from "../../shared/recurrenceSync";
 import { MICROSOFT_GRAPH_BASE } from "../../shared/microsoftGraph";
 import {
   type ConnectedAccountRecord,
@@ -119,6 +124,7 @@ export interface GraphCalendarItemDto {
   todoListId?: string;
   attendees?: string[];
   recurringWeekly?: boolean;
+  recurrence?: ItemRecurrence;
   teamsMeeting?: boolean;
   onlineMeetingUrl?: string;
   inviteResponse?: "accepted" | "declined" | "tentativelyAccepted" | "none";
@@ -144,6 +150,7 @@ export interface CalendarSyncInput {
   externalId?: string;
   attendees?: string[];
   recurringWeekly?: boolean;
+  recurrence?: ItemRecurrence;
   teamsMeeting?: boolean;
   reminderPreset?: string;
   reminderCustomMinutes?: number;
@@ -458,6 +465,7 @@ function mapGraphEventToDto(
       ?.map((entry) => entry.emailAddress?.address)
       .filter(Boolean) as string[] | undefined,
     recurringWeekly: Boolean(event.recurrence),
+    recurrence: importRecurrenceKindFromGraph(event.recurrence?.pattern),
     teamsMeeting: Boolean(event.onlineMeeting?.joinUrl),
     onlineMeetingUrl: event.onlineMeeting?.joinUrl,
     inviteResponse: mapInviteResponse(event.attendees),
@@ -1476,7 +1484,10 @@ function buildEventPayload(input: CalendarSyncInput): Record<string, unknown> {
     }));
   }
 
-  if (input.recurringWeekly) {
+  if (input.recurrence) {
+    const recurrence = buildMicrosoftGraphRecurrence(input.date, input.recurrence);
+    if (recurrence) payload.recurrence = recurrence;
+  } else if (input.recurringWeekly) {
     const dayName = new Date(`${input.date}T12:00:00`)
       .toLocaleDateString("en-US", { weekday: "long" })
       .toLowerCase();

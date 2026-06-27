@@ -25,6 +25,8 @@ export interface GoogleCalendarSyncInput {
   reminderCustomMinutes?: number;
   reminderAt?: string;
   timeZone?: string;
+  recurrence?: import("./itemRecurrence").ItemRecurrence;
+  recurringWeekly?: boolean;
 }
 
 export interface GoogleCalendarEventResult {

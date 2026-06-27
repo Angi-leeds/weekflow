@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
+import { X } from 'lucide-react'
 import type { Category, CategoryKind } from '../types'
+import type { CategoryAutomation, CategoryRecurrenceKind } from '../../shared/categoryAutomation'
+import { DEFAULT_CATEGORY_AUTOMATION } from '../../shared/categoryAutomation'
+import { CATEGORY_RECURRENCE_KIND_LABELS } from '../../shared/itemRecurrence'
 import { CATEGORY_KIND_LABELS, COLOUR_PRESETS, defaultShowInDiaryForKind } from '../categories'
 import { DIARY_SETTINGS } from '../lib/diaryHelpCopy'
+import { REMINDER_PRESET_DAYS, formatTaskReminderSummary } from '../lib/reminderTiming'
 import {
   OUTLOOK_PRESET_HEX,
   OUTLOOK_PRESET_OPTIONS,
@@ -12,7 +17,8 @@ import { weekflowCategoryToOutlookPreset } from '../lib/outlookCategories'
 interface CategoryFormModalProps {
   open: boolean
   category?: Category | null
-  onSave: (category: Category) => void
+  automation?: CategoryAutomation
+  onSave: (category: Category, automation?: CategoryAutomation) => void
   onClose: () => void
   outlookMode?: boolean
 }
@@ -28,11 +34,14 @@ const emptyForm = (outlookMode: boolean): Omit<Category, 'id'> => ({
 export function CategoryFormModal({
   open,
   category,
+  automation,
   onSave,
   onClose,
   outlookMode = false,
 }: CategoryFormModalProps) {
   const [form, setForm] = useState(emptyForm(outlookMode))
+  const [autoForm, setAutoForm] = useState<CategoryAutomation>(DEFAULT_CATEGORY_AUTOMATION)
+  const [keywordDraft, setKeywordDraft] = useState('')
   const isEdit = Boolean(category?.id)
 
   useEffect(() => {
@@ -49,10 +58,31 @@ export function CategoryFormModal({
             }
           : emptyForm(outlookMode),
       )
+      setAutoForm(
+        automation
+          ? { ...DEFAULT_CATEGORY_AUTOMATION, ...automation }
+          : { ...DEFAULT_CATEGORY_AUTOMATION },
+      )
+      setKeywordDraft('')
     }
-  }, [open, category, outlookMode])
+  }, [open, category, automation, outlookMode])
 
   if (!open) return null
+
+  const addKeyword = (raw: string) => {
+    const word = raw.trim()
+    if (!word) return
+    if (autoForm.keywords.some((k) => k.toLowerCase() === word.toLowerCase())) return
+    setAutoForm((prev) => ({ ...prev, keywords: [...prev.keywords, word] }))
+    setKeywordDraft('')
+  }
+
+  const handleKeywordKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
+      addKeyword(keywordDraft)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,7 +91,7 @@ export function CategoryFormModal({
     const preset = outlookMode
       ? (form.outlookPreset ?? weekflowCategoryToOutlookPreset({ colour: form.colour }))
       : undefined
-    onSave({
+    const savedCategory: Category = {
       id: category?.id ?? '',
       name,
       colour: outlookMode && preset ? OUTLOOK_PRESET_HEX[preset as OutlookCategoryPreset] : form.colour,
@@ -74,7 +104,12 @@ export function CategoryFormModal({
           : form.showInDiary ?? defaultShowInDiaryForKind(form.kind),
       outlookPreset: preset,
       outlookGraphId: category?.outlookGraphId,
-    })
+    }
+    const automationToSave: CategoryAutomation = {
+      ...autoForm,
+      keywords: autoForm.keywords.map((k) => k.trim()).filter(Boolean),
+    }
+    onSave(savedCategory, automationToSave)
     onClose()
   }
 
@@ -86,6 +121,9 @@ export function CategoryFormModal({
     })
   }
 
+  const recurrenceKind = autoForm.recurrence?.kind ?? 'none'
+  const intervalDays = autoForm.recurrence?.intervalDays ?? 30
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <button
@@ -94,7 +132,7 @@ export function CategoryFormModal({
         onClick={onClose}
         aria-label="Close"
       />
-      <div className="relative z-10 w-full max-w-lg animate-slide-up rounded-t-3xl bg-wf-surface px-5 pb-8 pt-4 shadow-[var(--shadow-modal)] safe-bottom sm:mx-4 sm:rounded-3xl">
+      <div className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto animate-slide-up rounded-t-3xl bg-wf-surface px-5 pb-8 pt-4 shadow-[var(--shadow-modal)] safe-bottom sm:mx-4 sm:rounded-3xl">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-wf-border sm:hidden" />
 
         <div className="mb-5 flex items-center justify-between">
@@ -112,8 +150,8 @@ export function CategoryFormModal({
 
         {outlookMode && (
           <p className="mb-4 text-caption text-wf-text-tertiary">
-            Synced with Outlook — same list as the Categorize menu. Renaming creates a new Outlook
-            category and removes the old one.
+            Synced with Outlook — same list as the Categorize menu. Auto-apply rules sync with your
+            Weekflow account so they work on every device you use.
           </p>
         )}
 
@@ -123,7 +161,7 @@ export function CategoryFormModal({
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Work, Job To Do, Birthday"
+              placeholder="e.g. Work, Birthday, Pay day"
               className="w-full rounded-xl border border-wf-border bg-wf-bg px-4 py-3 text-[16px] outline-none focus:border-wf-accent focus:ring-2 focus:ring-wf-accent/20"
               autoFocus
             />
@@ -220,6 +258,151 @@ export function CategoryFormModal({
               </span>
             </label>
           )}
+
+          <div className="rounded-xl border border-wf-border bg-wf-bg/60 p-4">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={autoForm.enabled}
+                onChange={(e) => setAutoForm((prev) => ({ ...prev, enabled: e.target.checked }))}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded accent-wf-accent"
+              />
+              <span>
+                <span className="block text-[15px] font-semibold text-wf-text">Auto-apply rules</span>
+                <span className="mt-0.5 block text-caption text-wf-text-tertiary">
+                  When a new entry title contains these words, Weekflow applies this category and
+                  defaults on save.
+                </span>
+              </span>
+            </label>
+
+            {autoForm.enabled && (
+              <div className="mt-4 space-y-4 border-t border-wf-border/60 pt-4">
+                <Field label="Keywords">
+                  <div className="flex flex-wrap gap-2">
+                    {autoForm.keywords.map((keyword) => (
+                      <span
+                        key={keyword}
+                        className="inline-flex items-center gap-1 rounded-full bg-wf-surface px-2.5 py-1 text-caption font-medium text-wf-text-secondary shadow-[var(--shadow-card)]"
+                      >
+                        {keyword}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAutoForm((prev) => ({
+                              ...prev,
+                              keywords: prev.keywords.filter((k) => k !== keyword),
+                            }))
+                          }
+                          className="rounded-full p-0.5 text-wf-text-tertiary hover:text-wf-text"
+                          aria-label={`Remove ${keyword}`}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={keywordDraft}
+                    onChange={(e) => setKeywordDraft(e.target.value)}
+                    onKeyDown={handleKeywordKeyDown}
+                    onBlur={() => addKeyword(keywordDraft)}
+                    placeholder="Type a word and press Enter — e.g. birthday"
+                    className="mt-2 w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+                  />
+                </Field>
+
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(autoForm.matchInNotes)}
+                    onChange={(e) =>
+                      setAutoForm((prev) => ({ ...prev, matchInNotes: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded accent-wf-accent"
+                  />
+                  <span className="text-caption text-wf-text-secondary">Also match in notes</span>
+                </label>
+
+                <Field label="Default reminder (event alert)">
+                  <select
+                    value={autoForm.reminderLeadDays ?? ''}
+                    onChange={(e) =>
+                      setAutoForm((prev) => ({
+                        ...prev,
+                        reminderLeadDays: e.target.value ? Number(e.target.value) : undefined,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+                  >
+                    <option value="">None</option>
+                    {REMINDER_PRESET_DAYS.map((days) => (
+                      <option key={days} value={days}>
+                        {formatTaskReminderSummary({
+                          taskReminderKind: 'offset',
+                          taskLeadDays: days,
+                        })}{' '}
+                        due date
+                      </option>
+                    ))}
+                    <option value="12">12 days before due date</option>
+                  </select>
+                </Field>
+
+                <Field label="Default recurrence">
+                  <select
+                    value={recurrenceKind}
+                    onChange={(e) => {
+                      const kind = e.target.value as CategoryRecurrenceKind
+                      setAutoForm((prev) => ({
+                        ...prev,
+                        recurrence:
+                          kind === 'none'
+                            ? { kind: 'none' }
+                            : {
+                                kind,
+                                intervalDays:
+                                  kind === 'intervalDays' ? intervalDays : undefined,
+                              },
+                      }))
+                    }}
+                    className="w-full rounded-xl border border-wf-border bg-wf-surface px-3 py-2.5 text-body outline-none focus:border-wf-accent"
+                  >
+                    {(Object.keys(CATEGORY_RECURRENCE_KIND_LABELS) as CategoryRecurrenceKind[]).map(
+                      (kind) => (
+                        <option key={kind} value={kind}>
+                          {CATEGORY_RECURRENCE_KIND_LABELS[kind]}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                  {recurrenceKind === 'intervalDays' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-caption text-wf-text-secondary">Every</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={intervalDays}
+                        onChange={(e) =>
+                          setAutoForm((prev) => ({
+                            ...prev,
+                            recurrence: {
+                              kind: 'intervalDays',
+                              intervalDays: Math.max(1, Number(e.target.value) || 30),
+                            },
+                          }))
+                        }
+                        className="w-20 rounded-xl border border-wf-border bg-wf-surface px-3 py-2 text-body outline-none focus:border-wf-accent"
+                      />
+                      <span className="text-caption text-wf-text-secondary">days</span>
+                    </div>
+                  )}
+                </Field>
+              </div>
+            )}
+          </div>
 
           <button
             type="submit"

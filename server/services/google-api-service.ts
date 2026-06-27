@@ -1,5 +1,7 @@
 import { normalizeEmailBody } from "../../shared/emailBody";
 import { getReminderMinutesBefore, minutesToReminderPreset } from "../../shared/reminders";
+import { buildGoogleRecurrenceRule } from "../../shared/recurrenceSync";
+import { recurrenceFromLegacyWeekly } from "../../shared/itemRecurrence";
 import type {
   GoogleCalendarDto,
   GoogleCalendarEventResult,
@@ -703,6 +705,16 @@ function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string,
   const timeZone =
     input.timeZone ?? process.env.GOOGLE_CALENDAR_TIMEZONE ?? "Europe/London";
   const allDay = input.allDay || !hasExplicitScheduleTime(input);
+  const recurrenceRule =
+    (input.recurrence
+      ? buildGoogleRecurrenceRule(input.date, input.recurrence)
+      : undefined) ??
+    (input.recurringWeekly
+      ? buildGoogleRecurrenceRule(
+          input.date,
+          recurrenceFromLegacyWeekly(true)!,
+        )
+      : undefined);
 
   if (allDay) {
     const exclusiveEnd =
@@ -714,6 +726,7 @@ function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string,
       description: input.notes ?? "",
       start: { date: input.date },
       end: { date: exclusiveEnd },
+      ...(recurrenceRule ? { recurrence: [recurrenceRule] } : {}),
       ...(getReminderMinutesBefore(input) != null
         ? {
             reminders: {
@@ -735,6 +748,10 @@ function buildGoogleEventPayload(input: GoogleCalendarSyncInput): Record<string,
     start: { dateTime: `${input.date}T${startTime}:00`, timeZone },
     end: { dateTime: `${endDate}T${endTime}:00`, timeZone },
   };
+
+  if (recurrenceRule) {
+    payload.recurrence = [recurrenceRule];
+  }
 
   const minutes = getReminderMinutesBefore(input);
   if (minutes != null) {

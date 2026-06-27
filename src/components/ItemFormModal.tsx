@@ -6,6 +6,9 @@ import type { ItemShare, UpsertItemShareInput } from '../../shared/itemShares'
 import type { GraphCalendarDto, GraphTodoListDto } from '../../shared/microsoftGraph'
 import type { GoogleCalendarDto } from '../../shared/googleApi'
 import type { CalendarItem, Category, EmailMessage, IntegrationAccountDefaults, ItemReminderPreset, ItemShowInDiaryMode, SaveItemOptions, CalendarPreferences, CalendarSourcePreferences } from '../types'
+import type { CategoryAutomationMap } from '../../shared/categoryAutomation'
+import type { ItemRecurrenceKind } from '../../shared/itemRecurrence'
+import { ITEM_RECURRENCE_KIND_LABELS, recurrenceFromLegacyWeekly } from '../../shared/itemRecurrence'
 import { ITEM_REMINDER_PRESET_LABELS, DEFAULT_CALENDAR_PREFERENCES } from '../types'
 import { isTaskCategory, resolveItemColour } from '../categories'
 import { isAnyTaskItem, PROVIDER_TASK_CATEGORY_ID } from '../lib/providerTasks'
@@ -26,11 +29,16 @@ import {
 import { isTaskOrReminder } from './itemHelpers'
 import { LinkChips } from './LinkChips'
 import { ShareToBoardFields, shareStateFromRecord } from './ShareToBoardFields'
+import {
+  applyCategoryRuleToItem,
+  matchCategoryRule,
+} from '../lib/categoryRules'
 
 interface ItemFormModalProps {
   open: boolean
   item?: CalendarItem | null
   categories: Category[]
+  categoryAutomationMap?: CategoryAutomationMap
   defaultDate?: Date
   links: ItemLink[]
   emails: EmailMessage[]
@@ -197,6 +205,7 @@ export function ItemFormModal({
   open,
   item,
   categories,
+  categoryAutomationMap = {},
   defaultDate = new Date(),
   links,
   emails,
@@ -230,6 +239,11 @@ export function ItemFormModal({
   const [linkedTaskCategoryId, setLinkedTaskCategoryId] = useState('')
   const [createLinkedCalendarEvent, setCreateLinkedCalendarEvent] = useState(false)
   const [linkedEventCategoryId, setLinkedEventCategoryId] = useState('appointment')
+  const [categoryTouched, setCategoryTouched] = useState(false)
+  const [reminderTouched, setReminderTouched] = useState(false)
+  const [recurrenceTouched, setRecurrenceTouched] = useState(false)
+  const [initialCategoryId, setInitialCategoryId] = useState('')
+  const [initialTitle, setInitialTitle] = useState('')
 
   const taskCategories = useMemo(
     () => categories.filter((cat) => cat.kind === 'task' || cat.kind === 'reminder'),
@@ -249,7 +263,16 @@ export function ItemFormModal({
   useEffect(() => {
     if (!open) return
     if (item?.id) {
-      setForm(normalizeItemSchedule({ ...item }, categories))
+      const loaded = normalizeItemSchedule(
+        {
+          ...item,
+          recurrence: item.recurrence ?? recurrenceFromLegacyWeekly(item.recurringWeekly),
+        },
+        categories,
+      )
+      setForm(loaded)
+      setInitialCategoryId(loaded.categoryId)
+      setInitialTitle(loaded.title)
       setShowInDiaryMode(
         item.showInDiary === true
           ? 'always'
@@ -259,23 +282,27 @@ export function ItemFormModal({
       )
     } else {
       const base = emptyForm(defaultDate, categories, defaultItemKind)
-      setForm(
-        normalizeItemSchedule(
-          applyIntegrationDefaults(
-            base,
-            categories,
-            usingRealMicrosoft,
-            usingRealGoogle,
-            microsoftCalendars,
-            googleCalendars,
-            microsoftTodoLists,
-            integrationAccountDefaults,
-          ),
+      const next = normalizeItemSchedule(
+        applyIntegrationDefaults(
+          base,
           categories,
+          usingRealMicrosoft,
+          usingRealGoogle,
+          microsoftCalendars,
+          googleCalendars,
+          microsoftTodoLists,
+          integrationAccountDefaults,
         ),
+        categories,
       )
+      setForm(next)
+      setInitialCategoryId(next.categoryId)
+      setInitialTitle('')
       setShowInDiaryMode('category')
     }
+    setCategoryTouched(false)
+    setReminderTouched(false)
+    setRecurrenceTouched(false)
     setCreateLinkedTask(false)
     setCreateLinkedCalendarEvent(false)
     setLinkedTaskCategoryId(defaultLinkedTaskCategoryId)
@@ -298,6 +325,14 @@ export function ItemFormModal({
 
   const isEdit = Boolean(item?.id)
   const isTask = isAnyTaskItem(form, categories)
+
+  const matchedRule = useMemo(
+    () =>
+      !isTask
+        ? matchCategoryRule(form.title, form.notes, categories, categoryAutomationMap)
+        : null,
+    [isTask, form.title, form.notes, categories, categoryAutomationMap],
+  )
 
   const googleCalendarOptions = useMemo(
     () =>
@@ -369,7 +404,7 @@ export function ItemFormModal({
     const itemIsTask = isTaskOrReminder(form, categories)
     const showInDiary =
       showInDiaryMode === 'category' ? null : showInDiaryMode === 'always' ? true : false
-    const savedItem = normalizeItemSchedule(
+    let savedItem = normalizeItemSchedule(
       {
         ...form,
         id: form.id || generateId(),
@@ -381,7 +416,41 @@ export function ItemFormModal({
       },
       categories,
     )
+
+    const ruleMatch = !itemIsTask
+      ? matchCategoryRule(savedItem.title, savedItem.notes, categories, categoryAutomationMap)
+      : null
+    const canApplyCategory =
+      ruleMatch &&
+      (!isEdit || (savedItem.title.trim() !== initialTitle.trim() && savedItem.categoryId === initialCategoryId))
+    const applyOptions = {
+      applyCategory: Boolean(canApplyCategory && !categoryTouched),
+      applyReminder: Boolean(ruleMatch && !reminderTouched && !hasActiveReminder(savedItem)),
+      applyRecurrence: Boolean(ruleMatch && !recurrenceTouched && !savedItem.recurrence),
+    }
+    let appliedRuleName: string | undefined
+    if (ruleMatch && (applyOptions.applyCategory || applyOptions.applyReminder || applyOptions.applyRecurrence)) {
+      const applied = applyCategoryRuleToItem(savedItem, ruleMatch, categories, applyOptions)
+      savedItem = normalizeItemSchedule(
+        applyIntegrationDefaults(
+          applied.item,
+          categories,
+          usingRealMicrosoft,
+          usingRealGoogle,
+          microsoftCalendars,
+          googleCalendars,
+          microsoftTodoLists,
+          integrationAccountDefaults,
+        ),
+        categories,
+      )
+      appliedRuleName = ruleMatch.category.name
+    }
+
     const options: SaveItemOptions = {}
+    if (appliedRuleName) {
+      options.appliedCategoryRule = appliedRuleName
+    }
     if (!isEdit && !isTask && hasActiveReminder(savedItem) && createLinkedTask && linkedTaskCategoryId) {
       options.createLinkedTask = { categoryId: linkedTaskCategoryId }
     }
@@ -422,6 +491,7 @@ export function ItemFormModal({
     outlookCategories?: string[]
     colour: string
   }) => {
+    setCategoryTouched(true)
     const next = {
       ...form,
       categoryId: update.categoryId,
@@ -490,6 +560,11 @@ export function ItemFormModal({
               className="w-full rounded-xl border border-wf-border bg-wf-bg px-4 py-3 text-[16px] outline-none focus:border-wf-accent focus:ring-2 focus:ring-wf-accent/20"
               autoFocus
             />
+            {matchedRule && !categoryTouched && (
+              <p className="mt-2 rounded-lg bg-wf-accent-soft px-3 py-2 text-caption text-wf-accent">
+                Will apply: {matchedRule.category.name}
+              </p>
+            )}
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
@@ -695,7 +770,14 @@ export function ItemFormModal({
             </div>
           )}
 
-          <ReminderFields form={form} onChange={setForm} defaultDate={form.date} />
+          <ReminderFields
+            form={form}
+            onChange={(next) => {
+              setReminderTouched(true)
+              setForm(next)
+            }}
+            defaultDate={form.date}
+          />
 
           {(isTask || isTaskOrReminder(form, categories)) && (
             <div className="space-y-2 rounded-xl bg-wf-bg px-4 py-3">
@@ -811,15 +893,60 @@ export function ItemFormModal({
                   className="w-full rounded-xl border border-wf-border bg-wf-bg px-4 py-3 text-body outline-none focus:border-wf-accent"
                 />
               </Field>
-              <label className="flex items-center gap-3 rounded-xl bg-wf-bg px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={Boolean(form.recurringWeekly)}
-                  onChange={(e) => setForm({ ...form, recurringWeekly: e.target.checked })}
-                  className="h-5 w-5 rounded accent-wf-accent"
-                />
-                <span className="text-[15px] font-medium">Repeat weekly (10 times)</span>
-              </label>
+              <Field label="Repeat">
+                <select
+                  value={form.recurrence?.kind ?? 'none'}
+                  onChange={(e) => {
+                    setRecurrenceTouched(true)
+                    const kind = e.target.value as ItemRecurrenceKind | 'none'
+                    if (kind === 'none') {
+                      setForm({ ...form, recurrence: undefined, recurringWeekly: undefined })
+                      return
+                    }
+                    setForm({
+                      ...form,
+                      recurrence: {
+                        kind,
+                        intervalDays: kind === 'intervalDays' ? form.recurrence?.intervalDays ?? 30 : undefined,
+                        interval: kind === 'weekly' ? form.recurrence?.interval ?? 1 : undefined,
+                        count: kind === 'weekly' ? form.recurrence?.count ?? 10 : null,
+                      },
+                      recurringWeekly: kind === 'weekly' ? true : undefined,
+                    })
+                  }}
+                  className="w-full rounded-xl border border-wf-border bg-wf-bg px-3 py-3 text-body outline-none focus:border-wf-accent"
+                >
+                  <option value="none">Does not repeat</option>
+                  {(Object.keys(ITEM_RECURRENCE_KIND_LABELS) as ItemRecurrenceKind[]).map((kind) => (
+                    <option key={kind} value={kind}>
+                      {ITEM_RECURRENCE_KIND_LABELS[kind]}
+                    </option>
+                  ))}
+                </select>
+                {form.recurrence?.kind === 'intervalDays' && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-caption text-wf-text-secondary">Every</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={form.recurrence.intervalDays ?? 30}
+                      onChange={(e) => {
+                        setRecurrenceTouched(true)
+                        setForm({
+                          ...form,
+                          recurrence: {
+                            ...form.recurrence!,
+                            intervalDays: Math.max(1, Number(e.target.value) || 30),
+                          },
+                        })
+                      }}
+                      className="w-20 rounded-xl border border-wf-border bg-wf-bg px-3 py-2 text-body outline-none focus:border-wf-accent"
+                    />
+                    <span className="text-caption text-wf-text-secondary">days</span>
+                  </div>
+                )}
+              </Field>
               <label className="flex items-center gap-3 rounded-xl bg-wf-bg px-4 py-3">
                 <input
                   type="checkbox"

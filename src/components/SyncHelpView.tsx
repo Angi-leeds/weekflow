@@ -12,44 +12,50 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Email messages',
     safeAtSource: true,
     appOnly: false,
-    notes: `Read from Gmail / Outlook; ${APP_NAME} stores links and metadata only in prototype.`,
+    notes: `Read from Gmail / Outlook; ${APP_NAME} stores links and metadata only.`,
   },
   {
     dataType: 'Calendar events',
     safeAtSource: true,
     appOnly: false,
-    notes: 'Created events sync back to provider when Graph is connected (Phase 9).',
+    notes: 'Created events sync back to the connected provider (Microsoft, Google, Apple).',
   },
   {
     dataType: 'Tasks / reminders',
     safeAtSource: true,
     appOnly: false,
     notes:
-      'Microsoft To Do syncs bidirectionally when Outlook is connected. Google Tasks and iCloud Reminders are planned. Local demo tasks are hidden once an account is connected.',
+      'Microsoft To Do syncs bidirectionally when Outlook is connected. Google Tasks and iCloud Reminders are planned.',
   },
   {
     dataType: 'Notes (OneNote)',
     safeAtSource: true,
     appOnly: false,
-    notes: 'OneNote pages sync via Microsoft Graph when connected. Local-only notes stay on device.',
+    notes: 'OneNote pages sync via Microsoft Graph when connected.',
+  },
+  {
+    dataType: 'Local sticky notes',
+    safeAtSource: false,
+    appOnly: true,
+    notes: 'Weekflow-native notes stay in this browser until server sync is added.',
   },
   {
     dataType: 'Link graph',
     safeAtSource: false,
     appOnly: true,
-    notes: `Connections between email, calendar, task, and folder refs live in ${APP_NAME} PostgreSQL.`,
+    notes: `Connections between email, calendar, task, and folder refs — synced to your ${APP_NAME} household.`,
   },
   {
     dataType: 'Share to family board',
     safeAtSource: false,
     appOnly: true,
-    notes: 'Opt-in per item; visibility controlled by household share flags.',
+    notes: 'Opt-in per item; synced to your household account.',
   },
   {
     dataType: 'Board pin positions',
     safeAtSource: false,
     appOnly: true,
-    notes: `Cork board layout is household-specific ${APP_NAME} data.`,
+    notes: `Cork board layout is household-specific ${APP_NAME} data (synced).`,
   },
   {
     dataType: 'Cloud folder tags',
@@ -61,13 +67,43 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Attachments (photos)',
     safeAtSource: false,
     appOnly: true,
-    notes: 'Uploaded via attachment API; Replit object storage when configured, local filesystem in dev.',
+    notes: 'Uploaded via attachment API; object storage when configured.',
   },
   {
-    dataType: 'Categories & colours',
+    dataType: 'Outlook categories',
+    safeAtSource: true,
+    appOnly: false,
+    notes: 'Category names and colours sync via Outlook master categories when connected.',
+  },
+  {
+    dataType: 'Category auto-apply rules',
     safeAtSource: false,
     appOnly: true,
-    notes: 'User-managed labels; localStorage in prototype, DB later.',
+    notes: `Keywords, default reminders, and recurrence presets — synced to your ${APP_NAME} household (Outlook cannot store these).`,
+  },
+  {
+    dataType: 'Local categories (no Outlook)',
+    safeAtSource: false,
+    appOnly: true,
+    notes: 'Category names/colours without Outlook stay in this browser until server sync is added.',
+  },
+  {
+    dataType: 'Settings (Tier 1)',
+    safeAtSource: false,
+    appOnly: true,
+    notes: `Default accounts, calendar visibility, calendar preferences, diary task rules, and household permissions — synced to your ${APP_NAME} household.`,
+  },
+  {
+    dataType: 'Settings (display & UI)',
+    safeAtSource: false,
+    appOnly: true,
+    notes: 'Item card appearance, today highlight, list layout, and board layout stay on this device for now.',
+  },
+  {
+    dataType: 'Contact overlays',
+    safeAtSource: false,
+    appOnly: true,
+    notes: 'Starred, hidden, and private notes on synced contacts stay on this device for now.',
   },
   {
     dataType: 'Kiosk PIN',
@@ -121,8 +157,7 @@ export function SyncHelpView({ onBack }: { onBack?: () => void }) {
         <p className="font-semibold text-wf-accent">Safe at source</p>
         <p className="mt-1">
           Your email, calendar, and cloud files remain authoritative in Gmail, Outlook, or
-          OneDrive. {APP_NAME} reads and links — it does not replace those systems in the
-          prototype.
+          OneDrive. {APP_NAME} reads and links — it does not replace those systems.
         </p>
       </div>
     </div>

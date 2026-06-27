@@ -208,5 +208,23 @@ export const providerItemMappings = pgTable(
   ],
 );
 
+/** Per-household category keyword/reminder/recurrence auto-apply rules. */
+export const householdCategoryAutomation = pgTable("household_category_automation", {
+  householdId: uuid("household_id")
+    .primaryKey()
+    .references(() => households.id, { onDelete: "cascade" }),
+  rulesJson: jsonb("rules_json").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Tier-1 Settings (calendar prefs, account defaults, household permissions). */
+export const householdUserPreferences = pgTable("household_user_preferences", {
+  householdId: uuid("household_id")
+    .primaryKey()
+    .references(() => households.id, { onDelete: "cascade" }),
+  prefsJson: jsonb("prefs_json").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 /** Fixed demo household for prototype phases before real auth. */
 export const DEMO_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000001";
