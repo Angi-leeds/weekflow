@@ -37,7 +37,7 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Local sticky notes',
     safeAtSource: false,
     appOnly: true,
-    notes: 'Weekflow-native notes stay in this browser until server sync is added.',
+    notes: `Weekflow-native sticky notes — synced to your ${APP_NAME} household (OneNote pages still sync via Outlook).`,
   },
   {
     dataType: 'Link graph',
@@ -85,7 +85,7 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Local categories (no Outlook)',
     safeAtSource: false,
     appOnly: true,
-    notes: 'Category names/colours without Outlook stay in this browser until server sync is added.',
+    notes: `Category names and colours without Outlook — synced to your ${APP_NAME} household.`,
   },
   {
     dataType: 'Settings (Tier 1)',
@@ -103,7 +103,7 @@ export const SYNC_MATRIX: SyncMatrixRow[] = [
     dataType: 'Contact overlays',
     safeAtSource: false,
     appOnly: true,
-    notes: 'Starred, hidden, and private notes on synced contacts stay on this device for now.',
+    notes: `Starred, hidden, and private notes on synced contacts — synced to your ${APP_NAME} household.`,
   },
   {
     dataType: 'Kiosk PIN',

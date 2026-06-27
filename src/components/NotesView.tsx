@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Note, NotesViewMode } from "../types";
+import { APP_NAME } from "../branding";
 import type { ItemShare, UpsertItemShareInput, BoardDisplay } from "../../shared/itemShares";
 import {
   isWithinLastDays,
@@ -151,8 +152,8 @@ export function NotesView({
 
         {usingRealMicrosoft && (
           <p className="mb-3 rounded-xl bg-wf-accent-soft px-3 py-2 text-caption text-wf-text-secondary">
-            Notes are stored locally on this device. Outlook mail and calendar sync from all
-            connected accounts.
+            Sticky notes sync with your {APP_NAME} account. OneNote pages sync via Outlook. Mail and
+            calendar sync from all connected accounts.
           </p>
         )}
 

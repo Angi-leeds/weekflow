@@ -99,6 +99,19 @@ export function isEditableNote(note: Note): boolean {
   return note.provider !== "microsoft" && !note.externalId;
 }
 
+/** Weekflow-native notes that sync to the household account (not OneNote or demo data). */
+export function isSyncableLocalNote(note: Note): boolean {
+  return (
+    note.provider !== "microsoft" &&
+    note.provider !== "mock" &&
+    !note.externalId
+  );
+}
+
+export function extractSyncableLocalNotes(notes: Note[]): Note[] {
+  return notes.filter(isSyncableLocalNote);
+}
+
 export function notePreview(note: Note, maxLength = 80): string {
   const line = note.body.split("\n").find((entry) => entry.trim()) ?? note.title;
   if (line.length <= maxLength) return line;

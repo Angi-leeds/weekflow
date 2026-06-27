@@ -226,5 +226,14 @@ export const householdUserPreferences = pgTable("household_user_preferences", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** Tier-2 content (local notes, contact overlays, local categories). */
+export const householdLocalData = pgTable("household_local_data", {
+  householdId: uuid("household_id")
+    .primaryKey()
+    .references(() => households.id, { onDelete: "cascade" }),
+  dataJson: jsonb("data_json").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 /** Fixed demo household for prototype phases before real auth. */
 export const DEMO_HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000001";

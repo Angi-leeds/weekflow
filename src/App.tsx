@@ -145,6 +145,12 @@ import {
   fetchUserPreferences,
   syncUserPreferences,
 } from './lib/userPreferencesStorage'
+import {
+  collectHouseholdLocalData,
+  fetchHouseholdLocalData,
+  mergeLocalNotesIntoNotes,
+  syncHouseholdLocalData,
+} from './lib/householdLocalDataStorage'
 import type { CategoryAutomationMap } from '../shared/categoryAutomation'
 import { loadStoredItems, saveStoredItems, defaultItems } from './lib/items'
 import {
@@ -292,6 +298,7 @@ export default function App() {
     loadHouseholdPermissions(),
   )
   const [userPreferencesLoaded, setUserPreferencesLoaded] = useState(false)
+  const [householdLocalDataLoaded, setHouseholdLocalDataLoaded] = useState(false)
   const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftIntegrationStatus | null>(null)
   const [microsoftLoading, setMicrosoftLoading] = useState(true)
   const [googleStatus, setGoogleStatus] = useState<GoogleIntegrationStatus | null>(null)
@@ -872,6 +879,21 @@ export default function App() {
   }, [calendarFilter])
 
   const skipUserPreferencesSyncRef = useRef(true)
+  const skipHouseholdLocalDataSyncRef = useRef(true)
+
+  useEffect(() => {
+    if (!householdLocalDataLoaded) return
+    if (skipHouseholdLocalDataSyncRef.current) {
+      skipHouseholdLocalDataSyncRef.current = false
+      return
+    }
+    const timer = window.setTimeout(() => {
+      void syncHouseholdLocalData(
+        collectHouseholdLocalData({ notes, contactOverlays, localCategories }),
+      )
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [householdLocalDataLoaded, notes, contactOverlays, localCategories])
 
   useEffect(() => {
     if (!userPreferencesLoaded) return
@@ -999,6 +1021,22 @@ export default function App() {
   useEffect(() => {
     saveCalendarNavigation({ focusDate: toISODate(focusDate), viewMode })
   }, [focusDate, viewMode])
+
+  useEffect(() => {
+    void fetchHouseholdLocalData()
+      .then((data) => {
+        setNotes((prev) => mergeLocalNotesIntoNotes(prev, data.localNotes))
+        setContactOverlays(data.contactOverlays)
+        if (data.localCategories.length > 0) {
+          setLocalCategories(data.localCategories)
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        skipHouseholdLocalDataSyncRef.current = true
+        setHouseholdLocalDataLoaded(true)
+      })
+  }, [])
 
   useEffect(() => {
     fetchAllItemShares().then(setItemShares).catch(console.error)
