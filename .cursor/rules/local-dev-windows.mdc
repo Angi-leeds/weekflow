@@ -1,0 +1,44 @@
+---
+description: How to start any local Windows app (Postgres + dev-local) without asking the user
+alwaysApply: true
+---
+
+# Local Windows app startup (shared Postgres)
+
+When the user asks to run / start / open any app **locally** on Windows:
+
+1. **Start shared Postgres first** (port **5433**):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File "C:\Users\angi_6bkr1ru\Apps Folders\Projects Git\Local-Databases\start-postgres.ps1"
+   ```
+   - Friendly path: `Projects Git\Local-Databases` (junction to `_pg-local`)
+   - Shortcut: `Apps Folders\Local Databases.lnk`
+   - DB names are **inside** Postgres (not Explorer folders). List them with `list-databases.ps1`.
+
+2. **Launch the app** from its repo with:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\dev-local.ps1
+   ```
+   (cwd = that app’s repo root). Do **not** invent ad-hoc `pnpm dev` / Vite-only starts unless that app has no `dev-local.ps1`.
+
+3. **Read the runbook** for ports, DB names, landmines:
+   `C:\Users\angi_6bkr1ru\Apps Folders\Projects Git\_app-review-kit\LOCAL-DEV-RUNBOOK.md`
+
+## App → database (localhost:5433, user `postgres`, trust auth)
+
+| App | DB | Typical ports |
+|---|---|---|
+| My-JobFile | `myjobfile_dev` | UI 5000 / API 5001 |
+| Estate-Axis | `estateaxis_dev` | UI 5002 / API 5003 |
+| menagerie | `menagerie_dev` | 5004 (single process) |
+| salonaxis | `salonaxis_dev` | 5005 (single process) |
+| Revision-Navigator | `revisionnavigator_dev` | UI 5006 / API 5007 |
+| HomeVaultManager | `homevaultmanager_dev` | see runbook / `.env.local` |
+
+`DATABASE_URL` example: `postgresql://postgres@localhost:5433/<db_name>`
+
+## Do not
+
+- Install a new Postgres or point apps at port **5432** (unused winget install) when **5433** / `Local-Databases` is the real shared data.
+- Assume each app has its own database **folder** — one engine, many DB names.
+- Ask the user where the local DB is; use `Local-Databases` + the runbook.
